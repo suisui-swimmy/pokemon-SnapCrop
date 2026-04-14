@@ -13,37 +13,29 @@
 <body>
   <main class="app-shell">
     <section class="workspace-top">
-      <section class="panel live-panel" aria-labelledby="live-title">
-        <header class="panel-head">
-          <div>
-            <p class="panel-kicker">ライブ映像</p>
-            <h1 id="live-title">pokemon-SnapCrop</h1>
-          </div>
-          <p class="camera-badge" id="camera-state" data-tone="idle">映像未取得</p>
+      <header class="workspace-toolbar">
+        <p class="camera-badge" id="camera-state" data-tone="idle">映像未取得</p>
+        <label class="sr-only" for="device-select">映像入力</label>
+        <select id="device-select" class="toolbar-select" aria-label="映像入力"></select>
+        <button class="ui-button ui-button--subtle" id="refresh-devices" type="button">一覧更新</button>
+        <button class="ui-button" id="start-video" type="button">映像を開始</button>
+        <button
+          class="ui-button ui-button--subtle fullscreen-button"
+          id="toggle-fullscreen"
+          type="button"
+          aria-label="全画面切替"
+        >⤢</button>
+      </header>
+
+      <section class="panel live-panel" aria-label="ゲームキャプチャ">
+        <header class="sr-only">
+          <h1>ゲームキャプチャ</h1>
         </header>
 
-        <div class="control-strip">
-          <label class="field field--grow" for="device-select">
-            <span>映像入力</span>
-            <select id="device-select"></select>
-          </label>
-          <button class="ui-button ui-button--subtle" id="refresh-devices" type="button">一覧更新</button>
-          <button class="ui-button" id="start-video" type="button">映像を開始</button>
-        </div>
-
-        <p class="helper-text" id="permission-note">
-          最初にブラウザの映像アクセス許可が必要です。権限を許可するとデバイス名が表示されます。
-        </p>
-        <p class="helper-text helper-text--dim camera-details" id="camera-details">
-          デバイス: 未選択 / 取得: - / 比率: - / 状態: 待機中
-        </p>
-
-        <div class="video-stage-shell">
+        <div class="video-stage-shell" id="video-stage-shell">
           <div class="video-stage" id="video-stage" data-ready="false">
             <video id="live-video" playsinline autoplay muted></video>
-            <div class="video-placeholder" id="video-placeholder">
-              映像を開始すると、ここに対戦画面が表示されます。
-            </div>
+            <div class="video-placeholder" id="video-placeholder"></div>
             <div class="crop-overlay is-hidden" id="crop-overlay" aria-hidden="true">
               <span class="crop-overlay__label">敵パーティ</span>
               <span class="crop-overlay__handle" id="crop-handle"></span>
@@ -53,72 +45,49 @@
 
         <div class="crop-controls">
           <label class="field" for="crop-x">
-            <span>X</span>
-            <input id="crop-x" type="number" min="0" step="1" inputmode="numeric">
+            <span class="sr-only">X</span>
+            <input id="crop-x" type="number" min="0" step="1" inputmode="numeric" aria-label="X">
           </label>
           <label class="field" for="crop-y">
-            <span>Y</span>
-            <input id="crop-y" type="number" min="0" step="1" inputmode="numeric">
+            <span class="sr-only">Y</span>
+            <input id="crop-y" type="number" min="0" step="1" inputmode="numeric" aria-label="Y">
           </label>
           <label class="field" for="crop-width">
-            <span>幅</span>
-            <input id="crop-width" type="number" min="1" step="1" inputmode="numeric">
+            <span class="sr-only">幅</span>
+            <input id="crop-width" type="number" min="1" step="1" inputmode="numeric" aria-label="幅">
           </label>
           <label class="field" for="crop-height">
-            <span>高さ</span>
-            <input id="crop-height" type="number" min="1" step="1" inputmode="numeric">
+            <span class="sr-only">高さ</span>
+            <input id="crop-height" type="number" min="1" step="1" inputmode="numeric" aria-label="高さ">
           </label>
         </div>
 
-        <p class="helper-text helper-text--dim" id="crop-meta">
-          映像準備後に、赤い矩形をドラッグ移動または右下ハンドルで調整できます。
-        </p>
+        <p class="helper-text helper-text--dim" id="crop-meta"></p>
       </section>
 
-      <aside class="panel crop-panel" aria-labelledby="crop-title">
-        <header class="panel-head panel-head--compact">
-          <div>
-            <p class="panel-kicker">クロップ表示</p>
-            <h2 id="crop-title">敵パーティ</h2>
-          </div>
-        </header>
-
+      <aside class="panel crop-panel" aria-label="敵パーティクロップ">
         <div class="crop-preview-shell" id="crop-preview-shell" data-ready="false">
           <canvas id="crop-canvas"></canvas>
-          <p class="crop-placeholder" id="crop-placeholder">映像開始後に右側プレビューへ切り出し表示します。</p>
+          <p class="crop-placeholder" id="crop-placeholder"></p>
         </div>
 
-        <p class="helper-text helper-text--dim" id="crop-status">
-          映像未取得のため、クロップ表示は待機中です。
-        </p>
+        <p class="helper-text helper-text--dim" id="crop-status"></p>
       </aside>
     </section>
 
-    <section class="panel terminal-panel" aria-labelledby="terminal-title">
-      <header class="panel-head panel-head--compact">
-        <div>
-          <p class="panel-kicker">CLI パネル</p>
-          <h2 id="terminal-title">ターミナル</h2>
-        </div>
-      </header>
-
+    <section class="panel terminal-panel" aria-label="CLI パネル">
       <form class="terminal-form" id="pokemon-form" autocomplete="off">
-        <label class="field field--grow" for="pokemon-input">
-          <span>ポケモン名</span>
+        <span class="terminal-prompt" aria-hidden="true">&gt;</span>
+        <label class="terminal-input-wrap field field--grow" for="pokemon-input">
+          <span class="sr-only">ポケモン名</span>
           <input
             id="pokemon-input"
             name="pokemonName"
             type="text"
-            placeholder="例: ドラパルト"
             enterkeyhint="search"
           >
         </label>
-        <button class="ui-button" type="submit">検索</button>
       </form>
-
-      <p class="helper-text helper-text--dim">
-        入力はポケモン名だけで OK です。CSV から完全一致優先で検索します。
-      </p>
 
       <div class="terminal-output" id="terminal-output" role="log" aria-live="polite"></div>
     </section>

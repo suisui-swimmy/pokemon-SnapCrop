@@ -48,16 +48,11 @@
     cacheElements();
     bindEvents();
     setCameraState("映像未取得", "idle");
-    setCropStatus("映像未取得のため、クロップ表示は待機中です。");
+    setCropStatus("");
     setCropControlsDisabled(true);
     renderCameraDetails();
-    appendTerminalEntry(
-      [
-        "[system] pokemon-SnapCrop を起動しました。",
-        "[system] まず映像を開始し、下の入力欄でポケモン名を検索してください。",
-      ],
-      "system",
-    );
+    syncFullscreenButton();
+    refreshWorkspaceLayout();
     refreshDevices();
     loadPokemonCsv();
     registerServiceWorker();
@@ -67,10 +62,10 @@
     elements.deviceSelect = document.getElementById("device-select");
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
     elements.startVideoButton = document.getElementById("start-video");
-    elements.permissionNote = document.getElementById("permission-note");
+    elements.toggleFullscreenButton = document.getElementById("toggle-fullscreen");
     elements.cameraState = document.getElementById("camera-state");
-    elements.cameraDetails = document.getElementById("camera-details");
     elements.video = document.getElementById("live-video");
+    elements.videoStageShell = document.getElementById("video-stage-shell");
     elements.videoStage = document.getElementById("video-stage");
     elements.cropOverlay = document.getElementById("crop-overlay");
     elements.cropHandle = document.getElementById("crop-handle");
@@ -92,6 +87,7 @@
   function bindEvents() {
     elements.refreshDevicesButton.addEventListener("click", refreshDevices);
     elements.startVideoButton.addEventListener("click", startSelectedVideo);
+    elements.toggleFullscreenButton?.addEventListener("click", toggleFullscreen);
     elements.deviceSelect.addEventListener("change", handleDeviceSelectionChange);
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
     elements.pokemonForm.addEventListener("submit", handlePokemonSearch);
@@ -99,7 +95,8 @@
     window.addEventListener("pointermove", updateCropInteraction);
     window.addEventListener("pointerup", finishCropInteraction);
     window.addEventListener("pointercancel", finishCropInteraction);
-    window.addEventListener("resize", renderCropOverlay);
+    window.addEventListener("resize", refreshWorkspaceLayout);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     Object.values(elements.cropInputs).forEach((input) => {
       input.addEventListener("change", applyCropInputs);
@@ -132,14 +129,6 @@
       });
 
       state.csvReady = true;
-      appendTerminalEntry(
-        [
-          "[system] CSV を読み込みました。",
-          `[system] 列: ${headers.join(" / ")}`,
-          `[system] 件数: ${state.pokemonMap.size}`,
-        ],
-        "system",
-      );
     } catch (error) {
       state.csvReady = false;
       appendTerminalEntry(
@@ -159,8 +148,6 @@
       elements.startVideoButton.disabled = true;
       elements.refreshDevicesButton.disabled = true;
       elements.deviceSelect.disabled = true;
-      elements.permissionNote.textContent =
-        "MediaDevices API に対応したブラウザで開いてください。";
       renderCameraDetails();
       return;
     }
@@ -174,8 +161,6 @@
       if (state.devices.length === 0) {
         state.selectedDeviceId = "";
         setCameraState("映像デバイス未接続", "error");
-        elements.permissionNote.textContent =
-          "映像入力が見つかりません。キャプチャデバイスや OBS 仮想カメラを確認してください。";
         renderCameraDetails();
         return;
       }
@@ -183,8 +168,6 @@
       const hasNamedDevice = state.devices.some((device) => device.label);
       if (!hasNamedDevice && !state.videoReady) {
         setCameraState("権限待ち", "working");
-        elements.permissionNote.textContent =
-          "最初にブラウザの映像アクセス許可が必要です。許可後に実際のデバイス名が見えます。";
         renderCameraDetails();
         return;
       }
@@ -192,13 +175,9 @@
       if (!state.videoReady) {
         setCameraState("映像開始待ち", "idle");
       }
-      elements.permissionNote.textContent =
-        "デバイスを選んで映像を開始してください。切り替え時は古いストリームを自動停止します。";
       renderCameraDetails();
     } catch (error) {
       setCameraState("デバイス一覧取得失敗", "error");
-      elements.permissionNote.textContent =
-        "映像入力一覧の取得に失敗しました。ブラウザの権限設定を確認してください。";
       appendTerminalEntry(
         [
           "[error] 映像デバイス一覧の取得に失敗しました。",
@@ -276,8 +255,6 @@
       elements.video.srcObject = stream;
       elements.video.muted = true;
       await elements.video.play();
-      elements.permissionNote.textContent =
-        "映像取得中です。赤い矩形で敵パーティ領域を合わせてください。";
 
       await refreshDevices();
     } catch (error) {
@@ -367,6 +344,7 @@
     state.videoReady = true;
     elements.videoStage.dataset.ready = "true";
     elements.cropPreviewShell.dataset.ready = "true";
+    refreshWorkspaceLayout();
 
     const restored = restoreCrop(dimensions.width, dimensions.height);
     const initialCrop = restored || getDefaultCrop(dimensions.width, dimensions.height);
@@ -377,7 +355,7 @@
       state.streamInfo.isSixteenByNine ? "success" : "working",
     );
     renderCameraDetails();
-    setCropStatus("右側プレビューは現在フレームを追従表示しています。");
+    setCropStatus("");
     startPreviewLoop();
   }
 
@@ -527,6 +505,77 @@
     }
   }
 
+  function handleFullscreenChange() {
+    syncFullscreenButton();
+    refreshWorkspaceLayout();
+  }
+
+  function refreshWorkspaceLayout() {
+    updateVideoStageLayout();
+    updatePreviewCanvasLayout();
+    renderCropOverlay();
+  }
+
+  function updateVideoStageLayout() {
+    const shell = elements.videoStageShell;
+    if (!shell) {
+      return;
+    }
+
+    const fittedRect = fitAspectRect(
+      shell.clientWidth,
+      shell.clientHeight,
+      ASPECT_16_BY_9,
+    );
+
+    if (!fittedRect) {
+      return;
+    }
+
+    elements.videoStage.style.width = `${fittedRect.width}px`;
+    elements.videoStage.style.height = `${fittedRect.height}px`;
+  }
+
+  function updatePreviewCanvasLayout() {
+    const shell = elements.cropPreviewShell;
+    if (!shell) {
+      return;
+    }
+
+    const cropAspect = state.crop ? state.crop.width / state.crop.height : 1;
+    const fittedRect = fitAspectRect(
+      shell.clientWidth,
+      shell.clientHeight,
+      cropAspect,
+    );
+
+    if (!fittedRect) {
+      return;
+    }
+
+    elements.cropCanvas.style.width = `${fittedRect.width}px`;
+    elements.cropCanvas.style.height = `${fittedRect.height}px`;
+  }
+
+  function fitAspectRect(containerWidth, containerHeight, aspectRatio) {
+    if (!containerWidth || !containerHeight || !aspectRatio || aspectRatio <= 0) {
+      return null;
+    }
+
+    let width = containerWidth;
+    let height = width / aspectRatio;
+
+    if (height > containerHeight) {
+      height = containerHeight;
+      width = height * aspectRatio;
+    }
+
+    return {
+      width: Math.max(1, Math.floor(width)),
+      height: Math.max(1, Math.floor(height)),
+    };
+  }
+
   function renderCropOverlay() {
     if (!state.videoReady || !state.crop) {
       elements.cropOverlay.classList.add("is-hidden");
@@ -547,8 +596,6 @@
     elements.cropOverlay.style.width = `${state.crop.width * scaleX}px`;
     elements.cropOverlay.style.height = `${state.crop.height * scaleY}px`;
     elements.cropOverlay.classList.remove("is-hidden");
-    elements.cropMeta.textContent =
-      `現在値: x ${state.crop.x} / y ${state.crop.y} / 幅 ${state.crop.width} / 高さ ${state.crop.height}`;
   }
 
   function updatePreviewCanvasSize() {
@@ -562,6 +609,8 @@
       elements.cropCanvas.width = width;
       elements.cropCanvas.height = height;
     }
+
+    updatePreviewCanvasLayout();
   }
 
   function startPreviewLoop() {
@@ -592,13 +641,18 @@
       return;
     }
 
+    const sourceX = Math.round(state.crop.x);
+    const sourceY = Math.round(state.crop.y);
+    const sourceWidth = Math.round(state.crop.width);
+    const sourceHeight = Math.round(state.crop.height);
+
     context.clearRect(0, 0, elements.cropCanvas.width, elements.cropCanvas.height);
     context.drawImage(
       elements.video,
-      state.crop.x,
-      state.crop.y,
-      state.crop.width,
-      state.crop.height,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
       0,
       0,
       elements.cropCanvas.width,
@@ -621,8 +675,9 @@
     elements.video.srcObject = null;
     elements.cropOverlay.classList.add("is-hidden");
     setCropControlsDisabled(true);
-    setCropStatus("映像未取得のため、クロップ表示は待機中です。");
+    setCropStatus("");
     renderCameraDetails();
+    refreshWorkspaceLayout();
   }
 
   function setCropControlsDisabled(disabled) {
@@ -637,17 +692,11 @@
   }
 
   function renderCameraDetails() {
-    const device = getSelectedDevice();
-    const deviceLabel = device?.label || (state.devices.length > 0 ? "選択中の映像入力" : "未選択");
-    const resolution = state.streamInfo ? `${state.streamInfo.width}x${state.streamInfo.height}` : "-";
-    const ratio = state.streamInfo?.ratioLabel || "-";
-    const input = state.streamInfo?.inputLabel || (state.devices.length > 0 ? "待機中" : "未接続");
-    elements.cameraDetails.textContent =
-      `デバイス: ${deviceLabel} / 取得: ${resolution} / 比率: ${ratio} / 状態: ${input}`;
+    return;
   }
 
   function setCropStatus(message) {
-    elements.cropStatus.textContent = message;
+    return message;
   }
 
   function syncCropInputs() {
@@ -944,5 +993,33 @@
         "error",
       );
     }
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (error) {
+      appendTerminalEntry(
+        [
+          "[error] 全画面表示に切り替えできませんでした。",
+          `[error] 詳細: ${error.message}`,
+        ],
+        "error",
+      );
+    } finally {
+      syncFullscreenButton();
+    }
+  }
+
+  function syncFullscreenButton() {
+    if (!elements.toggleFullscreenButton) {
+      return;
+    }
+
+    elements.toggleFullscreenButton.textContent = document.fullscreenElement ? "⤡" : "⤢";
   }
 })();
