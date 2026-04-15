@@ -14,7 +14,7 @@
   <main class="app-shell">
     <section class="workspace-top">
       <header class="workspace-toolbar">
-        <p class="camera-badge" id="camera-state" data-tone="idle">映像未取得</p>
+        <p class="camera-badge" id="camera-state" data-tone="idle">未取得</p>
         <label class="sr-only" for="device-select">映像入力</label>
         <select id="device-select" class="toolbar-select" aria-label="映像入力"></select>
         <button class="ui-button ui-button--subtle" id="refresh-devices" type="button">一覧更新</button>
@@ -25,6 +25,25 @@
           type="button"
           aria-label="全画面切替"
         >⤢</button>
+        <button
+          class="ui-button ui-button--subtle audio-button"
+          id="toggle-audio-mute"
+          type="button"
+          aria-label="音声ミュート切替"
+          disabled
+        >🔇</button>
+        <label class="sr-only" for="audio-volume">音量</label>
+        <input
+          id="audio-volume"
+          class="audio-volume"
+          type="range"
+          min="0"
+          max="100"
+          value="100"
+          step="1"
+          aria-label="音量"
+          disabled
+        >
       </header>
 
       <section class="panel live-panel" aria-label="ゲームキャプチャ">
