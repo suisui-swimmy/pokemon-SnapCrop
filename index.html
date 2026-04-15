@@ -48,6 +48,13 @@
         >
       </header>
 
+      <aside class="panel crop-panel crop-panel--my" aria-label="自パーティクロップ">
+        <div class="crop-preview-shell" id="crop-preview-shell-my" data-ready="false">
+          <canvas id="crop-canvas-my"></canvas>
+          <p class="crop-placeholder" id="crop-placeholder-my"></p>
+        </div>
+      </aside>
+
       <section class="panel live-panel" aria-label="ゲームキャプチャ">
         <header class="sr-only">
           <h1>ゲームキャプチャ</h1>
@@ -57,9 +64,13 @@
           <div class="video-stage" id="video-stage" data-ready="false">
             <video id="live-video" playsinline autoplay muted></video>
             <div class="video-placeholder" id="video-placeholder"></div>
-            <div class="crop-overlay is-hidden" id="crop-overlay" aria-hidden="true">
-              <span class="crop-overlay__label">敵パーティ</span>
-              <span class="crop-overlay__handle" id="crop-handle"></span>
+            <div class="crop-overlay crop-overlay--my is-hidden" id="crop-overlay-my" data-side="my" aria-hidden="true">
+              <span class="crop-overlay__label">自</span>
+              <span class="crop-overlay__handle" id="crop-handle-my" data-side="my"></span>
+            </div>
+            <div class="crop-overlay crop-overlay--enemy is-hidden" id="crop-overlay-enemy" data-side="enemy" aria-hidden="true">
+              <span class="crop-overlay__label">敵</span>
+              <span class="crop-overlay__handle" id="crop-handle-enemy" data-side="enemy"></span>
             </div>
           </div>
         </div>
@@ -82,17 +93,13 @@
             <input id="crop-height" type="number" min="1" step="1" inputmode="numeric" aria-label="高さ">
           </label>
         </div>
-
-        <p class="helper-text helper-text--dim" id="crop-meta"></p>
       </section>
 
-      <aside class="panel crop-panel" aria-label="敵パーティクロップ">
-        <div class="crop-preview-shell" id="crop-preview-shell" data-ready="false">
-          <canvas id="crop-canvas"></canvas>
-          <p class="crop-placeholder" id="crop-placeholder"></p>
+      <aside class="panel crop-panel crop-panel--enemy" aria-label="敵パーティクロップ">
+        <div class="crop-preview-shell" id="crop-preview-shell-enemy" data-ready="false">
+          <canvas id="crop-canvas-enemy"></canvas>
+          <p class="crop-placeholder" id="crop-placeholder-enemy"></p>
         </div>
-
-        <p class="helper-text helper-text--dim" id="crop-status"></p>
       </aside>
     </section>
 

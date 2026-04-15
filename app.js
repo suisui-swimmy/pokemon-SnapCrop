@@ -1,6 +1,10 @@
 (() => {
   const CSV_PATH = "./data/champions_%20Reg_M-A.csv";
-  const STORAGE_KEY = "pokemon-snapcrop.enemy-crop";
+  const STORAGE_KEYS = {
+    my: "pokemon-snapcrop.my-crop",
+    enemy: "pokemon-snapcrop.enemy-crop",
+  };
+  const CROP_SIDES = ["my", "enemy"];
   const REQUIRED_HEADERS = [
     "ポケモン名",
     "タイプ1",
@@ -40,7 +44,15 @@
     selectedAudioDeviceId: "",
     deviceSelectionLocked: false,
     audioSelectionLocked: false,
-    crop: null,
+    mode: "edit",
+    crops: {
+      my: null,
+      enemy: null,
+    },
+    references: {
+      my: null,
+      enemy: null,
+    },
     drag: null,
     previewFrameId: 0,
     audioContext: null,
@@ -62,8 +74,6 @@
     cacheElements();
     bindEvents();
     setCameraState("未取得", "idle");
-    setCropStatus("");
-    setCropControlsDisabled(true);
     renderCameraDetails();
     syncFullscreenButton();
     syncAudioControls();
@@ -71,6 +81,13 @@
     refreshDevices();
     loadPokemonCsv();
     registerServiceWorker();
+    appendTerminalNotice(
+      "command-hint",
+      [
+        "[system] edit で範囲編集、ready で待機、空Enterか Ctrl+Enter で撮影できます。",
+      ],
+      "system",
+    );
     window.requestAnimationFrame(() => {
       elements.terminalInput?.focus();
     });
@@ -88,17 +105,19 @@
     elements.video = document.getElementById("live-video");
     elements.videoStageShell = document.getElementById("video-stage-shell");
     elements.videoStage = document.getElementById("video-stage");
-    elements.cropOverlay = document.getElementById("crop-overlay");
-    elements.cropHandle = document.getElementById("crop-handle");
-    elements.cropMeta = document.getElementById("crop-meta");
-    elements.cropPreviewShell = document.getElementById("crop-preview-shell");
-    elements.cropCanvas = document.getElementById("crop-canvas");
-    elements.cropStatus = document.getElementById("crop-status");
-    elements.cropInputs = {
-      x: document.getElementById("crop-x"),
-      y: document.getElementById("crop-y"),
-      width: document.getElementById("crop-width"),
-      height: document.getElementById("crop-height"),
+    elements.cropSlots = {
+      my: {
+        overlay: document.getElementById("crop-overlay-my"),
+        handle: document.getElementById("crop-handle-my"),
+        shell: document.getElementById("crop-preview-shell-my"),
+        canvas: document.getElementById("crop-canvas-my"),
+      },
+      enemy: {
+        overlay: document.getElementById("crop-overlay-enemy"),
+        handle: document.getElementById("crop-handle-enemy"),
+        shell: document.getElementById("crop-preview-shell-enemy"),
+        canvas: document.getElementById("crop-canvas-enemy"),
+      },
     };
     elements.terminalScreen = document.getElementById("terminal-screen");
     elements.terminalForm = document.getElementById("terminal-form");
@@ -118,16 +137,15 @@
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
-    elements.cropOverlay.addEventListener("pointerdown", startCropInteraction);
+    CROP_SIDES.forEach((side) => {
+      elements.cropSlots[side].overlay?.addEventListener("pointerdown", startCropInteraction);
+    });
     window.addEventListener("pointermove", updateCropInteraction);
     window.addEventListener("pointerup", finishCropInteraction);
     window.addEventListener("pointercancel", finishCropInteraction);
     window.addEventListener("resize", refreshWorkspaceLayout);
+    document.addEventListener("keydown", handleGlobalKeydown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-    Object.values(elements.cropInputs).forEach((input) => {
-      input.addEventListener("change", applyCropInputs);
-    });
 
     if (navigator.mediaDevices && "addEventListener" in navigator.mediaDevices) {
       navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
@@ -485,13 +503,16 @@
     state.streamInfo = buildStreamInfo(dimensions.width, dimensions.height);
     state.videoReady = true;
     elements.videoStage.dataset.ready = "true";
-    elements.cropPreviewShell.dataset.ready = "true";
+    CROP_SIDES.forEach((side) => {
+      elements.cropSlots[side].shell.dataset.ready = "true";
+    });
     refreshWorkspaceLayout();
 
-    const restored = restoreCrop(dimensions.width, dimensions.height);
-    const initialCrop = restored || getDefaultCrop(dimensions.width, dimensions.height);
-    updateCrop(initialCrop, { save: false, syncInputs: true });
-    setCropControlsDisabled(false);
+    CROP_SIDES.forEach((side) => {
+      const restored = restoreCrop(side, dimensions.width, dimensions.height);
+      const initialCrop = restored || getDefaultCrop(side, dimensions.width, dimensions.height);
+      updateCrop(side, initialCrop, { save: false });
+    });
     setCameraState(
       state.streamInfo.inputLabel,
       state.streamInfo.isSixteenByNine ? "success" : "working",
@@ -508,8 +529,10 @@
       );
     }
     renderCameraDetails();
-    setCropStatus("");
-    startPreviewLoop();
+    refreshCropPanels();
+    if (state.mode === "edit") {
+      startPreviewLoop();
+    }
   }
 
   function handleTerminalSubmit(event) {
@@ -517,12 +540,20 @@
 
     const query = elements.terminalInput.value.trim();
     if (!query) {
+      if (state.mode === "ready") {
+        appendTerminalEntry(["> snap both"], "command");
+        void handleSnapCommand("both");
+      }
       return;
     }
 
     pushCommandHistory(query);
     appendTerminalEntry([`> ${query}`], "command");
     elements.terminalInput.value = "";
+
+    if (handleTerminalCommand(query)) {
+      return;
+    }
 
     if (!state.csvReady) {
       appendTerminalEntry(
@@ -584,7 +615,65 @@
         elements.terminalInput.value = state.commandHistory[state.commandHistoryIndex];
       }
       moveCaretToEnd(elements.terminalInput);
+      return;
     }
+  }
+
+  function handleGlobalKeydown(event) {
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Enter") {
+      event.preventDefault();
+      appendTerminalEntry(["> snap both"], "command");
+      void handleSnapCommand("both");
+      return;
+    }
+
+    if (event.key === "Escape" && state.mode === "edit") {
+      event.preventDefault();
+      setMode("ready");
+    }
+  }
+
+  function handleTerminalCommand(query) {
+    const [command = "", arg = ""] = query.toLowerCase().split(/\s+/, 2);
+
+    if (command === "edit") {
+      setMode("edit");
+      return true;
+    }
+
+    if (command === "ready") {
+      setMode("ready");
+      return true;
+    }
+
+    if (command === "help") {
+      appendTerminalEntry(
+        [
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / help",
+          "ショートカット: Ctrl+Enter = snap both / Esc = ready",
+        ],
+        "system",
+      );
+      return true;
+    }
+
+    if (command === "snap") {
+      const target = ["", "both"].includes(arg) ? "both" : arg;
+      if (!["my", "enemy", "both"].includes(target)) {
+        appendTerminalEntry(
+          [
+            "snap は my / enemy / both を指定できます。",
+          ],
+          "error",
+        );
+        return true;
+      }
+
+      void handleSnapCommand(target);
+      return true;
+    }
+
+    return false;
   }
 
   function pushCommandHistory(command) {
@@ -609,7 +698,14 @@
   }
 
   function startCropInteraction(event) {
-    if (!state.videoReady || !state.crop || event.button !== 0) {
+    if (!state.videoReady || state.mode !== "edit" || event.button !== 0) {
+      return;
+    }
+
+    const overlay = event.currentTarget;
+    const side = overlay?.dataset?.side;
+    const crop = side ? state.crops[side] : null;
+    if (!side || !crop) {
       return;
     }
 
@@ -618,19 +714,20 @@
       return;
     }
 
-    const mode = event.target === elements.cropHandle ? "resize" : "move";
+    const mode = event.target === elements.cropSlots[side].handle ? "resize" : "move";
     state.drag = {
+      side,
       pointerId: event.pointerId,
       mode,
       startX: event.clientX,
       startY: event.clientY,
-      startCrop: { ...state.crop },
+      startCrop: { ...crop },
       pixelsToVideoX: getStreamDimensions().width / displayedRect.width,
       pixelsToVideoY: getStreamDimensions().height / displayedRect.height,
     };
 
-    if (elements.cropOverlay.setPointerCapture) {
-      elements.cropOverlay.setPointerCapture(event.pointerId);
+    if (overlay.setPointerCapture) {
+      overlay.setPointerCapture(event.pointerId);
     }
     event.preventDefault();
   }
@@ -658,7 +755,7 @@
       };
     }
 
-    updateCrop(nextCrop, { save: true, syncInputs: true });
+    updateCrop(state.drag.side, nextCrop, { save: true });
   }
 
   function finishCropInteraction(event) {
@@ -669,38 +766,22 @@
     state.drag = null;
   }
 
-  function applyCropInputs() {
-    if (!state.videoReady) {
-      return;
-    }
-
-    const nextCrop = {
-      x: Number(elements.cropInputs.x.value),
-      y: Number(elements.cropInputs.y.value),
-      width: Number(elements.cropInputs.width.value),
-      height: Number(elements.cropInputs.height.value),
-    };
-
-    updateCrop(nextCrop, { save: true, syncInputs: true });
-  }
-
-  function updateCrop(nextCrop, options = {}) {
-    const { save = true, syncInputs = false } = options;
+  function updateCrop(side, nextCrop, options = {}) {
+    const { save = true } = options;
     const dimensions = getStreamDimensions();
     if (!dimensions.width || !dimensions.height) {
       return;
     }
 
-    state.crop = clampCrop(nextCrop, dimensions.width, dimensions.height);
-    renderCropOverlay();
-    updatePreviewCanvasSize();
-
-    if (syncInputs) {
-      syncCropInputs();
+    state.crops[side] = clampCrop(nextCrop, dimensions.width, dimensions.height);
+    renderCropOverlays();
+    updatePreviewCanvasSize(side);
+    if (state.mode === "edit") {
+      drawCropPanel(side);
     }
 
     if (save) {
-      persistCrop(state.crop, dimensions.width, dimensions.height);
+      persistCrop(side, state.crops[side], dimensions.width, dimensions.height);
     }
   }
 
@@ -711,8 +792,11 @@
 
   function refreshWorkspaceLayout() {
     updateVideoStageLayout();
-    updatePreviewCanvasLayout();
-    renderCropOverlay();
+    CROP_SIDES.forEach((side) => {
+      updatePreviewCanvasLayout(side);
+      drawCropPanel(side);
+    });
+    renderCropOverlays();
   }
 
   function updateVideoStageLayout() {
@@ -735,13 +819,14 @@
     elements.videoStage.style.height = `${fittedRect.height}px`;
   }
 
-  function updatePreviewCanvasLayout() {
-    const shell = elements.cropPreviewShell;
+  function updatePreviewCanvasLayout(side) {
+    const slot = elements.cropSlots[side];
+    const shell = slot?.shell;
     if (!shell) {
       return;
     }
 
-    const cropAspect = state.crop ? state.crop.width / state.crop.height : 1;
+    const cropAspect = getPreviewAspect(side);
     const fittedRect = fitAspectRect(
       shell.clientWidth,
       shell.clientHeight,
@@ -752,8 +837,8 @@
       return;
     }
 
-    elements.cropCanvas.style.width = `${fittedRect.width}px`;
-    elements.cropCanvas.style.height = `${fittedRect.height}px`;
+    slot.canvas.style.width = `${fittedRect.width}px`;
+    slot.canvas.style.height = `${fittedRect.height}px`;
   }
 
   function fitAspectRect(containerWidth, containerHeight, aspectRatio) {
@@ -775,52 +860,66 @@
     };
   }
 
-  function renderCropOverlay() {
-    if (!state.videoReady || !state.crop) {
-      elements.cropOverlay.classList.add("is-hidden");
-      return;
-    }
-
+  function renderCropOverlays() {
     const displayedRect = getDisplayedVideoRect();
     const dimensions = getStreamDimensions();
     if (!displayedRect || !dimensions.width || !dimensions.height) {
+      CROP_SIDES.forEach((side) => elements.cropSlots[side].overlay.classList.add("is-hidden"));
       return;
     }
 
     const scaleX = displayedRect.width / dimensions.width;
     const scaleY = displayedRect.height / dimensions.height;
 
-    elements.cropOverlay.style.left = `${displayedRect.offsetX + state.crop.x * scaleX}px`;
-    elements.cropOverlay.style.top = `${displayedRect.offsetY + state.crop.y * scaleY}px`;
-    elements.cropOverlay.style.width = `${state.crop.width * scaleX}px`;
-    elements.cropOverlay.style.height = `${state.crop.height * scaleY}px`;
-    elements.cropOverlay.classList.remove("is-hidden");
+    CROP_SIDES.forEach((side) => {
+      const crop = state.crops[side];
+      const overlay = elements.cropSlots[side].overlay;
+      if (!state.videoReady || !crop || state.mode !== "edit") {
+        overlay.classList.add("is-hidden");
+        return;
+      }
+
+      overlay.style.left = `${displayedRect.offsetX + crop.x * scaleX}px`;
+      overlay.style.top = `${displayedRect.offsetY + crop.y * scaleY}px`;
+      overlay.style.width = `${crop.width * scaleX}px`;
+      overlay.style.height = `${crop.height * scaleY}px`;
+      overlay.classList.remove("is-hidden");
+    });
   }
 
-  function updatePreviewCanvasSize() {
-    if (!state.crop) {
+  function updatePreviewCanvasSize(side) {
+    const slot = elements.cropSlots[side];
+    const sourceSize = getPreviewSourceSize(side);
+    if (!slot) {
       return;
     }
 
-    const width = Math.max(1, Math.round(state.crop.width));
-    const height = Math.max(1, Math.round(state.crop.height));
-    if (elements.cropCanvas.width !== width || elements.cropCanvas.height !== height) {
-      elements.cropCanvas.width = width;
-      elements.cropCanvas.height = height;
+    if (!sourceSize) {
+      slot.shell.dataset.ready = "false";
+      return;
     }
 
-    updatePreviewCanvasLayout();
+    const width = Math.max(1, Math.round(sourceSize.width));
+    const height = Math.max(1, Math.round(sourceSize.height));
+    if (slot.canvas.width !== width || slot.canvas.height !== height) {
+      slot.canvas.width = width;
+      slot.canvas.height = height;
+    }
+
+    slot.shell.dataset.ready = "true";
+    updatePreviewCanvasLayout(side);
   }
 
   function startPreviewLoop() {
     stopPreviewLoop();
 
     const draw = () => {
-      if (!state.videoReady || !state.crop || !state.stream) {
+      if (!state.videoReady || !state.stream || state.mode !== "edit") {
         return;
       }
 
-      drawCropPreview();
+      drawCropPanel("my");
+      drawCropPanel("enemy");
       state.previewFrameId = window.requestAnimationFrame(draw);
     };
 
@@ -834,29 +933,45 @@
     }
   }
 
-  function drawCropPreview() {
-    const context = elements.cropCanvas.getContext("2d");
-    if (!context || !state.crop) {
+  function drawCropPanel(side) {
+    const canvas = elements.cropSlots[side].canvas;
+    const context = canvas.getContext("2d");
+    if (!context) {
       return;
     }
 
-    const sourceX = Math.round(state.crop.x);
-    const sourceY = Math.round(state.crop.y);
-    const sourceWidth = Math.round(state.crop.width);
-    const sourceHeight = Math.round(state.crop.height);
+    context.clearRect(0, 0, canvas.width, canvas.height);
 
-    context.clearRect(0, 0, elements.cropCanvas.width, elements.cropCanvas.height);
-    context.drawImage(
-      elements.video,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      0,
-      0,
-      elements.cropCanvas.width,
-      elements.cropCanvas.height,
-    );
+    if (state.mode === "edit" && state.videoReady && state.stream) {
+      const crop = state.crops[side];
+      if (!crop) {
+        elements.cropSlots[side].shell.dataset.ready = "false";
+        return;
+      }
+
+      elements.cropSlots[side].shell.dataset.ready = "true";
+      context.drawImage(
+        elements.video,
+        Math.round(crop.x),
+        Math.round(crop.y),
+        Math.round(crop.width),
+        Math.round(crop.height),
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      return;
+    }
+
+    const reference = state.references[side];
+    if (!reference) {
+      elements.cropSlots[side].shell.dataset.ready = "false";
+      return;
+    }
+
+    elements.cropSlots[side].shell.dataset.ready = "true";
+    context.drawImage(reference, 0, 0, canvas.width, canvas.height);
   }
 
   function stopCurrentStream() {
@@ -876,19 +991,13 @@
     state.streamInfo = null;
     state.videoReady = false;
     elements.videoStage.dataset.ready = "false";
-    elements.cropPreviewShell.dataset.ready = "false";
-    elements.video.srcObject = null;
-    elements.cropOverlay.classList.add("is-hidden");
-    setCropControlsDisabled(true);
-    setCropStatus("");
-    renderCameraDetails();
-    refreshWorkspaceLayout();
-  }
-
-  function setCropControlsDisabled(disabled) {
-    Object.values(elements.cropInputs).forEach((input) => {
-      input.disabled = disabled;
+    CROP_SIDES.forEach((side) => {
+      elements.cropSlots[side].overlay.classList.add("is-hidden");
     });
+    elements.video.srcObject = null;
+    renderCameraDetails();
+    refreshCropPanels();
+    refreshWorkspaceLayout();
   }
 
   function setCameraState(message, tone) {
@@ -900,8 +1009,130 @@
     return;
   }
 
-  function setCropStatus(message) {
-    return message;
+  function setMode(nextMode) {
+    if (state.mode === nextMode) {
+      return;
+    }
+
+    state.mode = nextMode;
+    if (nextMode === "edit" && state.videoReady) {
+      startPreviewLoop();
+    } else {
+      stopPreviewLoop();
+    }
+    refreshCropPanels();
+    renderCropOverlays();
+    appendTerminalEntry(
+      [
+        nextMode === "edit"
+          ? "編集モードに入りました。ドラッグと右下ハンドルで範囲調整できます。"
+          : "実戦モードに戻りました。撮影の準備が完了しました。空Enterか Ctrl+Enter で撮影できます。",
+      ],
+      "system",
+    );
+  }
+
+  async function handleSnapCommand(target) {
+    if (!state.videoReady || !state.stream) {
+      appendTerminalEntry(
+        [
+          "映像がまだ準備できていないため、撮影できません。",
+        ],
+        "error",
+      );
+      return;
+    }
+
+    try {
+      const sides = target === "both" ? CROP_SIDES : [target];
+
+      for (const side of sides) {
+        captureReferenceImage(side);
+      }
+
+      refreshCropPanels();
+
+      appendTerminalEntry(
+        [
+          target === "my"
+            ? "自分側の参照画像を更新しました。"
+            : target === "enemy"
+              ? "相手側の参照画像を更新しました。"
+              : "左右の参照画像を更新しました。",
+        ],
+        "success",
+      );
+    } catch (error) {
+      appendTerminalEntry(
+        [
+          "表示用画像の更新に失敗しました。",
+          `詳細: ${error.message}`,
+        ],
+        "error",
+      );
+    }
+  }
+
+  function captureReferenceImage(side) {
+    const crop = state.crops[side];
+    if (!crop) {
+      throw new Error(`${side} のクロップ範囲がまだありません。`);
+    }
+
+    const frame = document.createElement("canvas");
+    frame.width = Math.max(1, Math.round(crop.width));
+    frame.height = Math.max(1, Math.round(crop.height));
+
+    const context = frame.getContext("2d");
+    if (!context) {
+      throw new Error("参照画像用 canvas の初期化に失敗しました。");
+    }
+
+    context.drawImage(
+      elements.video,
+      Math.round(crop.x),
+      Math.round(crop.y),
+      Math.round(crop.width),
+      Math.round(crop.height),
+      0,
+      0,
+      frame.width,
+      frame.height,
+    );
+
+    state.references[side] = frame;
+  }
+
+  function refreshCropPanels() {
+    CROP_SIDES.forEach((side) => {
+      updatePreviewCanvasSize(side);
+      drawCropPanel(side);
+    });
+  }
+
+  function getPreviewSourceSize(side) {
+    if (state.mode === "edit" && state.videoReady && state.crops[side]) {
+      return state.crops[side];
+    }
+
+    const reference = state.references[side];
+    if (reference) {
+      return {
+        width: reference.width,
+        height: reference.height,
+      };
+    }
+
+    return null;
+  }
+
+  function getPreviewAspect(side) {
+    const sourceSize = getPreviewSourceSize(side);
+    if (!sourceSize || !sourceSize.width || !sourceSize.height) {
+      return 1;
+    }
+
+    return sourceSize.width / sourceSize.height;
   }
 
   function getAudioContextClass() {
@@ -1196,17 +1427,6 @@
     return /capture|elgato|avermedia|cam\s*link|hdmi|obs|virtual/i.test(device?.label || "");
   }
 
-  function syncCropInputs() {
-    if (!state.crop) {
-      return;
-    }
-
-    elements.cropInputs.x.value = Math.round(state.crop.x);
-    elements.cropInputs.y.value = Math.round(state.crop.y);
-    elements.cropInputs.width.value = Math.round(state.crop.width);
-    elements.cropInputs.height.value = Math.round(state.crop.height);
-  }
-
   function appendTerminalEntry(lines, tone = "system") {
     const entry = document.createElement("div");
     entry.className = `terminal-entry terminal-entry--${tone}`;
@@ -1228,13 +1448,16 @@
     elements.terminalScreen.scrollTop = elements.terminalScreen.scrollHeight;
   }
 
-  function getDefaultCrop(videoWidth, videoHeight) {
+  function getDefaultCrop(side, videoWidth, videoHeight) {
+    const widthRatio = 0.142;
+    const heightRatio = 0.924;
+    const xRatio = side === "my" ? 0.01 : 0.848;
     return clampCrop(
       {
-        x: videoWidth * 0.848,
+        x: videoWidth * xRatio,
         y: videoHeight * 0.038,
-        width: videoWidth * 0.142,
-        height: videoHeight * 0.924,
+        width: videoWidth * widthRatio,
+        height: videoHeight * heightRatio,
       },
       videoWidth,
       videoHeight,
@@ -1252,7 +1475,7 @@
     return { x, y, width, height };
   }
 
-  function persistCrop(crop, videoWidth, videoHeight) {
+  function persistCrop(side, crop, videoWidth, videoHeight) {
     const payload = {
       ratios: {
         x: crop.x / videoWidth,
@@ -1261,11 +1484,11 @@
         height: crop.height / videoHeight,
       },
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(STORAGE_KEYS[side], JSON.stringify(payload));
   }
 
-  function restoreCrop(videoWidth, videoHeight) {
-    const raw = localStorage.getItem(STORAGE_KEY);
+  function restoreCrop(side, videoWidth, videoHeight) {
+    const raw = localStorage.getItem(STORAGE_KEYS[side]);
     if (!raw) {
       return null;
     }
