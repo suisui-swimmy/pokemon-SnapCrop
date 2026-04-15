@@ -40,6 +40,9 @@
     crop: null,
     drag: null,
     previewFrameId: 0,
+    terminalNoticeKeys: new Set(),
+    commandHistory: [],
+    commandHistoryIndex: -1,
   };
 
   document.addEventListener("DOMContentLoaded", init);
@@ -56,6 +59,9 @@
     refreshDevices();
     loadPokemonCsv();
     registerServiceWorker();
+    window.requestAnimationFrame(() => {
+      elements.terminalInput?.focus();
+    });
   }
 
   function cacheElements() {
@@ -79,8 +85,9 @@
       width: document.getElementById("crop-width"),
       height: document.getElementById("crop-height"),
     };
-    elements.pokemonForm = document.getElementById("pokemon-form");
-    elements.pokemonInput = document.getElementById("pokemon-input");
+    elements.terminalScreen = document.getElementById("terminal-screen");
+    elements.terminalForm = document.getElementById("terminal-form");
+    elements.terminalInput = document.getElementById("terminal-input");
     elements.terminalOutput = document.getElementById("terminal-output");
   }
 
@@ -90,7 +97,9 @@
     elements.toggleFullscreenButton?.addEventListener("click", toggleFullscreen);
     elements.deviceSelect.addEventListener("change", handleDeviceSelectionChange);
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
-    elements.pokemonForm.addEventListener("submit", handlePokemonSearch);
+    elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
+    elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
+    elements.terminalScreen.addEventListener("click", focusTerminalInput);
     elements.cropOverlay.addEventListener("pointerdown", startCropInteraction);
     window.addEventListener("pointermove", updateCropInteraction);
     window.addEventListener("pointerup", finishCropInteraction);
@@ -144,10 +153,18 @@
 
   async function refreshDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      setCameraState("このブラウザでは映像入力を使えません", "error");
+      setCameraState("非対応", "error");
       elements.startVideoButton.disabled = true;
       elements.refreshDevicesButton.disabled = true;
       elements.deviceSelect.disabled = true;
+      appendTerminalNotice(
+        "unsupported-media-devices",
+        [
+          "[error] このブラウザでは映像入力を使えません。",
+          "[error] MediaDevices API に対応したブラウザで開いてください。",
+        ],
+        "error",
+      );
       renderCameraDetails();
       return;
     }
@@ -160,7 +177,7 @@
 
       if (state.devices.length === 0) {
         state.selectedDeviceId = "";
-        setCameraState("映像デバイス未接続", "error");
+        setCameraState("未接続", "error");
         renderCameraDetails();
         return;
       }
@@ -173,11 +190,11 @@
       }
 
       if (!state.videoReady) {
-        setCameraState("映像開始待ち", "idle");
+        setCameraState("開始待ち", "idle");
       }
       renderCameraDetails();
     } catch (error) {
-      setCameraState("デバイス一覧取得失敗", "error");
+      setCameraState("失敗", "error");
       appendTerminalEntry(
         [
           "[error] 映像デバイス一覧の取得に失敗しました。",
@@ -232,7 +249,7 @@
 
   async function startSelectedVideo() {
     if (!state.devices.length) {
-      setCameraState("映像デバイス未接続", "error");
+      setCameraState("未接続", "error");
       appendTerminalEntry(
         [
           "[error] 映像入力が見つからないため、映像を開始できません。",
@@ -245,7 +262,7 @@
 
     const selectedDeviceId = elements.deviceSelect.value || state.selectedDeviceId || undefined;
     state.selectedDeviceId = selectedDeviceId || "";
-    setCameraState("映像を開始しています…", "working");
+    setCameraState("開始中", "working");
 
     try {
       stopCurrentStream();
@@ -308,17 +325,17 @@
   function handleStreamError(error) {
     stopCurrentStream();
 
-    let message = "ストリーム開始失敗";
+    let message = "失敗";
     let detail = "映像入力の開始に失敗しました。";
 
     if (error && error.name === "NotAllowedError") {
-      message = "権限拒否";
+      message = "拒否";
       detail = "ブラウザで映像アクセスが拒否されました。アドレスバーの権限設定を確認してください。";
     } else if (error && error.name === "NotFoundError") {
-      message = "デバイス未接続";
+      message = "未接続";
       detail = "選択した映像入力が見つかりません。デバイスの再接続後に一覧更新してください。";
     } else if (error && error.name === "NotReadableError") {
-      message = "デバイス使用中";
+      message = "使用中";
       detail = "映像入力が他アプリに占有されている可能性があります。OBS や別タブを確認してください。";
     }
 
@@ -354,30 +371,37 @@
       state.streamInfo.inputLabel,
       state.streamInfo.isSixteenByNine ? "success" : "working",
     );
+    if (!state.streamInfo.isSixteenByNine) {
+      appendTerminalNotice(
+        state.hasObsDevice ? "aspect-4-3-obs" : "aspect-4-3-generic",
+        [
+          state.hasObsDevice
+            ? "[system] 現在は 4:3 入力です。16:9 で使うなら OBS 仮想カメラが安定です。"
+            : "[system] 現在は 4:3 入力です。16:9 出力できる映像入力があると扱いやすいです。",
+        ],
+        "system",
+      );
+    }
     renderCameraDetails();
     setCropStatus("");
     startPreviewLoop();
   }
 
-  function handlePokemonSearch(event) {
+  function handleTerminalSubmit(event) {
     event.preventDefault();
 
-    const query = elements.pokemonInput.value.trim();
+    const query = elements.terminalInput.value.trim();
     if (!query) {
-      appendTerminalEntry(
-        [
-          "> ",
-          "空入力では検索しません。ポケモン名を入力してください。",
-        ],
-        "error",
-      );
       return;
     }
+
+    pushCommandHistory(query);
+    appendTerminalEntry([`> ${query}`], "command");
+    elements.terminalInput.value = "";
 
     if (!state.csvReady) {
       appendTerminalEntry(
         [
-          `> ${query}`,
           "CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。",
         ],
         "error",
@@ -389,9 +413,7 @@
     if (!pokemon) {
       appendTerminalEntry(
         [
-          `> ${query}`,
-          "該当ポケモンが見つかりませんでした。",
-          "CSV に入っている表記と完全一致する名前で入力してください。",
+          "不明なコマンド、または該当するポケモンがありません。",
         ],
         "error",
       );
@@ -400,13 +422,65 @@
 
     appendTerminalEntry(
       [
-        `> ${pokemon.name}`,
-        `タイプ: ${pokemon.types.join(" / ")}`,
-        `特性: ${pokemon.abilities.join(" / ")}`,
-        `種族値: H${pokemon.stats.H} A${pokemon.stats.A} B${pokemon.stats.B} C${pokemon.stats.C} D${pokemon.stats.D} S${pokemon.stats.S}`,
+        `タイプ: ${pokemon.types.join(" / ")} | 特性: ${pokemon.abilities.join(" / ")} | 種族値: H${pokemon.stats.H} A${pokemon.stats.A} B${pokemon.stats.B} C${pokemon.stats.C} D${pokemon.stats.D} S${pokemon.stats.S}`,
       ],
       "success",
     );
+  }
+
+  function handleTerminalInputKeydown(event) {
+    if (event.key === "ArrowUp") {
+      if (!state.commandHistory.length) {
+        return;
+      }
+
+      event.preventDefault();
+      if (state.commandHistoryIndex < 0) {
+        state.commandHistoryIndex = state.commandHistory.length - 1;
+      } else {
+        state.commandHistoryIndex = Math.max(0, state.commandHistoryIndex - 1);
+      }
+      elements.terminalInput.value = state.commandHistory[state.commandHistoryIndex];
+      moveCaretToEnd(elements.terminalInput);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      if (!state.commandHistory.length || state.commandHistoryIndex < 0) {
+        return;
+      }
+
+      event.preventDefault();
+      if (state.commandHistoryIndex >= state.commandHistory.length - 1) {
+        state.commandHistoryIndex = -1;
+        elements.terminalInput.value = "";
+      } else {
+        state.commandHistoryIndex += 1;
+        elements.terminalInput.value = state.commandHistory[state.commandHistoryIndex];
+      }
+      moveCaretToEnd(elements.terminalInput);
+    }
+  }
+
+  function pushCommandHistory(command) {
+    state.commandHistory.push(command);
+    if (state.commandHistory.length > 50) {
+      state.commandHistory.shift();
+    }
+    state.commandHistoryIndex = -1;
+  }
+
+  function focusTerminalInput(event) {
+    if (event.target === elements.terminalInput) {
+      return;
+    }
+
+    elements.terminalInput.focus();
+  }
+
+  function moveCaretToEnd(input) {
+    const nextPosition = input.value.length;
+    input.setSelectionRange(nextPosition, nextPosition);
   }
 
   function startCropInteraction(event) {
@@ -715,7 +789,20 @@
     entry.className = `terminal-entry terminal-entry--${tone}`;
     entry.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines);
     elements.terminalOutput.append(entry);
-    elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
+    scrollTerminalToBottom();
+  }
+
+  function appendTerminalNotice(key, lines, tone = "system") {
+    if (state.terminalNoticeKeys.has(key)) {
+      return;
+    }
+
+    state.terminalNoticeKeys.add(key);
+    appendTerminalEntry(lines, tone);
+  }
+
+  function scrollTerminalToBottom() {
+    elements.terminalScreen.scrollTop = elements.terminalScreen.scrollHeight;
   }
 
   function getDefaultCrop(videoWidth, videoHeight) {
@@ -843,7 +930,7 @@
       return "16:9入力";
     }
 
-    return state.hasObsDevice ? "4:3入力です。OBS推奨。" : "4:3入力です。16:9推奨。";
+    return "4:3入力";
   }
 
   function formatRatioLabel(ratioValue) {

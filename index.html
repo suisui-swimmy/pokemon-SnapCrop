@@ -76,20 +76,23 @@
     </section>
 
     <section class="panel terminal-panel" aria-label="CLI パネル">
-      <form class="terminal-form" id="pokemon-form" autocomplete="off">
-        <span class="terminal-prompt" aria-hidden="true">&gt;</span>
-        <label class="terminal-input-wrap field field--grow" for="pokemon-input">
-          <span class="sr-only">ポケモン名</span>
-          <input
-            id="pokemon-input"
-            name="pokemonName"
-            type="text"
-            enterkeyhint="search"
-          >
-        </label>
-      </form>
-
-      <div class="terminal-output" id="terminal-output" role="log" aria-live="polite"></div>
+      <div class="terminal-output" id="terminal-screen">
+        <div class="terminal-log" id="terminal-output" role="log" aria-live="polite"></div>
+        <form class="terminal-entry terminal-entry--input" id="terminal-form" autocomplete="off">
+          <span class="terminal-prompt terminal-prompt--active" aria-hidden="true">&gt; </span>
+          <label class="terminal-input-wrap" for="terminal-input">
+            <span class="sr-only">terminal input</span>
+            <input
+              id="terminal-input"
+              type="text"
+              enterkeyhint="search"
+              autocapitalize="off"
+              autocomplete="off"
+              spellcheck="false"
+            >
+          </label>
+        </form>
+      </div>
     </section>
   </main>
 
