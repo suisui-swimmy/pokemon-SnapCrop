@@ -16,7 +16,9 @@
       <header class="workspace-toolbar">
         <p class="camera-badge" id="camera-state" data-tone="idle">未取得</p>
         <label class="sr-only" for="device-select">映像入力</label>
-        <select id="device-select" class="toolbar-select" aria-label="映像入力"></select>
+        <select id="device-select" class="toolbar-select toolbar-select--video" aria-label="映像入力"></select>
+        <label class="sr-only" for="audio-select">音声入力</label>
+        <select id="audio-select" class="toolbar-select toolbar-select--audio" aria-label="音声入力"></select>
         <button class="ui-button ui-button--subtle" id="refresh-devices" type="button">一覧更新</button>
         <button class="ui-button" id="start-video" type="button">映像を開始</button>
         <button

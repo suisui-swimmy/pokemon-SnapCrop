@@ -37,7 +37,9 @@
     audioDevices: [],
     hasObsDevice: false,
     selectedDeviceId: "",
+    selectedAudioDeviceId: "",
     deviceSelectionLocked: false,
+    audioSelectionLocked: false,
     crop: null,
     drag: null,
     previewFrameId: 0,
@@ -76,6 +78,7 @@
 
   function cacheElements() {
     elements.deviceSelect = document.getElementById("device-select");
+    elements.audioSelect = document.getElementById("audio-select");
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
     elements.startVideoButton = document.getElementById("start-video");
     elements.toggleFullscreenButton = document.getElementById("toggle-fullscreen");
@@ -110,6 +113,7 @@
     elements.toggleAudioMuteButton?.addEventListener("click", toggleAudioMute);
     elements.audioVolume?.addEventListener("input", handleAudioVolumeChange);
     elements.deviceSelect.addEventListener("change", handleDeviceSelectionChange);
+    elements.audioSelect?.addEventListener("change", handleAudioSelectionChange);
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
@@ -171,6 +175,9 @@
       elements.startVideoButton.disabled = true;
       elements.refreshDevicesButton.disabled = true;
       elements.deviceSelect.disabled = true;
+      if (elements.audioSelect) {
+        elements.audioSelect.disabled = true;
+      }
       appendTerminalNotice(
         "unsupported-media-devices",
         [
@@ -189,6 +196,7 @@
       state.audioDevices = devices.filter((device) => device.kind === "audioinput");
       state.hasObsDevice = state.devices.some(isObsDevice);
       populateDeviceSelect();
+      populateAudioSelect();
 
       if (state.devices.length === 0) {
         state.selectedDeviceId = "";
@@ -256,10 +264,60 @@
     elements.startVideoButton.disabled = false;
   }
 
+  function populateAudioSelect() {
+    if (!elements.audioSelect) {
+      return;
+    }
+
+    const hadOptions = elements.audioSelect.options.length > 0;
+    const currentValue = state.selectedAudioDeviceId || elements.audioSelect.value;
+    elements.audioSelect.innerHTML = "";
+
+    const noneOption = document.createElement("option");
+    noneOption.value = "";
+    noneOption.textContent = "音声なし";
+    elements.audioSelect.append(noneOption);
+
+    state.audioDevices.forEach((device, index) => {
+      const option = document.createElement("option");
+      option.value = device.deviceId;
+      option.textContent = device.label || `音声入力 ${index + 1}`;
+      elements.audioSelect.append(option);
+    });
+
+    const selectedVideoDevice = getSelectedDevice()
+      || state.devices.find((device) => device.deviceId === elements.deviceSelect.value)
+      || null;
+    const suggestedAudioDevice = findAssociatedAudioDevice(selectedVideoDevice);
+
+    let selectedValue = "";
+    if (state.audioSelectionLocked) {
+      selectedValue = state.audioDevices.some((device) => device.deviceId === currentValue) ? currentValue : "";
+    } else if (currentValue && state.audioDevices.some((device) => device.deviceId === currentValue)) {
+      selectedValue = currentValue;
+    } else if (hadOptions) {
+      selectedValue = "";
+    } else if (suggestedAudioDevice) {
+      selectedValue = suggestedAudioDevice.deviceId;
+    }
+
+    elements.audioSelect.value = selectedValue;
+    state.selectedAudioDeviceId = selectedValue;
+    elements.audioSelect.disabled = state.audioDevices.length === 0;
+  }
+
   function handleDeviceSelectionChange() {
     state.deviceSelectionLocked = true;
     state.selectedDeviceId = elements.deviceSelect.value;
+    if (!state.audioSelectionLocked) {
+      populateAudioSelect();
+    }
     renderCameraDetails();
+  }
+
+  function handleAudioSelectionChange() {
+    state.audioSelectionLocked = true;
+    state.selectedAudioDeviceId = elements.audioSelect?.value || "";
   }
 
   async function startSelectedVideo() {
@@ -276,80 +334,81 @@
     }
 
     const selectedDeviceId = elements.deviceSelect.value || state.selectedDeviceId || undefined;
+    const selectedAudioDeviceId = elements.audioSelect?.value || state.selectedAudioDeviceId || "";
     state.selectedDeviceId = selectedDeviceId || "";
+    state.selectedAudioDeviceId = selectedAudioDeviceId;
     setCameraState("開始中", "working");
 
     try {
       await warmAudioOutput();
       stopCurrentStream();
-      const streamResult = await requestPreferredStream(selectedDeviceId);
+      const videoStream = await requestPreferredStream(selectedDeviceId);
       const selectedVideoDevice = getSelectedDevice();
 
-      state.stream = streamResult.stream;
-      elements.video.srcObject = streamResult.stream;
+      state.stream = videoStream;
+      elements.video.srcObject = videoStream;
       elements.video.muted = true;
       await elements.video.play();
 
-      await refreshDevices();
       const activeVideoDevice = getSelectedDevice() || selectedVideoDevice;
-      let audioReady = await setupAudioPlayback(streamResult, activeVideoDevice);
-      let standaloneAttempted = false;
-      if (!audioReady && !streamResult.audioDevice) {
-        const standaloneResult = await requestStandaloneAudioStream(activeVideoDevice);
-        standaloneAttempted = standaloneResult.attempted;
-        if (standaloneResult.stream) {
-          state.audioInputStream = standaloneResult.stream;
-          audioReady = await setupAudioPlayback({ stream: standaloneResult.stream }, activeVideoDevice);
+      const activeAudioDeviceId = selectedAudioDeviceId;
+
+      if (!activeAudioDeviceId) {
+        if (!state.audioDevices.length) {
+          appendTerminalEntry(
+            [
+              "[system] 音声入力が見つからないため、映像のみで開始しました。",
+            ],
+            "system",
+          );
+        } else if (activeVideoDevice && isObsDevice(activeVideoDevice)) {
+          appendTerminalEntry(
+            [
+              "[system] OBS Virtual Camera は映像のみです。音が必要なら音声入力を別で選んでください。",
+            ],
+            "system",
+          );
+        } else {
+          appendTerminalEntry(
+            [
+              "[system] 音声入力が未選択のため、映像のみで開始しました。",
+            ],
+            "system",
+          );
         }
+        syncAudioControls();
+        await refreshDevices();
+        return;
       }
 
-      if (!audioReady && !standaloneAttempted) {
-        reportAudioState(streamResult, activeVideoDevice);
+      const audioResult = await requestSelectedAudioStream(activeAudioDeviceId);
+      if (!audioResult.stream) {
+        syncAudioControls();
+        await refreshDevices();
+        return;
       }
+
+      state.audioInputStream = audioResult.stream;
+      const audioReady = await setupAudioPlayback({ stream: audioResult.stream });
+      if (!audioReady && state.audioInputStream) {
+        state.audioInputStream.getTracks().forEach((track) => track.stop());
+        state.audioInputStream = null;
+      }
+      await refreshDevices();
     } catch (error) {
       handleStreamError(error);
     }
   }
 
   async function requestPreferredStream(selectedDeviceId) {
-    const selectedVideoDevice = state.devices.find((device) => device.deviceId === selectedDeviceId) || null;
-    const matchedAudioDevice = findAssociatedAudioDevice(selectedVideoDevice);
-    let audioError = null;
-
-    if (matchedAudioDevice) {
-      try {
-        const stream = await requestStreamForProfiles(selectedDeviceId, matchedAudioDevice.deviceId);
-        return {
-          stream,
-          audioDevice: matchedAudioDevice,
-          audioAttempted: true,
-          audioFallback: false,
-          audioError: null,
-        };
-      } catch (error) {
-        audioError = error;
-      }
-    }
-
-    const stream = await requestStreamForProfiles(selectedDeviceId);
-    return {
-      stream,
-      audioDevice: matchedAudioDevice,
-      audioAttempted: Boolean(matchedAudioDevice),
-      audioFallback: Boolean(audioError),
-      audioError,
-    };
+    return requestStreamForProfiles(selectedDeviceId);
   }
 
-  async function requestStreamForProfiles(selectedDeviceId, selectedAudioDeviceId) {
+  async function requestStreamForProfiles(selectedDeviceId) {
     let lastError = null;
 
     for (let index = 0; index < STREAM_PROFILES.length; index += 1) {
-      const constraints = buildMediaConstraints(
-        selectedDeviceId,
-        STREAM_PROFILES[index],
-        selectedAudioDeviceId,
-      );
+      const constraints = buildMediaConstraints(selectedDeviceId, STREAM_PROFILES[index]);
 
       try {
         return await navigator.mediaDevices.getUserMedia(constraints);
@@ -364,23 +423,14 @@
     throw lastError || new Error("映像入力の開始に失敗しました。");
   }
 
-  function buildMediaConstraints(selectedDeviceId, profile, selectedAudioDeviceId) {
+  function buildMediaConstraints(selectedDeviceId, profile) {
     const video = { ...profile };
     if (selectedDeviceId) {
       video.deviceId = { exact: selectedDeviceId };
     }
 
-    const audio = selectedAudioDeviceId
-      ? {
-          deviceId: { exact: selectedAudioDeviceId },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        }
-      : false;
-
     return {
-      audio,
+      audio: false,
       video: Object.keys(video).length > 0 ? video : true,
     };
   }
@@ -912,7 +962,7 @@
     return true;
   }
 
-  async function setupAudioPlayback(streamResult, selectedVideoDevice) {
+  async function setupAudioPlayback(streamResult) {
     stopAudioPlayback();
 
     const audioTracks = streamResult?.stream?.getAudioTracks?.() || [];
@@ -964,43 +1014,32 @@
         ],
         "error",
       );
-      if (selectedVideoDevice && isObsDevice(selectedVideoDevice)) {
-        appendTerminalNotice(
-          "obs-audio-unavailable",
-          [
-            "[system] OBS 仮想カメラは通常ブラウザへ音声入力を渡しません。映像のみで続行します。",
-          ],
-          "system",
-        );
-      }
       return false;
     }
   }
 
-  async function requestStandaloneAudioStream(selectedVideoDevice) {
-    const matchedAudioDevice = findAssociatedAudioDevice(selectedVideoDevice);
-    if (!matchedAudioDevice) {
-      return { stream: null, attempted: false };
-    }
-
+  async function requestSelectedAudioStream(selectedAudioDeviceId) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: { exact: matchedAudioDevice.deviceId },
+          deviceId: { exact: selectedAudioDeviceId },
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
         },
         video: false,
       });
-      return { stream, attempted: true };
+      return { stream, error: null };
     } catch (error) {
-      appendTerminalNotice(
-        `audio-standalone-${error.name || "error"}`,
-        [getStandaloneAudioErrorMessage(error)],
-        "system",
+      appendTerminalEntry(
+        [
+          `[error] ${getAudioInputErrorTitle(error)}`,
+          `[error] ${getAudioInputErrorDetail(error)}`,
+          `[error] 詳細: ${error.message}`,
+        ],
+        "error",
       );
-      return { stream: null, attempted: true };
+      return { stream: null, error };
     }
   }
 
@@ -1056,91 +1095,36 @@
     syncAudioControls();
   }
 
-  function reportAudioState(streamResult, selectedVideoDevice) {
-    if (streamResult.stream.getAudioTracks().length > 0) {
-      return;
-    }
-
-    if (streamResult.audioFallback && streamResult.audioError) {
-      const error = streamResult.audioError;
-
-      if (error.name === "NotAllowedError") {
-        appendTerminalNotice(
-          "audio-permission-denied",
-          [
-            "[system] 音声入力の権限が取れなかったため、映像のみで開始しました。",
-          ],
-          "system",
-        );
-        return;
-      }
-
-      if (error.name === "NotReadableError") {
-        appendTerminalNotice(
-          "audio-device-busy",
-          [
-            "[system] 音声入力が他アプリに占有されている可能性があるため、映像のみで開始しました。",
-          ],
-          "system",
-        );
-        return;
-      }
-
-      appendTerminalNotice(
-        "audio-fallback-generic",
-        [
-          "[system] 音声入力を開始できなかったため、映像のみで続行します。",
-        ],
-        "system",
-      );
-      return;
-    }
-
-    if (selectedVideoDevice && isObsDevice(selectedVideoDevice)) {
-      appendTerminalNotice(
-        "obs-audio-unavailable",
-        [
-          "[system] OBS 仮想カメラは通常ブラウザへ音声入力を渡しません。映像のみで続行します。",
-        ],
-        "system",
-      );
-      return;
-    }
-
-    if (!streamResult.audioDevice && state.audioDevices.length === 0) {
-      appendTerminalNotice(
-        "audio-input-missing",
-        [
-          "[system] 使える音声入力が見つからないため、映像のみで続行します。",
-        ],
-        "system",
-      );
-      return;
-    }
-
-    appendTerminalNotice(
-      "audio-input-unpaired",
-      [
-        "[system] 選択中の映像入力に対応する音声入力が見つからないため、映像のみで続行します。",
-      ],
-      "system",
-    );
-  }
-
-  function getStandaloneAudioErrorMessage(error) {
+  function getAudioInputErrorTitle(error) {
     if (error.name === "NotAllowedError") {
-      return "[system] 音声入力の権限が取れなかったため、映像のみで開始しました。";
+      return "権限拒否";
     }
 
     if (error.name === "NotReadableError") {
-      return "[system] 音声入力が他アプリに占有されている可能性があるため、映像のみで開始しました。";
+      return "使用中";
     }
 
     if (error.name === "NotFoundError") {
-      return "[system] 対応する音声入力が見つからないため、映像のみで続行します。";
+      return "未接続";
     }
 
-    return "[system] 音声入力を開始できなかったため、映像のみで続行します。";
+    return "音声入力失敗";
+  }
+
+  function getAudioInputErrorDetail(error) {
+    if (error.name === "NotAllowedError") {
+      return "選択した音声入力の権限が拒否されました。ブラウザの権限設定を確認してください。";
+    }
+
+    if (error.name === "NotReadableError") {
+      return "選択した音声入力が使えません。他アプリに占有されている可能性があります。";
+    }
+
+    if (error.name === "NotFoundError") {
+      return "選択した音声入力が見つかりません。デバイスをつなぎ直して一覧更新してください。";
+    }
+
+    return "選択した音声入力の開始に失敗しました。";
   }
 
   function findAssociatedAudioDevice(videoDevice) {

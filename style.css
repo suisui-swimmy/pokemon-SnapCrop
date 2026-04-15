@@ -145,7 +145,6 @@ select {
 }
 
 .toolbar-select {
-  flex: 1 1 auto;
   min-width: 0;
   height: var(--toolbar-height);
   min-height: var(--toolbar-height);
@@ -154,6 +153,15 @@ select {
   border-radius: 0;
   background: #12151a;
   color: var(--text);
+}
+
+.toolbar-select--video {
+  flex: 1 1 0;
+}
+
+.toolbar-select--audio {
+  flex: 1 1 0;
+  width: auto;
 }
 
 .crop-controls {
