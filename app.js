@@ -1553,7 +1553,7 @@
       auto.lastReason = `選出時計を検出 coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`;
       appendTerminalEntry(
         [
-          `[auto] 選出画面の時計アイコンを検出しました。選出完了をラッチし、待機タイマーだけで撮影します。 (${auto.lastReason})`,
+          `[auto] 選出画面の時計アイコンを検出しました。待機タイマーを優先しつつ、選出完了ラッチも補助で見ます。 (${auto.lastReason})`,
         ],
         "system",
       );
@@ -1562,77 +1562,60 @@
 
     if (auto.phase === "selection_active") {
       const lockedSignal = getSelectionLockedSignal(metrics);
-      if (!lockedSignal.matched) {
+      const timerIconSignal = getWaitingTimerIconSignal(metrics);
+      if (lockedSignal.matched) {
+        auto.lockedFrames += 1;
+        auto.lastReason = `locked ${auto.lockedFrames}/${AUTO_SNAP_CONFIG.stableFrames.locked} badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+        if (auto.lockedFrames >= AUTO_SNAP_CONFIG.stableFrames.locked) {
+          auto.phase = "selection_locked";
+          auto.lockedFrames = 0;
+          auto.selectionLockedAt = now;
+          auto.waitingIconSeenAt = 0;
+          auto.lockedBaseline = buildLockedBaseline(metrics);
+          auto.fallbackBuffer = null;
+          auto.lastReason = `選出完了をラッチ badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+          appendTerminalEntry(
+            [
+              `[auto] 選出完了をラッチしました。待機タイマー優先のまま、補助情報として保持します。 (${auto.lastReason})`,
+            ],
+            "system",
+          );
+        }
+      } else {
         auto.lockedFrames = 0;
-        const selectionSignal = getSelectionTimerSignal(metrics);
-        auto.lastReason = selectionSignal.matched
-          ? `選出完了待ち badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`
-          : `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
+      }
+
+      if (timerIconSignal.matched) {
+        if (triggerWaitingTimerSnap(metrics, now, {
+          latched: auto.phase === "selection_locked",
+          sourcePhase: "selection_active",
+        })) {
+          return;
+        }
+      }
+
+      if (auto.phase === "selection_locked") {
         return;
       }
 
-      auto.lockedFrames += 1;
-      auto.lastReason = `locked ${auto.lockedFrames}/${AUTO_SNAP_CONFIG.stableFrames.locked} badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
-      if (auto.lockedFrames < AUTO_SNAP_CONFIG.stableFrames.locked) {
-        return;
-      }
-
-      auto.phase = "selection_locked";
-      auto.lockedFrames = 0;
-      auto.selectionLockedAt = now;
-      auto.waitingIconSeenAt = 0;
-      auto.lockedBaseline = buildLockedBaseline(metrics);
-      auto.fallbackBuffer = null;
-      auto.lastReason = `選出完了をラッチ badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
-      appendTerminalEntry(
-        [
-          `[auto] 選出完了をラッチしました。ここでは撮らず、待機タイマーだけを待ちます。 (${auto.lastReason})`,
-        ],
-        "system",
-      );
+      const selectionSignal = getSelectionTimerSignal(metrics);
+      auto.lastReason = selectionSignal.matched
+        ? `待機タイマー優先 / ラッチ補助 badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)} icon=${formatAutoMetric(timerIconSignal.coverageScore)}/${formatAutoMetric(timerIconSignal.spillScore)}`
+        : `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
       return;
     }
 
     if (auto.phase === "selection_locked") {
-      const timerIconSignal = getWaitingTimerIconSignal(metrics);
       const battleHudSignal = getBattleHudSignal(metrics);
+      const timerIconSignal = getWaitingTimerIconSignal(metrics);
       auto.lastReason = timerIconSignal.templateReady
         ? `待機タイマー待ち coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
         : "待機タイマー画像の読み込み待ちです。";
-      if (!timerIconSignal.matched) {
-        return;
-      }
-
-      auto.phase = "waiting_icon_seen";
-      auto.waitingIconSeenAt = now;
-      auto.fallbackBuffer = bufferAutoFallbackReferences("waiting_icon_seen");
-      auto.lastReason = `待機タイマーを検出 coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
-      appendTerminalEntry(
-        [
-          `[auto] 待機タイマーを検出しました。ここで即 snap を試し、fallback はこの候補 frame だけで許可します。 (${auto.lastReason})`,
-        ],
-        "system",
-      );
-      try {
-        auto.phase = "snapped";
-        auto.lastSnapMode = "waiting";
-        auto.lastTriggerReason = `iconCoverage=${formatAutoMetric(timerIconSignal.coverageScore)} iconSpill=${formatAutoMetric(timerIconSignal.spillScore)} iconDark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
-        const message = performSnapCapture("both");
-        appendTerminalEntry(
-          [
-            `[auto] ${message} (${auto.lastTriggerReason})`,
-          ],
-          "success",
-        );
-      } catch (error) {
-        appendTerminalEntry(
-          [
-            "[auto] 待機中画面の自動 snap に失敗しました。",
-            `詳細: ${error.message}`,
-          ],
-          "error",
-        );
-        auto.phase = "waiting_icon_seen";
+      if (timerIconSignal.matched) {
+        triggerWaitingTimerSnap(metrics, now, {
+          latched: true,
+          sourcePhase: "selection_locked",
+        });
       }
       return;
     }
@@ -1877,6 +1860,52 @@
       leftBadgeStrip: { ...metrics.leftBadgeStrip },
       bottomDoneBar: { ...metrics.bottomDoneBar },
     };
+  }
+
+  function triggerWaitingTimerSnap(metrics, now, options = {}) {
+    const { latched = false, sourcePhase = "selection_active" } = options;
+    const auto = state.autoSnap;
+    const timerIconSignal = getWaitingTimerIconSignal(metrics);
+    if (!timerIconSignal.matched) {
+      return false;
+    }
+
+    auto.phase = "waiting_icon_seen";
+    auto.waitingIconSeenAt = now;
+    auto.fallbackBuffer = bufferAutoFallbackReferences("waiting_icon_seen");
+    auto.lastReason = `待機タイマーを検出 coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
+    appendTerminalEntry(
+      [
+        latched
+          ? `[auto] 待機タイマーを検出しました。ここで即 snap を試し、fallback はこの候補 frame だけで許可します。 (${auto.lastReason})`
+          : `[auto] 待機タイマーを検出しました。選出完了ラッチ前でもテンプレ一致を優先してここで snap します。 (${auto.lastReason})`,
+      ],
+      "system",
+    );
+
+    try {
+      auto.phase = "snapped";
+      auto.lastSnapMode = "waiting";
+      auto.lastTriggerReason = `iconCoverage=${formatAutoMetric(timerIconSignal.coverageScore)} iconSpill=${formatAutoMetric(timerIconSignal.spillScore)} iconDark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY} locked=${latched ? "yes" : "no"} phase=${sourcePhase}`;
+      const message = performSnapCapture("both");
+      appendTerminalEntry(
+        [
+          `[auto] ${message} (${auto.lastTriggerReason})`,
+        ],
+        "success",
+      );
+    } catch (error) {
+      appendTerminalEntry(
+        [
+          "[auto] 待機中画面の自動 snap に失敗しました。",
+          `詳細: ${error.message}`,
+        ],
+        "error",
+      );
+      auto.phase = latched ? "selection_locked" : "selection_active";
+    }
+
+    return true;
   }
 
   function loadAutoTemplates() {

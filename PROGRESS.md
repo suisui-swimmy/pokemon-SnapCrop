@@ -179,3 +179,24 @@
   - `loading` / `選出時計` の coverage / spill 閾値は、実画面で最終確認していない
 - Next step:
   - 実画面で `loading -> 選出時計 -> 選出完了ラッチ -> 待機タイマー` の順に遷移するかを確認し、必要なら `coverage / spill / darkBackground` の閾値を微調整する
+
+### 2026-04-17 12:46 JST — 待機タイマーを主経路にして、選出完了ラッチを補助へ降格
+- Status: done
+- Goal:
+  `loading / 選出時計 / 待機タイマー` のテンプレ一致を主経路にしつつ、`選出完了` ラッチは safety gate としてだけ残す
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - `selection_active` 中でも待機タイマーが一致したら即 `snap both` するように変え、`選出完了` ラッチは必須ゲートではなく補助判定へ降格した
+  - `選出完了` ラッチが先に成立した場合も、その後の待機タイマー検出を優先する方針に合わせて terminal reason と trigger message を更新した
+  - README の auto snap 説明を、`待機タイマー` 主経路 + `選出完了ラッチ` 補助という役割分担に合わせて更新した
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "選出完了ラッチ前でもテンプレ一致を優先|待機タイマー優先|locked=yes|locked=no|選出完了ラッチは補助判定" app.js README.md`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実画面で `選出完了` ラッチ前に待機タイマーが来たケースと、ラッチ後に待機タイマーが来たケースの両方はまだ未確認
+- Next step:
+  - 実画面で `loading -> 選出時計 -> 待機タイマー` だけでも撮影できることを確認し、必要なら `選出完了` ラッチの扱いをさらに軽くする
