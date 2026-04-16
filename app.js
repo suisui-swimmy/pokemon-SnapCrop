@@ -1,6 +1,10 @@
 (() => {
   const CSV_PATH = "./data/champions_%20Reg_M-A.csv";
-  const WAITING_TIMER_ICON_PATH = "./assets/auto/waiting-timer-icon.png";
+  const AUTO_TEMPLATE_PATHS = {
+    loading: "./assets/auto/loading-indicator.png",
+    selectionTimer: "./assets/auto/selection-timer-icon.png",
+    waitingTimer: "./assets/auto/waiting-timer-icon.png",
+  };
   const STORAGE_KEYS = {
     my: "pokemon-snapcrop.my-crop",
     enemy: "pokemon-snapcrop.enemy-crop",
@@ -32,37 +36,28 @@
   const AUTO_SNAP_CONFIG = {
     enabledByDefault: true,
     stableFrames: {
-      dialog: 2,
       loading: 1,
-      selection: 2,
+      selection: 1,
       locked: 2,
     },
     timeoutsMs: {
-      dialogToLoading: 8000,
-      loadingToSelection: 4000,
+      loadingToSelection: 6000,
     },
     detectorSampleMaxWidth: 72,
     detectorSampleMinHeight: 28,
     detectorSampleMaxHeight: 160,
     thresholds: {
-      dialog: {
-        brightMin: 0.28,
-        blueMin: 0.48,
-        chromaMin: 0.55,
-        darkMax: 0.3,
+      loadingTemplate: {
+        brightThreshold: 92,
+        coverageMin: 0.72,
+        spillMax: 0.18,
+        darkBackgroundMin: 0.34,
       },
-      loading: {
-        accentMin: 0.24,
-        brightMin: 0.12,
-        darkMin: 0.3,
-        guardActivityMax: 0.06,
-        guardChromaMax: 0.05,
-      },
-      selection: {
-        leftBrightMin: 0.42,
-        leftChromaMin: 0.44,
-        rightRedMin: 0.18,
-        rightChromaMin: 0.32,
+      selectionTimerIcon: {
+        brightThreshold: 82,
+        coverageMin: 0.72,
+        spillMax: 0.28,
+        darkBackgroundMin: 0.35,
       },
       locked: {
         badgeWhiteMin: 0.06,
@@ -81,29 +76,17 @@
       },
     },
     rois: {
-      matchDialog: {
-        x: 0.089,
-        y: 0.194,
-        width: 0.552,
-        height: 0.509,
+      loadingTemplate: {
+        x: 0.82552,
+        y: 0.89074,
+        width: 0.14531,
+        height: 0.05185,
       },
-      loadingTrue: {
-        x: 0.802,
-        y: 0.87,
-        width: 0.18,
-        height: 0.088,
-      },
-      loadingGuard: {
-        x: 0.771,
-        y: 0.704,
-        width: 0.224,
-        height: 0.19,
-      },
-      selectionLeft: {
-        x: 0.005,
-        y: 0.083,
-        width: 0.276,
-        height: 0.685,
+      selectionTimerIcon: {
+        x: 0.13594,
+        y: 0.03056,
+        width: 0.01875,
+        height: 0.03796,
       },
       selectionRight: {
         x: 0.714,
@@ -128,12 +111,6 @@
         y: 0.0963,
         width: 0.01823,
         height: 0.03611,
-      },
-      centerSelectionPrompt: {
-        x: 0.44,
-        y: 0.245,
-        width: 0.145,
-        height: 0.085,
       },
       battleHud: {
         x: 0.758,
@@ -195,7 +172,7 @@
     syncAudioControls();
     refreshWorkspaceLayout();
     refreshDevices();
-    loadWaitingTimerIconTemplate();
+    loadAutoTemplates();
     loadPokemonCsv();
     registerServiceWorker();
     appendTerminalNotice(
@@ -247,13 +224,11 @@
     elements.autoDebugOverlays = {
       my: document.getElementById("debug-overlay-my"),
       enemy: document.getElementById("debug-overlay-enemy"),
-      dialog: document.getElementById("debug-overlay-dialog"),
       loading: document.getElementById("debug-overlay-loading"),
-      loadingGuard: document.getElementById("debug-overlay-loading-guard"),
       leftBadge: document.getElementById("debug-overlay-left-badge"),
       doneBar: document.getElementById("debug-overlay-done-bar"),
+      selectionTimer: document.getElementById("debug-overlay-selection-timer"),
       topTimer: document.getElementById("debug-overlay-top-timer"),
-      selectionPrompt: document.getElementById("debug-overlay-selection-prompt"),
       battleHud: document.getElementById("debug-overlay-battle-hud"),
     };
     elements.terminalScreen = document.getElementById("terminal-screen");
@@ -664,6 +639,13 @@
         ],
         "system",
       );
+      appendTerminalNotice(
+        "auto-unsupported-4-3",
+        [
+          "[auto] 自動 snap は 16:9 入力専用です。4:3 入力では監視しません。",
+        ],
+        "system",
+      );
     }
     renderCameraDetails();
     refreshCropPanels();
@@ -1044,13 +1026,11 @@
     const roiCrops = getAutoDebugOverlayCrops();
     renderDebugOverlayBox(elements.autoDebugOverlays.my, state.crops.my, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.enemy, state.crops.enemy, displayedRect, scaleX, scaleY);
-    renderDebugOverlayBox(elements.autoDebugOverlays.dialog, roiCrops.matchDialog, displayedRect, scaleX, scaleY);
-    renderDebugOverlayBox(elements.autoDebugOverlays.loading, roiCrops.loadingTrue, displayedRect, scaleX, scaleY);
-    renderDebugOverlayBox(elements.autoDebugOverlays.loadingGuard, roiCrops.loadingGuard, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.loading, roiCrops.loadingTemplate, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.leftBadge, roiCrops.leftBadgeStrip, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.doneBar, roiCrops.bottomDoneBar, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.selectionTimer, roiCrops.selectionTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.topTimer, roiCrops.waitingTimerIcon, displayedRect, scaleX, scaleY);
-    renderDebugOverlayBox(elements.autoDebugOverlays.selectionPrompt, roiCrops.centerSelectionPrompt, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.battleHud, roiCrops.battleHud, displayedRect, scaleX, scaleY);
   }
 
@@ -1089,13 +1069,11 @@
 
   function getAutoDebugOverlayCrops() {
     return {
-      matchDialog: getAutoRoiCrop("matchDialog"),
-      loadingTrue: getAutoRoiCrop("loadingTrue"),
-      loadingGuard: getAutoRoiCrop("loadingGuard"),
+      loadingTemplate: getAutoRoiCrop("loadingTemplate"),
       leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
       bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
+      selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
-      centerSelectionPrompt: getAutoRoiCrop("centerSelectionPrompt"),
       battleHud: getAutoRoiCrop("battleHud"),
     };
   }
@@ -1360,7 +1338,9 @@
       syncAutoSnapMonitoring();
       appendTerminalEntry(
         [
-          "[auto] 自動 snap を ON にしました。ready モード中だけ監視します。",
+          state.streamInfo && !state.streamInfo.isSixteenByNine
+            ? "[auto] 自動 snap を ON にしました。16:9 入力に切り替わるまで監視は待機します。"
+            : "[auto] 自動 snap を ON にしました。ready モード中だけ監視します。",
         ],
         "system",
       );
@@ -1391,6 +1371,7 @@
       && state.mode === "ready"
       && state.videoReady
       && state.stream
+      && state.streamInfo?.isSixteenByNine
       && state.crops.my
       && state.crops.enemy,
     );
@@ -1472,11 +1453,9 @@
 
   function resetAutoSnapCycle(reason = "") {
     state.autoSnap.phase = "idle";
-    state.autoSnap.dialogFrames = 0;
     state.autoSnap.loadingFrames = 0;
     state.autoSnap.selectionFrames = 0;
     state.autoSnap.lockedFrames = 0;
-    state.autoSnap.dialogSeenAt = 0;
     state.autoSnap.loadingSeenAt = 0;
     state.autoSnap.selectionSeenAt = 0;
     state.autoSnap.selectionLockedAt = 0;
@@ -1484,10 +1463,18 @@
     state.autoSnap.lockedBaseline = null;
     state.autoSnap.fallbackBuffer = null;
     state.autoSnap.lastMetrics = null;
-    state.autoSnap.lastReason = reason || "マッチング待機ダイアログ待ち";
+    state.autoSnap.lastReason = reason || getAutoIdleReason();
     state.autoSnap.lastTriggerReason = "";
     state.autoSnap.lastResetReason = reason || "manual reset";
     state.autoSnap.lastSnapMode = "";
+  }
+
+  function getAutoIdleReason() {
+    if (!state.streamInfo?.isSixteenByNine) {
+      return "16:9 入力待ち";
+    }
+
+    return "loading 待ち";
   }
 
   function runAutoSnapDetection(now = Date.now()) {
@@ -1500,25 +1487,25 @@
 
     auto.lastMetrics = metrics;
     if (auto.phase === "idle" || auto.phase === "snapped") {
-      const dialogSignal = getMatchDialogSignal(metrics);
-      if (!dialogSignal.matched) {
-        auto.dialogFrames = 0;
-        auto.lastReason = auto.phase === "snapped" ? "次のマッチング待機ダイアログ待ち" : "マッチング待機ダイアログ待ち";
+      const loadingSignal = getLoadingTemplateSignal(metrics);
+      if (!loadingSignal.matched) {
+        auto.loadingFrames = 0;
+        auto.lastReason = loadingSignal.templateReady
+          ? `loading 待ち coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)}`
+          : "loading テンプレートの読み込み待ちです。";
         return;
       }
 
-      auto.dialogFrames += 1;
-      auto.lastReason = `dialog ${auto.dialogFrames}/${AUTO_SNAP_CONFIG.stableFrames.dialog} bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`;
-      if (auto.dialogFrames < AUTO_SNAP_CONFIG.stableFrames.dialog) {
+      auto.loadingFrames += 1;
+      auto.lastReason = `loading ${auto.loadingFrames}/${AUTO_SNAP_CONFIG.stableFrames.loading} coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)}`;
+      if (auto.loadingFrames < AUTO_SNAP_CONFIG.stableFrames.loading) {
         return;
       }
 
-      auto.phase = "match_dialog_seen";
-      auto.dialogFrames = 0;
+      auto.phase = "loading_seen";
       auto.loadingFrames = 0;
       auto.selectionFrames = 0;
       auto.lockedFrames = 0;
-      auto.dialogSeenAt = now;
       auto.loadingSeenAt = 0;
       auto.selectionSeenAt = 0;
       auto.selectionLockedAt = 0;
@@ -1527,42 +1514,11 @@
       auto.fallbackBuffer = null;
       auto.lastSnapMode = "";
       auto.lastTriggerReason = "";
-      auto.lastReason = `中央ダイアログを検出 bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`;
-      appendTerminalEntry(
-        [
-          `[auto] マッチング系ダイアログを検出しました。loading を待ちます。 (${auto.lastReason})`,
-        ],
-        "system",
-      );
-      return;
-    }
-
-    if (auto.phase === "match_dialog_seen") {
-      if (now - auto.dialogSeenAt > AUTO_SNAP_CONFIG.timeoutsMs.dialogToLoading) {
-        resetAutoSnapCycle("dialog -> loading timeout");
-        return;
-      }
-
-      const loadingSignal = getLoadingSignal(metrics);
-      if (!loadingSignal.matched) {
-        auto.loadingFrames = 0;
-        auto.lastReason = `loading 待ち accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
-        return;
-      }
-
-      auto.loadingFrames += 1;
-      auto.lastReason = `loading ${auto.loadingFrames}/${AUTO_SNAP_CONFIG.stableFrames.loading} accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
-      if (auto.loadingFrames < AUTO_SNAP_CONFIG.stableFrames.loading) {
-        return;
-      }
-
-      auto.phase = "loading_seen";
-      auto.loadingFrames = 0;
       auto.loadingSeenAt = now;
-      auto.lastReason = `loading を検出 accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
+      auto.lastReason = `loading を検出 coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`;
       appendTerminalEntry(
         [
-          `[auto] 本物の loading を検出しました。選出画面を待ちます。 (${auto.lastReason})`,
+          `[auto] 本物の loading を検出しました。選出時計を待ちます。 (${auto.lastReason})`,
         ],
         "system",
       );
@@ -1575,15 +1531,17 @@
         return;
       }
 
-      const selectionSignal = getSelectionSignal(metrics);
+      const selectionSignal = getSelectionTimerSignal(metrics);
       if (!selectionSignal.matched) {
         auto.selectionFrames = 0;
-        auto.lastReason = `選出画面待ち left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+        auto.lastReason = selectionSignal.templateReady
+          ? `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`
+          : "選出時計テンプレートの読み込み待ちです。";
         return;
       }
 
       auto.selectionFrames += 1;
-      auto.lastReason = `selection ${auto.selectionFrames}/${AUTO_SNAP_CONFIG.stableFrames.selection} left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+      auto.lastReason = `selection ${auto.selectionFrames}/${AUTO_SNAP_CONFIG.stableFrames.selection} coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
       if (auto.selectionFrames < AUTO_SNAP_CONFIG.stableFrames.selection) {
         return;
       }
@@ -1592,27 +1550,24 @@
       auto.selectionFrames = 0;
       auto.selectionSeenAt = now;
       auto.lockedFrames = 0;
-      auto.lastReason = `左右リストを検出 left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+      auto.lastReason = `選出時計を検出 coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`;
       appendTerminalEntry(
         [
-          `[auto] 選出画面を検出しました。選出完了をラッチし、待機タイマーだけで撮影します。 (${auto.lastReason})`,
+          `[auto] 選出画面の時計アイコンを検出しました。選出完了をラッチし、待機タイマーだけで撮影します。 (${auto.lastReason})`,
         ],
         "system",
       );
+      return;
     }
 
     if (auto.phase === "selection_active") {
-      const selectionSignal = getSelectionSignal(metrics);
-      if (!selectionSignal.matched) {
-        auto.lockedFrames = 0;
-        auto.lastReason = "選出画面を見失いました。";
-        return;
-      }
-
       const lockedSignal = getSelectionLockedSignal(metrics);
       if (!lockedSignal.matched) {
         auto.lockedFrames = 0;
-        auto.lastReason = `選出完了待ち badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+        const selectionSignal = getSelectionTimerSignal(metrics);
+        auto.lastReason = selectionSignal.matched
+          ? `選出完了待ち badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`
+          : `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
         return;
       }
 
@@ -1700,15 +1655,12 @@
     }
 
     const roiCrops = {
-      matchDialog: getAutoRoiCrop("matchDialog"),
-      loadingTrue: getAutoRoiCrop("loadingTrue"),
-      loadingGuard: getAutoRoiCrop("loadingGuard"),
-      selectionLeft: getAutoRoiCrop("selectionLeft"),
+      loadingTemplate: getAutoRoiCrop("loadingTemplate"),
+      selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       selectionRight: getAutoRoiCrop("selectionRight"),
       leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
       bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
-      centerSelectionPrompt: getAutoRoiCrop("centerSelectionPrompt"),
       battleHud: getAutoRoiCrop("battleHud"),
     };
 
@@ -1717,17 +1669,12 @@
     }
 
     return {
-      my: sampleVideoRegionMetrics(state.crops.my),
-      enemy: sampleVideoRegionMetrics(state.crops.enemy),
-      matchDialog: sampleVideoRegionMetrics(roiCrops.matchDialog),
-      loadingTrue: sampleVideoRegionMetrics(roiCrops.loadingTrue),
-      loadingGuard: sampleVideoRegionMetrics(roiCrops.loadingGuard),
-      selectionLeft: sampleVideoRegionMetrics(roiCrops.selectionLeft),
+      loadingTemplate: matchAutoTemplate(roiCrops.loadingTemplate, "loading"),
+      selectionTimerIcon: matchAutoTemplate(roiCrops.selectionTimerIcon, "selectionTimer"),
       selectionRight: sampleVideoRegionMetrics(roiCrops.selectionRight),
       leftBadgeStrip: sampleVideoRegionMetrics(roiCrops.leftBadgeStrip),
       bottomDoneBar: sampleVideoRegionMetrics(roiCrops.bottomDoneBar),
-      waitingTimerIcon: matchWaitingTimerIcon(roiCrops.waitingTimerIcon),
-      centerSelectionPrompt: sampleVideoRegionMetrics(roiCrops.centerSelectionPrompt),
+      waitingTimerIcon: matchAutoTemplate(roiCrops.waitingTimerIcon, "waitingTimer"),
       battleHud: sampleVideoRegionMetrics(roiCrops.battleHud),
     };
   }
@@ -1902,51 +1849,12 @@
     return state.autoSnap.iconDetectorContext;
   }
 
-  function getMatchDialogSignal(metrics) {
-    const dialog = metrics.matchDialog;
-    const threshold = AUTO_SNAP_CONFIG.thresholds.dialog;
-    return {
-      bright: dialog.bright,
-      blue: dialog.blue,
-      chroma: dialog.chroma,
-      matched: dialog.bright >= threshold.brightMin
-        && dialog.blue >= threshold.blueMin
-        && dialog.chroma >= threshold.chromaMin
-        && dialog.dark <= threshold.darkMax,
-    };
+  function getLoadingTemplateSignal(metrics) {
+    return metrics.loadingTemplate;
   }
 
-  function getLoadingSignal(metrics) {
-    const loading = metrics.loadingTrue;
-    const guard = metrics.loadingGuard;
-    const threshold = AUTO_SNAP_CONFIG.thresholds.loading;
-    const accent = loading.cyan + loading.green + loading.white;
-    const guardActivity = guard.red + guard.yellow + guard.bright;
-    return {
-      accent,
-      guardActivity,
-      matched: accent >= threshold.accentMin
-        && loading.bright >= threshold.brightMin
-        && loading.dark >= threshold.darkMin
-        && guardActivity <= threshold.guardActivityMax
-        && guard.chroma <= threshold.guardChromaMax,
-    };
-  }
-
-  function getSelectionSignal(metrics) {
-    const left = metrics.selectionLeft;
-    const right = metrics.selectionRight;
-    const threshold = AUTO_SNAP_CONFIG.thresholds.selection;
-    return {
-      leftBright: left.bright,
-      leftChroma: left.chroma,
-      rightRed: right.red,
-      rightChroma: right.chroma,
-      matched: left.bright >= threshold.leftBrightMin
-        && left.chroma >= threshold.leftChromaMin
-        && right.red >= threshold.rightRedMin
-        && right.chroma >= threshold.rightChromaMin,
-    };
+  function getSelectionTimerSignal(metrics) {
+    return metrics.selectionTimerIcon;
   }
 
   function getSelectionLockedSignal(metrics) {
@@ -1971,33 +1879,32 @@
     };
   }
 
-  function loadWaitingTimerIconTemplate() {
+  function loadAutoTemplates() {
+    loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "loading 画像の読み込みに失敗しました。");
+    loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出時計画像の読み込みに失敗しました。");
+    loadAutoTemplate("waitingTimer", AUTO_TEMPLATE_PATHS.waitingTimer, "auto-waiting-template-load-failed", "待機タイマー画像の読み込みに失敗しました。");
+  }
+
+  function loadAutoTemplate(key, path, noticeKey, message) {
     const image = new Image();
     image.decoding = "async";
     image.onload = () => {
-      state.autoSnap.timerTemplate = buildWaitingTimerIconTemplate(image);
+      state.autoSnap.templates[key] = buildAutoTemplate(image);
     };
     image.onerror = () => {
-      state.autoSnap.timerTemplate = {
-        status: "error",
-        width: 0,
-        height: 0,
-        mask: null,
-        activeCount: 0,
-        inactiveCount: 0,
-      };
+      state.autoSnap.templates[key] = createPendingAutoTemplate("error");
       appendTerminalNotice(
-        "auto-waiting-icon-load-failed",
+        noticeKey,
         [
-          "[auto] 待機タイマー画像の読み込みに失敗しました。auto snap の待機中判定は動きません。",
+          `[auto] ${message} auto snap のテンプレ判定は動きません。`,
         ],
         "error",
       );
     };
-    image.src = WAITING_TIMER_ICON_PATH;
+    image.src = path;
   }
 
-  function buildWaitingTimerIconTemplate(image) {
+  function buildAutoTemplate(image) {
     const width = image.naturalWidth || image.width || 0;
     const height = image.naturalHeight || image.height || 0;
     const canvas = document.createElement("canvas");
@@ -2052,8 +1959,9 @@
     return metrics.waitingTimerIcon;
   }
 
-  function matchWaitingTimerIcon(crop) {
-    const template = state.autoSnap.timerTemplate;
+  function matchAutoTemplate(crop, templateKey) {
+    const template = state.autoSnap.templates[templateKey];
+    const threshold = getAutoTemplateThreshold(templateKey);
     if (!template || template.status !== "ready" || !template.mask) {
       return {
         templateReady: false,
@@ -2066,8 +1974,9 @@
       };
     }
 
-    const searchWidth = Math.max(template.width + 10, Math.round(crop.width));
-    const searchHeight = Math.max(template.height + 10, Math.round(crop.height));
+    const searchPadding = getAutoTemplateSearchPadding(templateKey);
+    const searchWidth = Math.max(template.width + (searchPadding * 2), Math.round(crop.width));
+    const searchHeight = Math.max(template.height + (searchPadding * 2), Math.round(crop.height));
     const context = getAutoIconDetectorContext(searchWidth, searchHeight);
     if (!context) {
       return {
@@ -2095,7 +2004,6 @@
     );
 
     const imageData = context.getImageData(0, 0, searchWidth, searchHeight).data;
-    const threshold = AUTO_SNAP_CONFIG.thresholds.waitingTimerIcon;
     const maxOffsetX = Math.max(0, searchWidth - template.width);
     const maxOffsetY = Math.max(0, searchHeight - template.height);
     const darkBackground = getDarkBackgroundRatio(imageData, threshold.brightThreshold);
@@ -2114,7 +2022,7 @@
           for (let x = 0; x < template.width; x += 1) {
             const templateIndex = (y * template.width) + x;
             const sampleIndex = (((offsetY + y) * searchWidth) + (offsetX + x)) * 4;
-            const isBright = isWaitingTimerSamplePixel(
+            const isBright = isTemplateSamplePixel(
               imageData[sampleIndex],
               imageData[sampleIndex + 1],
               imageData[sampleIndex + 2],
@@ -2160,7 +2068,27 @@
     };
   }
 
-  function isWaitingTimerSamplePixel(r, g, b, threshold) {
+  function getAutoTemplateThreshold(templateKey) {
+    if (templateKey === "loading") {
+      return AUTO_SNAP_CONFIG.thresholds.loadingTemplate;
+    }
+
+    if (templateKey === "selectionTimer") {
+      return AUTO_SNAP_CONFIG.thresholds.selectionTimerIcon;
+    }
+
+    return AUTO_SNAP_CONFIG.thresholds.waitingTimerIcon;
+  }
+
+  function getAutoTemplateSearchPadding(templateKey) {
+    if (templateKey === "loading") {
+      return 5;
+    }
+
+    return 5;
+  }
+
+  function isTemplateSamplePixel(r, g, b, threshold) {
     const brightness = Math.max(r, g, b);
     const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
     return brightness >= threshold && luminance >= threshold * 0.62;
@@ -2181,8 +2109,8 @@
   function getBattleHudSignal(metrics) {
     const threshold = AUTO_SNAP_CONFIG.thresholds.battleHud;
     const hudAccent = metrics.battleHud.blue + metrics.battleHud.white + metrics.battleHud.chroma;
-    const enemyListStillVisible = metrics.selectionRight.red >= AUTO_SNAP_CONFIG.thresholds.selection.rightRedMin
-      && metrics.selectionRight.chroma >= AUTO_SNAP_CONFIG.thresholds.selection.rightChromaMin;
+    const enemyListStillVisible = metrics.selectionRight.red >= 0.16
+      && metrics.selectionRight.chroma >= 0.28;
     return {
       hudAccent,
       hudBright: metrics.battleHud.bright,
@@ -2258,32 +2186,35 @@
       `[auto] ${auto.enabled ? "ON" : "OFF"} / phase: ${getAutoPhaseLabel(auto.phase)} / monitor: ${auto.monitorActive ? (auto.frameRequestKind || "active") : "idle"}`,
     ];
 
+    if (!state.streamInfo?.isSixteenByNine) {
+      lines.push("[auto] 16:9 入力以外は自動認識非対応です。");
+    }
+
     if (auto.lastMetrics) {
-      const dialogSignal = getMatchDialogSignal(auto.lastMetrics);
-      const loadingSignal = getLoadingSignal(auto.lastMetrics);
-      const selectionSignal = getSelectionSignal(auto.lastMetrics);
+      const loadingSignal = getLoadingTemplateSignal(auto.lastMetrics);
+      const selectionSignal = getSelectionTimerSignal(auto.lastMetrics);
+      const waitingTimerSignal = getWaitingTimerIconSignal(auto.lastMetrics);
       const lockedSignal = getSelectionLockedSignal(auto.lastMetrics);
       lines.push(
-        `[auto] dialog bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`,
+        loadingSignal.templateReady
+          ? `[auto] loading coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`
+          : "[auto] loading: テンプレート読み込み待ち",
       );
       lines.push(
-        `[auto] loading accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)} / select left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`,
+        selectionSignal.templateReady
+          ? `[auto] selection icon coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`
+          : "[auto] selection icon: テンプレート読み込み待ち",
       );
       lines.push(
         `[auto] locked badge=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
       );
 
-      if (auto.lockedBaseline) {
-        const waitingTimerSignal = getWaitingTimerIconSignal(auto.lastMetrics);
-        const battleHudSignal = getBattleHudSignal(auto.lastMetrics);
-        lines.push(
-          waitingTimerSignal.templateReady
-            ? `[auto] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
-            : "[auto] waiting icon: テンプレート読み込み待ち",
-        );
-      } else {
-        lines.push("[auto] waiting baseline: 未取得");
-      }
+      const battleHudSignal = getBattleHudSignal(auto.lastMetrics);
+      lines.push(
+        waitingTimerSignal.templateReady
+          ? `[auto] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
+          : "[auto] waiting icon: テンプレート読み込み待ち",
+      );
     } else {
       lines.push("[auto] live metrics: まだありません。");
     }
@@ -2303,6 +2234,10 @@
 
   function getAutoPhaseLabel(phase) {
     const auto = state.autoSnap;
+    if (phase === "idle") {
+      return "loading";
+    }
+
     if (phase === "loading_seen") {
       return "loading";
     }
@@ -2323,7 +2258,18 @@
       return auto.lastSnapMode === "fallback" ? "fallback" : "waiting";
     }
 
-    return "dialog";
+    return phase || "loading";
+  }
+
+  function createPendingAutoTemplate(status = "loading") {
+    return {
+      status,
+      width: 0,
+      height: 0,
+      mask: null,
+      activeCount: 0,
+      inactiveCount: 0,
+    };
   }
 
   function createAutoSnapState() {
@@ -2334,11 +2280,9 @@
       monitorActive: false,
       lastFrameAt: 0,
       phase: "idle",
-      dialogFrames: 0,
       loadingFrames: 0,
       selectionFrames: 0,
       lockedFrames: 0,
-      dialogSeenAt: 0,
       loadingSeenAt: 0,
       selectionSeenAt: 0,
       selectionLockedAt: 0,
@@ -2346,7 +2290,7 @@
       lockedBaseline: null,
       fallbackBuffer: null,
       lastMetrics: null,
-      lastReason: "マッチング待機ダイアログ待ち",
+      lastReason: "loading 待ち",
       lastTriggerReason: "",
       lastResetReason: "initial",
       lastSnapMode: "",
@@ -2354,13 +2298,10 @@
       detectorContext: null,
       iconDetectorCanvas: null,
       iconDetectorContext: null,
-      timerTemplate: {
-        status: "loading",
-        width: 0,
-        height: 0,
-        mask: null,
-        activeCount: 0,
-        inactiveCount: 0,
+      templates: {
+        loading: createPendingAutoTemplate(),
+        selectionTimer: createPendingAutoTemplate(),
+        waitingTimer: createPendingAutoTemplate(),
       },
     };
   }

@@ -414,19 +414,9 @@ select {
   background: rgba(255, 106, 92, 0.08);
 }
 
-.debug-overlay--dialog {
-  border-color: rgba(120, 224, 255, 0.92);
-  background: rgba(120, 224, 255, 0.12);
-}
-
 .debug-overlay--loading {
   border-color: rgba(60, 255, 242, 0.94);
   background: rgba(60, 255, 242, 0.12);
-}
-
-.debug-overlay--loading-guard {
-  border-color: rgba(255, 173, 95, 0.9);
-  background: rgba(255, 173, 95, 0.1);
 }
 
 .debug-overlay--committed {
@@ -437,11 +427,6 @@ select {
 .debug-overlay--timer {
   border-color: rgba(118, 255, 166, 0.92);
   background: rgba(118, 255, 166, 0.12);
-}
-
-.debug-overlay--prompt {
-  border-color: rgba(155, 188, 255, 0.92);
-  background: rgba(155, 188, 255, 0.1);
 }
 
 .debug-overlay--battle {

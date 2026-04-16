@@ -151,3 +151,31 @@
   - `battleHud` fallback は保険として残しているが、実戦動画次第では ROI の再調整余地がある
 - Next step:
   - 実画面で `selection_locked` の後に `AUTO 待機タイマー` が時計アイコンを正しく囲み、アイコンが出た瞬間に snap するかを確認する
+
+### 2026-04-17 12:22 JST — auto snap v3 で前段もテンプレ一致へ寄せた
+- Status: done
+- Goal:
+  `loading -> 選出時計 -> 選出完了ラッチ -> 待機タイマー` の流れへ auto snap を整理し、16:9 入力専用の軽いテンプレ照合ベースへ寄せる
+- Changed files:
+  - `app.js`
+  - `index.html`
+  - `style.css`
+  - `README.md`
+  - `PROGRESS.md`
+  - `assets/auto/loading-indicator.png`
+  - `assets/auto/selection-timer-icon.png`
+- What changed:
+  - `loading-indicator.png` と `selection-timer-icon.png` を追加し、auto の前段を色量ベースではなく固定 ROI 上のテンプレ照合へ置き換えた
+  - auto phase を `loading_seen -> selection_active -> selection_locked -> waiting_icon_seen` に整理し、前段の `match dialog` や広い上部帯判定を外した
+  - `AUTO 選出時計` の debug overlay を追加し、実際に監視している `loading / 選出時計 / 待機タイマー / battle HUD` だけが UI に残るよう整理した
+  - 自動 snap は 16:9 入力専用であることを terminal / README 上でも明示した
+- Verification:
+  - `Get-ChildItem assets\\auto | Select-Object Name,Length`: pass
+  - `node --check app.js`: pass
+  - `rg -n "getMatchDialogSignal|getLoadingSignal|getSelectionSignal|dialogFrames|dialogSeenAt|timerTemplate|loadWaitingTimerIconTemplate|isWaitingTimerSamplePixel|matchWaitingTimerIcon|matchDialog|loadingGuard|selectionLeft|centerSelectionPrompt|waiting_transition_seen|waiting_candidate_seen|topCenterStatusLabel|leftListDrop|statusPresence|debug-overlay-dialog|debug-overlay-loading-guard|debug-overlay-selection-prompt|マッチング系ダイアログ" app.js index.html style.css README.md`: pass
+    - v2 系の旧識別子と削除済み debug overlay が残っていないことを確認
+  - Manual check: not run
+- Remaining issues:
+  - `loading` / `選出時計` の coverage / spill 閾値は、実画面で最終確認していない
+- Next step:
+  - 実画面で `loading -> 選出時計 -> 選出完了ラッチ -> 待機タイマー` の順に遷移するかを確認し、必要なら `coverage / spill / darkBackground` の閾値を微調整する
