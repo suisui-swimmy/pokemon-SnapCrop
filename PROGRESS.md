@@ -121,3 +121,33 @@
   - `battle HUD` の ROI は安全側に寄せているので、必要なら実戦動画を見ながら少し狭める余地がある
 - Next step:
   - 実画面で `selection_locked -> waiting_transition -> waiting_candidate -> waiting` の順に遷移することと、`VS` では `waiting_candidate` に入らないことを確認する
+
+### 2026-04-17 04:09 JST — auto snap v2.3 で待機中判定を時計アイコン照合へ切り替え
+- Status: done
+- Goal:
+  `selection_locked` 以降の待機中判定を、広い上部帯の色量監視ではなく中央上部の時計アイコンそのものへ置き換える
+- Changed files:
+  - `app.js`
+  - `index.html`
+  - `style.css`
+  - `README.md`
+  - `PROGRESS.md`
+  - `assets/auto/waiting-timer-icon.png`
+- What changed:
+  - ユーザー提供の `waiting-timer-icon.png` を repo に取り込み、`selection_locked -> waiting_icon_seen -> snapped` の単純な状態機械へ切り替えた
+  - `waiting_transition_seen` / `waiting_candidate_seen`、広い `AUTO 上部状態`、`AUTO 左待機判定` を削除し、中央上部の小さい search window 内で時計アイコンをテンプレート照合するようにした
+  - `matchWaitingTimerIcon()` を追加し、`coverage / spill / darkBackground` で待機中の時計アイコンを判定して、最初の一致 frame で即 `snap both` を試すようにした
+  - auto ROI が `clampCrop()` の最小サイズ補正で不必要に膨らんでいたため、`clampAutoRoiCrop()` を追加して fixed ROI をそのままのサイズで使うように直した
+  - fallback は時計アイコン frame を 1 度でも保持できた後だけ許可し、battle HUD が先に来た場合だけその frame を使う形に整理した
+  - debug overlay は `AUTO 待機タイマー` と `AUTO battle HUD` 中心へ整理し、README の auto snap 説明も v2.3 に合わせて更新した
+- Verification:
+  - `node --check app.js`: pass
+  - `Get-ChildItem assets\\auto | Select-Object Name,Length`: pass
+    - `waiting-timer-icon.png` が repo に追加されたことを確認
+  - `rg -n "waiting icon|waiting_icon|待機タイマー|waitingTimerIcon|clampAutoRoiCrop|timerTemplate|AUTO 待機タイマー" app.js index.html style.css README.md`: pass
+    - v2.3 の主要識別子と UI 文言が期待どおり入っていることを確認
+- Remaining issues:
+  - 実ブラウザ入力で時計アイコン照合の閾値が十分かは未確認
+  - `battleHud` fallback は保険として残しているが、実戦動画次第では ROI の再調整余地がある
+- Next step:
+  - 実画面で `selection_locked` の後に `AUTO 待機タイマー` が時計アイコンを正しく囲み、アイコンが出た瞬間に snap するかを確認する

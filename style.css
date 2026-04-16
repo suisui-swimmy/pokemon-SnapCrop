@@ -444,11 +444,6 @@ select {
   background: rgba(155, 188, 255, 0.1);
 }
 
-.debug-overlay--candidate {
-  border-color: rgba(187, 132, 255, 0.92);
-  background: rgba(187, 132, 255, 0.1);
-}
-
 .debug-overlay--battle {
   border-color: rgba(120, 210, 255, 0.92);
   background: rgba(120, 210, 255, 0.08);
