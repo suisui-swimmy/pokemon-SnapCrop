@@ -376,6 +376,84 @@ select {
   background: linear-gradient(180deg, rgba(255, 106, 92, 0.12), rgba(255, 106, 92, 0.02));
 }
 
+.debug-overlay {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.34);
+}
+
+.debug-overlay.is-hidden {
+  display: none;
+}
+
+.debug-overlay__label {
+  position: absolute;
+  left: -1px;
+  top: -20px;
+  display: inline-flex;
+  align-items: center;
+  min-width: 48px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 1;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.74);
+  letter-spacing: 0.02em;
+}
+
+.debug-overlay--my {
+  border-color: rgba(94, 160, 255, 0.88);
+  background: rgba(94, 160, 255, 0.08);
+}
+
+.debug-overlay--enemy {
+  border-color: rgba(255, 106, 92, 0.88);
+  background: rgba(255, 106, 92, 0.08);
+}
+
+.debug-overlay--dialog {
+  border-color: rgba(120, 224, 255, 0.92);
+  background: rgba(120, 224, 255, 0.12);
+}
+
+.debug-overlay--loading {
+  border-color: rgba(60, 255, 242, 0.94);
+  background: rgba(60, 255, 242, 0.12);
+}
+
+.debug-overlay--loading-guard {
+  border-color: rgba(255, 173, 95, 0.9);
+  background: rgba(255, 173, 95, 0.1);
+}
+
+.debug-overlay--committed {
+  border-color: rgba(255, 225, 120, 0.92);
+  background: rgba(255, 225, 120, 0.12);
+}
+
+.debug-overlay--timer {
+  border-color: rgba(118, 255, 166, 0.92);
+  background: rgba(118, 255, 166, 0.12);
+}
+
+.debug-overlay--prompt {
+  border-color: rgba(155, 188, 255, 0.92);
+  background: rgba(155, 188, 255, 0.1);
+}
+
+.debug-overlay--candidate {
+  border-color: rgba(187, 132, 255, 0.92);
+  background: rgba(187, 132, 255, 0.1);
+}
+
+.debug-overlay--battle {
+  border-color: rgba(120, 210, 255, 0.92);
+  background: rgba(120, 210, 255, 0.08);
+}
+
 .crop-preview-shell {
   position: relative;
   display: grid;

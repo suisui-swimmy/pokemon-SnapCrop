@@ -28,6 +28,136 @@
     { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: ASPECT_16_BY_9 } },
     {},
   ];
+  const AUTO_SNAP_CONFIG = {
+    enabledByDefault: true,
+    stableFrames: {
+      dialog: 2,
+      loading: 1,
+      selection: 2,
+      locked: 2,
+    },
+    timeoutsMs: {
+      dialogToLoading: 8000,
+      loadingToSelection: 4000,
+    },
+    detectorSampleMaxWidth: 72,
+    detectorSampleMinHeight: 28,
+    detectorSampleMaxHeight: 160,
+    thresholds: {
+      dialog: {
+        brightMin: 0.28,
+        blueMin: 0.48,
+        chromaMin: 0.55,
+        darkMax: 0.3,
+      },
+      loading: {
+        accentMin: 0.24,
+        brightMin: 0.12,
+        darkMin: 0.3,
+        guardActivityMax: 0.06,
+        guardChromaMax: 0.05,
+      },
+      selection: {
+        leftBrightMin: 0.42,
+        leftChromaMin: 0.44,
+        rightRedMin: 0.18,
+        rightChromaMin: 0.32,
+      },
+      locked: {
+        badgeWhiteMin: 0.06,
+        barBrightMin: 0.22,
+        barBlueMin: 0.28,
+      },
+      waitingTransition: {
+        barFadeMin: 0.22,
+        badgeFadeMin: 0.18,
+        promptDisappearMin: 0.14,
+        timerRiseMin: 0.06,
+        statusRiseMin: 0.04,
+      },
+      waitingCandidate: {
+        leftListDropMin: 0.38,
+        enemyRedMin: 0.16,
+        enemyChromaMin: 0.3,
+        timerPresenceMin: 0.18,
+        statusPresenceMin: 0.18,
+        promptWhiteMax: 0.02,
+        barFadeMin: 0.22,
+      },
+      battleHud: {
+        hudAccentMin: 0.48,
+        hudBrightMin: 0.16,
+      },
+    },
+    rois: {
+      matchDialog: {
+        x: 0.089,
+        y: 0.194,
+        width: 0.552,
+        height: 0.509,
+      },
+      loadingTrue: {
+        x: 0.802,
+        y: 0.87,
+        width: 0.18,
+        height: 0.088,
+      },
+      loadingGuard: {
+        x: 0.771,
+        y: 0.704,
+        width: 0.224,
+        height: 0.19,
+      },
+      selectionLeft: {
+        x: 0.005,
+        y: 0.083,
+        width: 0.276,
+        height: 0.685,
+      },
+      selectionRight: {
+        x: 0.714,
+        y: 0.083,
+        width: 0.281,
+        height: 0.685,
+      },
+      leftBadgeStrip: {
+        x: 0.01,
+        y: 0.111,
+        width: 0.052,
+        height: 0.593,
+      },
+      bottomDoneBar: {
+        x: 0.01,
+        y: 0.824,
+        width: 0.313,
+        height: 0.162,
+      },
+      topCenterTimer: {
+        x: 0.355,
+        y: 0.118,
+        width: 0.155,
+        height: 0.074,
+      },
+      topCenterStatusLabel: {
+        x: 0.506,
+        y: 0.118,
+        width: 0.145,
+        height: 0.074,
+      },
+      centerSelectionPrompt: {
+        x: 0.44,
+        y: 0.245,
+        width: 0.145,
+        height: 0.085,
+      },
+      battleHud: {
+        x: 0.758,
+        y: 0.318,
+        width: 0.221,
+        height: 0.502,
+      },
+    },
+  };
 
   const elements = {};
   const state = {
@@ -66,6 +196,7 @@
     terminalNoticeKeys: new Set(),
     commandHistory: [],
     commandHistoryIndex: -1,
+    autoSnap: createAutoSnapState(),
   };
 
   document.addEventListener("DOMContentLoaded", init);
@@ -85,6 +216,14 @@
       "command-hint",
       [
         "[system] edit で範囲編集、ready で待機、空Enterか Ctrl+Enter で撮影できます。",
+        "[system] auto on / auto off / auto status で自動 snap を切り替えできます。",
+      ],
+      "system",
+    );
+    appendTerminalNotice(
+      "auto-default",
+      [
+        `[system] 待機中画面の自動 snap は ${AUTO_SNAP_CONFIG.enabledByDefault ? "ON" : "OFF"} です。`,
       ],
       "system",
     );
@@ -118,6 +257,20 @@
         shell: document.getElementById("crop-preview-shell-enemy"),
         canvas: document.getElementById("crop-canvas-enemy"),
       },
+    };
+    elements.autoDebugOverlays = {
+      my: document.getElementById("debug-overlay-my"),
+      enemy: document.getElementById("debug-overlay-enemy"),
+      dialog: document.getElementById("debug-overlay-dialog"),
+      loading: document.getElementById("debug-overlay-loading"),
+      loadingGuard: document.getElementById("debug-overlay-loading-guard"),
+      leftBadge: document.getElementById("debug-overlay-left-badge"),
+      doneBar: document.getElementById("debug-overlay-done-bar"),
+      topTimer: document.getElementById("debug-overlay-top-timer"),
+      topStatus: document.getElementById("debug-overlay-top-status"),
+      selectionPrompt: document.getElementById("debug-overlay-selection-prompt"),
+      leftWaiting: document.getElementById("debug-overlay-left-waiting"),
+      battleHud: document.getElementById("debug-overlay-battle-hud"),
     };
     elements.terminalScreen = document.getElementById("terminal-screen");
     elements.terminalForm = document.getElementById("terminal-form");
@@ -533,6 +686,7 @@
     if (state.mode === "edit") {
       startPreviewLoop();
     }
+    syncAutoSnapMonitoring();
   }
 
   function handleTerminalSubmit(event) {
@@ -649,11 +803,16 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / help",
           "ショートカット: Ctrl+Enter = snap both / Esc = ready",
         ],
         "system",
       );
+      return true;
+    }
+
+    if (command === "auto") {
+      handleAutoCommand(arg);
       return true;
     }
 
@@ -783,6 +942,8 @@
     if (save) {
       persistCrop(side, state.crops[side], dimensions.width, dimensions.height);
     }
+
+    syncAutoSnapMonitoring();
   }
 
   function handleFullscreenChange() {
@@ -865,6 +1026,7 @@
     const dimensions = getStreamDimensions();
     if (!displayedRect || !dimensions.width || !dimensions.height) {
       CROP_SIDES.forEach((side) => elements.cropSlots[side].overlay.classList.add("is-hidden"));
+      hideAutoDebugOverlays();
       return;
     }
 
@@ -885,6 +1047,77 @@
       overlay.style.height = `${crop.height * scaleY}px`;
       overlay.classList.remove("is-hidden");
     });
+
+    renderAutoDebugOverlays(displayedRect, scaleX, scaleY);
+  }
+
+  function renderAutoDebugOverlays(displayedRect, scaleX, scaleY) {
+    if (!shouldShowAutoDebugOverlays()) {
+      hideAutoDebugOverlays();
+      return;
+    }
+
+    const roiCrops = getAutoDebugOverlayCrops();
+    renderDebugOverlayBox(elements.autoDebugOverlays.my, state.crops.my, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.enemy, state.crops.enemy, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.dialog, roiCrops.matchDialog, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.loading, roiCrops.loadingTrue, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.loadingGuard, roiCrops.loadingGuard, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.leftBadge, roiCrops.leftBadgeStrip, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.doneBar, roiCrops.bottomDoneBar, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.topTimer, roiCrops.topCenterTimer, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.topStatus, roiCrops.topCenterStatusLabel, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.selectionPrompt, roiCrops.centerSelectionPrompt, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.leftWaiting, roiCrops.selectionLeft, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.battleHud, roiCrops.battleHud, displayedRect, scaleX, scaleY);
+  }
+
+  function shouldShowAutoDebugOverlays() {
+    return Boolean(
+      state.videoReady
+      && state.mode === "ready"
+      && state.autoSnap.enabled
+      && state.crops.my
+      && state.crops.enemy,
+    );
+  }
+
+  function hideAutoDebugOverlays() {
+    if (!elements.autoDebugOverlays) {
+      return;
+    }
+
+    Object.values(elements.autoDebugOverlays).forEach((overlay) => {
+      overlay?.classList.add("is-hidden");
+    });
+  }
+
+  function renderDebugOverlayBox(overlay, crop, displayedRect, scaleX, scaleY) {
+    if (!overlay || !crop) {
+      overlay?.classList.add("is-hidden");
+      return;
+    }
+
+    overlay.style.left = `${displayedRect.offsetX + crop.x * scaleX}px`;
+    overlay.style.top = `${displayedRect.offsetY + crop.y * scaleY}px`;
+    overlay.style.width = `${crop.width * scaleX}px`;
+    overlay.style.height = `${crop.height * scaleY}px`;
+    overlay.classList.remove("is-hidden");
+  }
+
+  function getAutoDebugOverlayCrops() {
+    return {
+      matchDialog: getAutoRoiCrop("matchDialog"),
+      loadingTrue: getAutoRoiCrop("loadingTrue"),
+      loadingGuard: getAutoRoiCrop("loadingGuard"),
+      leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
+      bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
+      topCenterTimer: getAutoRoiCrop("topCenterTimer"),
+      topCenterStatusLabel: getAutoRoiCrop("topCenterStatusLabel"),
+      centerSelectionPrompt: getAutoRoiCrop("centerSelectionPrompt"),
+      selectionLeft: getAutoRoiCrop("selectionLeft"),
+      battleHud: getAutoRoiCrop("battleHud"),
+    };
   }
 
   function updatePreviewCanvasSize(side) {
@@ -976,6 +1209,8 @@
 
   function stopCurrentStream() {
     stopPreviewLoop();
+    stopAutoSnapMonitor();
+    resetAutoSnapCycle("映像停止");
     stopAudioPlayback();
 
     if (state.audioInputStream) {
@@ -1020,8 +1255,12 @@
     } else {
       stopPreviewLoop();
     }
+    if (nextMode !== "ready") {
+      resetAutoSnapCycle("ready 待ち");
+    }
     refreshCropPanels();
     renderCropOverlays();
+    syncAutoSnapMonitoring();
     appendTerminalEntry(
       [
         nextMode === "edit"
@@ -1032,33 +1271,16 @@
     );
   }
 
-  async function handleSnapCommand(target) {
-    if (!state.videoReady || !state.stream) {
-      appendTerminalEntry(
-        [
-          "映像がまだ準備できていないため、撮影できません。",
-        ],
-        "error",
-      );
-      return;
-    }
+  async function handleSnapCommand(target, options = {}) {
+    const { source = "manual", reason = "" } = options;
 
     try {
-      const sides = target === "both" ? CROP_SIDES : [target];
-
-      for (const side of sides) {
-        captureReferenceImage(side);
-      }
-
-      refreshCropPanels();
-
+      const message = performSnapCapture(target);
       appendTerminalEntry(
         [
-          target === "my"
-            ? "自分側の参照画像を更新しました。"
-            : target === "enemy"
-              ? "相手側の参照画像を更新しました。"
-              : "左右の参照画像を更新しました。",
+          source === "auto"
+            ? `[auto] ${message}${reason ? ` (${reason})` : ""}`
+            : message,
         ],
         "success",
       );
@@ -1073,7 +1295,951 @@
     }
   }
 
-  function captureReferenceImage(side) {
+  function performSnapCapture(target, options = {}) {
+    const { frameSource = null } = options;
+    const sides = target === "both" ? CROP_SIDES : [target];
+    const needsLiveVideo = !frameSource;
+
+    if (needsLiveVideo && (!state.videoReady || !state.stream)) {
+      throw new Error("映像がまだ準備できていないため、撮影できません。");
+    }
+
+    sides.forEach((side) => {
+      const frame = frameSource?.[side]
+        ? cloneReferenceFrame(frameSource[side])
+        : captureReferenceFrameFromVideo(side);
+      state.references[side] = frame;
+    });
+
+    refreshCropPanels();
+
+    if (target === "my") {
+      return "自分側の参照画像を更新しました。";
+    }
+
+    if (target === "enemy") {
+      return "相手側の参照画像を更新しました。";
+    }
+
+    return "左右の参照画像を更新しました。";
+  }
+
+  function handleAutoCommand(arg) {
+    const action = arg || "status";
+
+    if (action === "on") {
+      setAutoSnapEnabled(true);
+      return;
+    }
+
+    if (action === "off") {
+      setAutoSnapEnabled(false);
+      return;
+    }
+
+    if (action === "reset") {
+      resetAutoSnapCycle("manual reset");
+      syncAutoSnapMonitoring();
+      appendTerminalEntry(
+        [
+          "[auto] 検出状態をリセットしました。次の選出画面から再監視します。",
+        ],
+        "system",
+      );
+      return;
+    }
+
+    if (action === "status") {
+      appendTerminalEntry(getAutoStatusLines(), "system");
+      return;
+    }
+
+    appendTerminalEntry(
+      [
+        "auto は on / off / status / reset を指定できます。",
+      ],
+      "error",
+    );
+  }
+
+  function setAutoSnapEnabled(enabled) {
+    if (state.autoSnap.enabled === enabled) {
+      appendTerminalEntry(
+        [
+          enabled ? "[auto] すでに ON です。" : "[auto] すでに OFF です。",
+        ],
+        "system",
+      );
+      return;
+    }
+
+    state.autoSnap.enabled = enabled;
+    resetAutoSnapCycle(enabled ? "auto on" : "auto off");
+
+    if (enabled) {
+      syncAutoSnapMonitoring();
+      appendTerminalEntry(
+        [
+          "[auto] 自動 snap を ON にしました。ready モード中だけ監視します。",
+        ],
+        "system",
+      );
+      return;
+    }
+
+    stopAutoSnapMonitor();
+    appendTerminalEntry(
+      [
+        "[auto] 自動 snap を OFF にしました。",
+      ],
+      "system",
+    );
+  }
+
+  function syncAutoSnapMonitoring() {
+    if (canRunAutoSnapMonitor()) {
+      startAutoSnapMonitor();
+      return;
+    }
+
+    stopAutoSnapMonitor();
+  }
+
+  function canRunAutoSnapMonitor() {
+    return Boolean(
+      state.autoSnap.enabled
+      && state.mode === "ready"
+      && state.videoReady
+      && state.stream
+      && state.crops.my
+      && state.crops.enemy,
+    );
+  }
+
+  function startAutoSnapMonitor() {
+    if (state.autoSnap.monitorActive) {
+      return;
+    }
+
+    state.autoSnap.monitorActive = true;
+    state.autoSnap.lastFrameAt = 0;
+    queueAutoSnapFrame();
+  }
+
+  function queueAutoSnapFrame() {
+    const auto = state.autoSnap;
+    if (!auto.monitorActive || auto.frameId) {
+      return;
+    }
+
+    if (typeof elements.video.requestVideoFrameCallback === "function") {
+      auto.frameRequestKind = "video";
+      auto.frameId = elements.video.requestVideoFrameCallback(handleAutoSnapVideoFrame);
+      return;
+    }
+
+    auto.frameRequestKind = "raf";
+    auto.frameId = window.requestAnimationFrame(handleAutoSnapAnimationFrame);
+  }
+
+  function handleAutoSnapVideoFrame(now) {
+    const auto = state.autoSnap;
+    auto.frameId = 0;
+    auto.lastFrameAt = now;
+
+    if (!canRunAutoSnapMonitor()) {
+      auto.monitorActive = false;
+      auto.frameRequestKind = "";
+      return;
+    }
+
+    runAutoSnapDetection(Date.now());
+    queueAutoSnapFrame();
+  }
+
+  function handleAutoSnapAnimationFrame(now) {
+    const auto = state.autoSnap;
+    auto.frameId = 0;
+    auto.lastFrameAt = now;
+
+    if (!canRunAutoSnapMonitor()) {
+      auto.monitorActive = false;
+      auto.frameRequestKind = "";
+      return;
+    }
+
+    runAutoSnapDetection(Date.now());
+    queueAutoSnapFrame();
+  }
+
+  function stopAutoSnapMonitor() {
+    if (state.autoSnap.frameId) {
+      if (
+        state.autoSnap.frameRequestKind === "video"
+        && typeof elements.video.cancelVideoFrameCallback === "function"
+      ) {
+        elements.video.cancelVideoFrameCallback(state.autoSnap.frameId);
+      } else {
+        window.cancelAnimationFrame(state.autoSnap.frameId);
+      }
+      state.autoSnap.frameId = 0;
+    }
+
+    state.autoSnap.monitorActive = false;
+    state.autoSnap.lastFrameAt = 0;
+    state.autoSnap.frameRequestKind = "";
+  }
+
+  function resetAutoSnapCycle(reason = "") {
+    state.autoSnap.phase = "idle";
+    state.autoSnap.dialogFrames = 0;
+    state.autoSnap.loadingFrames = 0;
+    state.autoSnap.selectionFrames = 0;
+    state.autoSnap.lockedFrames = 0;
+    state.autoSnap.dialogSeenAt = 0;
+    state.autoSnap.loadingSeenAt = 0;
+    state.autoSnap.selectionSeenAt = 0;
+    state.autoSnap.selectionLockedAt = 0;
+    state.autoSnap.waitingTransitionSeenAt = 0;
+    state.autoSnap.waitingCandidateSeenAt = 0;
+    state.autoSnap.lockedBaseline = null;
+    state.autoSnap.fallbackBuffer = null;
+    state.autoSnap.lastMetrics = null;
+    state.autoSnap.lastReason = reason || "マッチング待機ダイアログ待ち";
+    state.autoSnap.lastTriggerReason = "";
+    state.autoSnap.lastResetReason = reason || "manual reset";
+    state.autoSnap.lastSnapMode = "";
+  }
+
+  function runAutoSnapDetection(now = Date.now()) {
+    const auto = state.autoSnap;
+    const metrics = captureAutoSnapMetrics();
+    if (!metrics) {
+      auto.lastReason = "ROI がまだ揃っていません。";
+      return;
+    }
+
+    auto.lastMetrics = metrics;
+    if (auto.phase === "idle" || auto.phase === "snapped") {
+      const dialogSignal = getMatchDialogSignal(metrics);
+      if (!dialogSignal.matched) {
+        auto.dialogFrames = 0;
+        auto.lastReason = auto.phase === "snapped" ? "次のマッチング待機ダイアログ待ち" : "マッチング待機ダイアログ待ち";
+        return;
+      }
+
+      auto.dialogFrames += 1;
+      auto.lastReason = `dialog ${auto.dialogFrames}/${AUTO_SNAP_CONFIG.stableFrames.dialog} bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`;
+      if (auto.dialogFrames < AUTO_SNAP_CONFIG.stableFrames.dialog) {
+        return;
+      }
+
+      auto.phase = "match_dialog_seen";
+      auto.dialogFrames = 0;
+      auto.loadingFrames = 0;
+      auto.selectionFrames = 0;
+      auto.lockedFrames = 0;
+      auto.dialogSeenAt = now;
+      auto.loadingSeenAt = 0;
+      auto.selectionSeenAt = 0;
+      auto.selectionLockedAt = 0;
+      auto.waitingTransitionSeenAt = 0;
+      auto.waitingCandidateSeenAt = 0;
+      auto.lockedBaseline = null;
+      auto.fallbackBuffer = null;
+      auto.lastSnapMode = "";
+      auto.lastTriggerReason = "";
+      auto.lastReason = `中央ダイアログを検出 bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`;
+      appendTerminalEntry(
+        [
+          `[auto] マッチング系ダイアログを検出しました。loading を待ちます。 (${auto.lastReason})`,
+        ],
+        "system",
+      );
+      return;
+    }
+
+    if (auto.phase === "match_dialog_seen") {
+      if (now - auto.dialogSeenAt > AUTO_SNAP_CONFIG.timeoutsMs.dialogToLoading) {
+        resetAutoSnapCycle("dialog -> loading timeout");
+        return;
+      }
+
+      const loadingSignal = getLoadingSignal(metrics);
+      if (!loadingSignal.matched) {
+        auto.loadingFrames = 0;
+        auto.lastReason = `loading 待ち accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
+        return;
+      }
+
+      auto.loadingFrames += 1;
+      auto.lastReason = `loading ${auto.loadingFrames}/${AUTO_SNAP_CONFIG.stableFrames.loading} accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
+      if (auto.loadingFrames < AUTO_SNAP_CONFIG.stableFrames.loading) {
+        return;
+      }
+
+      auto.phase = "loading_seen";
+      auto.loadingFrames = 0;
+      auto.loadingSeenAt = now;
+      auto.lastReason = `loading を検出 accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)}`;
+      appendTerminalEntry(
+        [
+          `[auto] 本物の loading を検出しました。選出画面を待ちます。 (${auto.lastReason})`,
+        ],
+        "system",
+      );
+      return;
+    }
+
+    if (auto.phase === "loading_seen") {
+      if (now - auto.loadingSeenAt > AUTO_SNAP_CONFIG.timeoutsMs.loadingToSelection) {
+        resetAutoSnapCycle("loading -> selection timeout");
+        return;
+      }
+
+      const selectionSignal = getSelectionSignal(metrics);
+      if (!selectionSignal.matched) {
+        auto.selectionFrames = 0;
+        auto.lastReason = `選出画面待ち left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+        return;
+      }
+
+      auto.selectionFrames += 1;
+      auto.lastReason = `selection ${auto.selectionFrames}/${AUTO_SNAP_CONFIG.stableFrames.selection} left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+      if (auto.selectionFrames < AUTO_SNAP_CONFIG.stableFrames.selection) {
+        return;
+      }
+
+      auto.phase = "selection_active";
+      auto.selectionFrames = 0;
+      auto.selectionSeenAt = now;
+      auto.lockedFrames = 0;
+      auto.lastReason = `左右リストを検出 left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`;
+      appendTerminalEntry(
+        [
+          `[auto] 選出画面を検出しました。選出完了をラッチし、待機遷移だけで撮影します。 (${auto.lastReason})`,
+        ],
+        "system",
+      );
+    }
+
+    if (auto.phase === "selection_active") {
+      const selectionSignal = getSelectionSignal(metrics);
+      if (!selectionSignal.matched) {
+        auto.lockedFrames = 0;
+        auto.lastReason = "選出画面を見失いました。";
+        return;
+      }
+
+      const lockedSignal = getSelectionLockedSignal(metrics);
+      if (!lockedSignal.matched) {
+        auto.lockedFrames = 0;
+        auto.lastReason = `選出完了待ち badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+        return;
+      }
+
+      auto.lockedFrames += 1;
+      auto.lastReason = `locked ${auto.lockedFrames}/${AUTO_SNAP_CONFIG.stableFrames.locked} badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+      if (auto.lockedFrames < AUTO_SNAP_CONFIG.stableFrames.locked) {
+        return;
+      }
+
+      auto.phase = "selection_locked";
+      auto.lockedFrames = 0;
+      auto.selectionLockedAt = now;
+      auto.waitingTransitionSeenAt = 0;
+      auto.waitingCandidateSeenAt = 0;
+      auto.lockedBaseline = buildLockedBaseline(metrics);
+      auto.fallbackBuffer = null;
+      auto.lastReason = `選出完了をラッチ badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+      appendTerminalEntry(
+        [
+          `[auto] 選出完了をラッチしました。ここでは撮らず、待機遷移だけを待ちます。 (${auto.lastReason})`,
+        ],
+        "system",
+      );
+      return;
+    }
+
+    if (auto.phase === "selection_locked") {
+      const transitionSignal = getWaitingTransitionSignal(metrics, auto.lockedBaseline);
+      auto.lastReason = `待機遷移待ち barFade=${formatAutoMetric(transitionSignal.barFade)} badgeFade=${formatAutoMetric(transitionSignal.badgeFade)} prompt=${formatAutoMetric(transitionSignal.promptDisappear)} timer=${formatAutoMetric(transitionSignal.timerRise)} status=${formatAutoMetric(transitionSignal.statusRise)}`;
+      if (!transitionSignal.matched) {
+        return;
+      }
+
+      auto.phase = "waiting_transition_seen";
+      auto.waitingTransitionSeenAt = now;
+      auto.waitingCandidateSeenAt = 0;
+      auto.fallbackBuffer = null;
+      auto.lastReason = `待機遷移を検出 barFade=${formatAutoMetric(transitionSignal.barFade)} badgeFade=${formatAutoMetric(transitionSignal.badgeFade)} prompt=${formatAutoMetric(transitionSignal.promptDisappear)} timer=${formatAutoMetric(transitionSignal.timerRise)} status=${formatAutoMetric(transitionSignal.statusRise)}`;
+      appendTerminalEntry(
+        [
+          `[auto] 待機遷移を検出しました。待機中候補を待ち、候補が見えた後だけ fallback を許可します。 (${auto.lastReason})`,
+        ],
+        "system",
+      );
+      return;
+    }
+
+    if (
+      (
+        auto.phase !== "waiting_transition_seen"
+        && auto.phase !== "waiting_candidate_seen"
+      )
+      || !auto.lockedBaseline
+    ) {
+      return;
+    }
+
+    const transitionSignal = getWaitingTransitionSignal(metrics, auto.lockedBaseline);
+    const waitingCandidateSignal = getWaitingCandidateSignal(metrics, auto.lockedBaseline, transitionSignal);
+    const battleHudSignal = getBattleHudSignal(metrics);
+    auto.lastReason = `待機候補監視 leftDrop=${formatAutoMetric(waitingCandidateSignal.leftListDrop)} timer=${formatAutoMetric(waitingCandidateSignal.timerPresence)} status=${formatAutoMetric(waitingCandidateSignal.statusPresence)} promptWhite=${formatAutoMetric(waitingCandidateSignal.promptWhite)} enemy=${formatAutoMetric(waitingCandidateSignal.enemyRed)}/${formatAutoMetric(waitingCandidateSignal.enemyChroma)} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`;
+    if (waitingCandidateSignal.matched) {
+      if (auto.phase !== "waiting_candidate_seen") {
+        auto.phase = "waiting_candidate_seen";
+        auto.waitingCandidateSeenAt = now;
+        auto.fallbackBuffer = bufferAutoFallbackReferences("waiting_candidate_seen");
+        auto.lastReason = `待機中候補を検出 leftDrop=${formatAutoMetric(waitingCandidateSignal.leftListDrop)} timer=${formatAutoMetric(waitingCandidateSignal.timerPresence)} status=${formatAutoMetric(waitingCandidateSignal.statusPresence)} promptWhite=${formatAutoMetric(waitingCandidateSignal.promptWhite)} enemy=${formatAutoMetric(waitingCandidateSignal.enemyRed)}/${formatAutoMetric(waitingCandidateSignal.enemyChroma)}`;
+        appendTerminalEntry(
+          [
+            `[auto] 待機中候補を検出しました。ここで即 snap を試し、fallback はこの候補 frame だけで許可します。 (${auto.lastReason})`,
+          ],
+          "system",
+        );
+      }
+
+      auto.phase = "snapped";
+      auto.lastSnapMode = "waiting";
+      auto.lastTriggerReason = `leftDrop=${formatAutoMetric(waitingCandidateSignal.leftListDrop)} timer=${formatAutoMetric(waitingCandidateSignal.timerPresence)} status=${formatAutoMetric(waitingCandidateSignal.statusPresence)} promptWhite=${formatAutoMetric(waitingCandidateSignal.promptWhite)} enemy=${formatAutoMetric(waitingCandidateSignal.enemyRed)}/${formatAutoMetric(waitingCandidateSignal.enemyChroma)}`;
+      try {
+        const message = performSnapCapture("both");
+        appendTerminalEntry(
+          [
+            `[auto] ${message} (${auto.lastTriggerReason})`,
+          ],
+          "success",
+        );
+      } catch (error) {
+        appendTerminalEntry(
+          [
+            "[auto] 待機中画面の自動 snap に失敗しました。",
+            `詳細: ${error.message}`,
+          ],
+          "error",
+        );
+        auto.phase = "waiting_candidate_seen";
+      }
+      return;
+    }
+
+    if (auto.phase === "waiting_candidate_seen" && battleHudSignal.matched) {
+      triggerAutoFallback("battle_hud");
+      return;
+    }
+  }
+
+  function captureAutoSnapMetrics() {
+    if (!state.videoReady || !state.stream || !state.crops.my || !state.crops.enemy) {
+      return null;
+    }
+
+    const roiCrops = {
+      matchDialog: getAutoRoiCrop("matchDialog"),
+      loadingTrue: getAutoRoiCrop("loadingTrue"),
+      loadingGuard: getAutoRoiCrop("loadingGuard"),
+      selectionLeft: getAutoRoiCrop("selectionLeft"),
+      selectionRight: getAutoRoiCrop("selectionRight"),
+      leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
+      bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
+      topCenterTimer: getAutoRoiCrop("topCenterTimer"),
+      topCenterStatusLabel: getAutoRoiCrop("topCenterStatusLabel"),
+      centerSelectionPrompt: getAutoRoiCrop("centerSelectionPrompt"),
+      battleHud: getAutoRoiCrop("battleHud"),
+    };
+
+    if (Object.values(roiCrops).some((crop) => !crop)) {
+      return null;
+    }
+
+    return {
+      my: sampleVideoRegionMetrics(state.crops.my),
+      enemy: sampleVideoRegionMetrics(state.crops.enemy),
+      matchDialog: sampleVideoRegionMetrics(roiCrops.matchDialog),
+      loadingTrue: sampleVideoRegionMetrics(roiCrops.loadingTrue),
+      loadingGuard: sampleVideoRegionMetrics(roiCrops.loadingGuard),
+      selectionLeft: sampleVideoRegionMetrics(roiCrops.selectionLeft),
+      selectionRight: sampleVideoRegionMetrics(roiCrops.selectionRight),
+      leftBadgeStrip: sampleVideoRegionMetrics(roiCrops.leftBadgeStrip),
+      bottomDoneBar: sampleVideoRegionMetrics(roiCrops.bottomDoneBar),
+      topCenterTimer: sampleVideoRegionMetrics(roiCrops.topCenterTimer),
+      topCenterStatusLabel: sampleVideoRegionMetrics(roiCrops.topCenterStatusLabel),
+      centerSelectionPrompt: sampleVideoRegionMetrics(roiCrops.centerSelectionPrompt),
+      battleHud: sampleVideoRegionMetrics(roiCrops.battleHud),
+    };
+  }
+
+  function getAutoRoiCrop(key) {
+    const dimensions = getStreamDimensions();
+    const roi = AUTO_SNAP_CONFIG.rois[key];
+    if (!dimensions.width || !dimensions.height || !roi) {
+      return null;
+    }
+
+    return clampCrop(
+      {
+        x: dimensions.width * roi.x,
+        y: dimensions.height * roi.y,
+        width: dimensions.width * roi.width,
+        height: dimensions.height * roi.height,
+      },
+      dimensions.width,
+      dimensions.height,
+    );
+  }
+
+  function sampleVideoRegionMetrics(crop) {
+    const sourceWidth = Math.max(1, Math.round(crop.width));
+    const sourceHeight = Math.max(1, Math.round(crop.height));
+    const targetWidth = AUTO_SNAP_CONFIG.detectorSampleMaxWidth;
+    const targetHeight = clamp(
+      Math.round((sourceHeight / sourceWidth) * targetWidth),
+      AUTO_SNAP_CONFIG.detectorSampleMinHeight,
+      AUTO_SNAP_CONFIG.detectorSampleMaxHeight,
+    );
+    const context = getAutoDetectorContext(targetWidth, targetHeight);
+    if (!context) {
+      return {
+        bright: 0,
+        dark: 0,
+        blue: 0,
+        red: 0,
+        green: 0,
+        yellow: 0,
+        cyan: 0,
+        white: 0,
+        lavender: 0,
+        chroma: 0,
+      };
+    }
+
+    context.clearRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(
+      elements.video,
+      Math.round(crop.x),
+      Math.round(crop.y),
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    );
+
+    const imageData = context.getImageData(0, 0, targetWidth, targetHeight).data;
+    let total = 0;
+    let bright = 0;
+    let dark = 0;
+    let blue = 0;
+    let red = 0;
+    let green = 0;
+    let yellow = 0;
+    let cyan = 0;
+    let white = 0;
+    let lavender = 0;
+    let chroma = 0;
+
+    for (let index = 0; index < imageData.length; index += 4) {
+      const r = imageData[index];
+      const g = imageData[index + 1];
+      const b = imageData[index + 2];
+      const maxValue = Math.max(r, g, b);
+      const minValue = Math.min(r, g, b);
+      total += 1;
+
+      if (maxValue > 185) {
+        bright += 1;
+      }
+      if (maxValue < 55) {
+        dark += 1;
+      }
+      if (b > 110 && b > r * 1.12 && b > g * 1.04) {
+        blue += 1;
+      }
+      if (r > 115 && r > g * 1.18 && r > b * 1.18) {
+        red += 1;
+      }
+      if (g > 120 && g > r * 1.08 && g > b * 0.95) {
+        green += 1;
+      }
+      if (r > 150 && g > 135 && b < 125) {
+        yellow += 1;
+      }
+      if (g > 120 && b > 130 && g > r * 1.08 && b > r * 1.1) {
+        cyan += 1;
+      }
+      if (maxValue > 190 && minValue > 148) {
+        white += 1;
+      }
+      if (r > 110 && b > 135 && g > 72 && r > g * 1.05 && b > g * 1.08) {
+        lavender += 1;
+      }
+      if (maxValue - minValue > 45 && maxValue > 70) {
+        chroma += 1;
+      }
+    }
+
+    return {
+      bright: bright / total,
+      dark: dark / total,
+      blue: blue / total,
+      red: red / total,
+      green: green / total,
+      yellow: yellow / total,
+      cyan: cyan / total,
+      white: white / total,
+      lavender: lavender / total,
+      chroma: chroma / total,
+    };
+  }
+
+  function getAutoDetectorContext(width, height) {
+    if (!state.autoSnap.detectorCanvas) {
+      state.autoSnap.detectorCanvas = document.createElement("canvas");
+    }
+
+    if (
+      state.autoSnap.detectorCanvas.width !== width
+      || state.autoSnap.detectorCanvas.height !== height
+    ) {
+      state.autoSnap.detectorCanvas.width = width;
+      state.autoSnap.detectorCanvas.height = height;
+      state.autoSnap.detectorContext = state.autoSnap.detectorCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+    }
+
+    return state.autoSnap.detectorContext;
+  }
+
+  function getMatchDialogSignal(metrics) {
+    const dialog = metrics.matchDialog;
+    const threshold = AUTO_SNAP_CONFIG.thresholds.dialog;
+    return {
+      bright: dialog.bright,
+      blue: dialog.blue,
+      chroma: dialog.chroma,
+      matched: dialog.bright >= threshold.brightMin
+        && dialog.blue >= threshold.blueMin
+        && dialog.chroma >= threshold.chromaMin
+        && dialog.dark <= threshold.darkMax,
+    };
+  }
+
+  function getLoadingSignal(metrics) {
+    const loading = metrics.loadingTrue;
+    const guard = metrics.loadingGuard;
+    const threshold = AUTO_SNAP_CONFIG.thresholds.loading;
+    const accent = loading.cyan + loading.green + loading.white;
+    const guardActivity = guard.red + guard.yellow + guard.bright;
+    return {
+      accent,
+      guardActivity,
+      matched: accent >= threshold.accentMin
+        && loading.bright >= threshold.brightMin
+        && loading.dark >= threshold.darkMin
+        && guardActivity <= threshold.guardActivityMax
+        && guard.chroma <= threshold.guardChromaMax,
+    };
+  }
+
+  function getSelectionSignal(metrics) {
+    const left = metrics.selectionLeft;
+    const right = metrics.selectionRight;
+    const threshold = AUTO_SNAP_CONFIG.thresholds.selection;
+    return {
+      leftBright: left.bright,
+      leftChroma: left.chroma,
+      rightRed: right.red,
+      rightChroma: right.chroma,
+      matched: left.bright >= threshold.leftBrightMin
+        && left.chroma >= threshold.leftChromaMin
+        && right.red >= threshold.rightRedMin
+        && right.chroma >= threshold.rightChromaMin,
+    };
+  }
+
+  function getSelectionLockedSignal(metrics) {
+    const badge = metrics.leftBadgeStrip;
+    const bar = metrics.bottomDoneBar;
+    const threshold = AUTO_SNAP_CONFIG.thresholds.locked;
+    return {
+      badgeWhite: badge.white,
+      barBright: bar.bright,
+      barBlue: bar.blue,
+      matched: badge.white >= threshold.badgeWhiteMin
+        && bar.bright >= threshold.barBrightMin
+        && bar.blue >= threshold.barBlueMin,
+    };
+  }
+
+  function buildLockedBaseline(metrics) {
+    return {
+      my: { ...metrics.my },
+      enemy: { ...metrics.enemy },
+      selectionLeft: { ...metrics.selectionLeft },
+      selectionRight: { ...metrics.selectionRight },
+      leftBadgeStrip: { ...metrics.leftBadgeStrip },
+      bottomDoneBar: { ...metrics.bottomDoneBar },
+      topCenterTimer: { ...metrics.topCenterTimer },
+      topCenterStatusLabel: { ...metrics.topCenterStatusLabel },
+      centerSelectionPrompt: { ...metrics.centerSelectionPrompt },
+    };
+  }
+
+  function getWaitingTransitionSignal(metrics, baseline) {
+    const threshold = AUTO_SNAP_CONFIG.thresholds.waitingTransition;
+    const barFade = getPositiveDelta(baseline.bottomDoneBar.bright, metrics.bottomDoneBar.bright)
+      + getPositiveDelta(baseline.bottomDoneBar.white, metrics.bottomDoneBar.white)
+      + getPositiveDelta(baseline.bottomDoneBar.chroma, metrics.bottomDoneBar.chroma);
+    const badgeFade = getPositiveDelta(baseline.leftBadgeStrip.bright, metrics.leftBadgeStrip.bright)
+      + getPositiveDelta(baseline.leftBadgeStrip.white, metrics.leftBadgeStrip.white)
+      + getPositiveDelta(baseline.leftBadgeStrip.chroma, metrics.leftBadgeStrip.chroma);
+    const promptDisappear = getPositiveDelta(baseline.centerSelectionPrompt.white, metrics.centerSelectionPrompt.white)
+      + getPositiveDelta(metrics.centerSelectionPrompt.blue, baseline.centerSelectionPrompt.blue)
+      + getPositiveDelta(metrics.centerSelectionPrompt.chroma, baseline.centerSelectionPrompt.chroma);
+    const timerRise = getPositiveDelta(metrics.topCenterTimer.bright, baseline.topCenterTimer.bright)
+      + getPositiveDelta(metrics.topCenterTimer.blue, baseline.topCenterTimer.blue);
+    const statusRise = getPositiveDelta(metrics.topCenterStatusLabel.bright, baseline.topCenterStatusLabel.bright)
+      + getPositiveDelta(metrics.topCenterStatusLabel.blue, baseline.topCenterStatusLabel.blue);
+    return {
+      barFade,
+      badgeFade,
+      promptDisappear,
+      timerRise,
+      statusRise,
+      matched: barFade >= threshold.barFadeMin
+        && badgeFade >= threshold.badgeFadeMin
+        && promptDisappear >= threshold.promptDisappearMin
+        && timerRise >= threshold.timerRiseMin
+        && statusRise >= threshold.statusRiseMin,
+    };
+  }
+
+  function getWaitingCandidateSignal(metrics, baseline, transitionSignal) {
+    const threshold = AUTO_SNAP_CONFIG.thresholds.waitingCandidate;
+    const leftListDrop = getPositiveDelta(baseline.selectionLeft.bright, metrics.selectionLeft.bright)
+      + getPositiveDelta(baseline.selectionLeft.blue, metrics.selectionLeft.blue)
+      + getPositiveDelta(baseline.selectionLeft.chroma, metrics.selectionLeft.chroma);
+    const enemyRed = metrics.selectionRight.red;
+    const enemyChroma = metrics.selectionRight.chroma;
+    const timerPresence = metrics.topCenterTimer.bright + metrics.topCenterTimer.blue;
+    const statusPresence = metrics.topCenterStatusLabel.bright + metrics.topCenterStatusLabel.blue;
+    const promptWhite = metrics.centerSelectionPrompt.white;
+    return {
+      leftListDrop,
+      enemyRed,
+      enemyChroma,
+      timerPresence,
+      statusPresence,
+      promptWhite,
+      barFade: transitionSignal.barFade,
+      matched: leftListDrop >= threshold.leftListDropMin
+        && timerPresence >= threshold.timerPresenceMin
+        && statusPresence >= threshold.statusPresenceMin
+        && promptWhite <= threshold.promptWhiteMax
+        && transitionSignal.barFade >= threshold.barFadeMin
+        && enemyRed >= threshold.enemyRedMin
+        && enemyChroma >= threshold.enemyChromaMin,
+    };
+  }
+
+  function getBattleHudSignal(metrics) {
+    const threshold = AUTO_SNAP_CONFIG.thresholds.battleHud;
+    const hudAccent = metrics.battleHud.blue + metrics.battleHud.white + metrics.battleHud.chroma;
+    const enemyListStillVisible = metrics.selectionRight.red >= AUTO_SNAP_CONFIG.thresholds.selection.rightRedMin
+      && metrics.selectionRight.chroma >= AUTO_SNAP_CONFIG.thresholds.selection.rightChromaMin;
+    return {
+      hudAccent,
+      hudBright: metrics.battleHud.bright,
+      enemyListStillVisible,
+      matched: hudAccent >= threshold.hudAccentMin
+        && metrics.battleHud.bright >= threshold.hudBrightMin
+        && !enemyListStillVisible,
+    };
+  }
+
+  function bufferAutoFallbackReferences(reason = "") {
+    try {
+      return {
+        frames: {
+          my: captureReferenceFrameFromVideo("my"),
+          enemy: captureReferenceFrameFromVideo("enemy"),
+        },
+        capturedAt: Date.now(),
+        reason,
+      };
+    } catch (error) {
+      state.autoSnap.lastReason = `fallback buffer 作成失敗: ${error.message}`;
+      return null;
+    }
+  }
+
+  function triggerAutoFallback(kind) {
+    const auto = state.autoSnap;
+    auto.phase = "snapped";
+    auto.lastSnapMode = "fallback";
+    auto.lastTriggerReason = kind === "battle_hud"
+      ? "battle HUD が先に来たため waiting candidate frame を使用"
+      : "battle HUD が先に来たため waiting candidate frame を使用";
+
+    if (!auto.fallbackBuffer?.frames) {
+      appendTerminalEntry(
+        [
+          `[auto:fallback] waiting candidate frame が保持できていないため snap できませんでした。 (${auto.lastTriggerReason})`,
+        ],
+        "error",
+      );
+      return;
+    }
+
+    try {
+      const message = performSnapCapture("both", {
+        frameSource: auto.fallbackBuffer.frames,
+      });
+      appendTerminalEntry(
+        [
+          `[auto:fallback] ${message} (${auto.lastTriggerReason})`,
+        ],
+        "success",
+      );
+    } catch (error) {
+      appendTerminalEntry(
+        [
+          "[auto:fallback] waiting candidate frame の適用に失敗しました。",
+          `詳細: ${error.message}`,
+        ],
+        "error",
+      );
+    }
+  }
+
+  function formatAutoMetric(value) {
+    return Number(value || 0).toFixed(3);
+  }
+
+  function getAutoStatusLines() {
+    const auto = state.autoSnap;
+    const lines = [
+      `[auto] ${auto.enabled ? "ON" : "OFF"} / phase: ${getAutoPhaseLabel(auto.phase)} / monitor: ${auto.monitorActive ? (auto.frameRequestKind || "active") : "idle"}`,
+    ];
+
+    if (auto.lastMetrics) {
+      const dialogSignal = getMatchDialogSignal(auto.lastMetrics);
+      const loadingSignal = getLoadingSignal(auto.lastMetrics);
+      const selectionSignal = getSelectionSignal(auto.lastMetrics);
+      const lockedSignal = getSelectionLockedSignal(auto.lastMetrics);
+      lines.push(
+        `[auto] dialog bright=${formatAutoMetric(dialogSignal.bright)} blue=${formatAutoMetric(dialogSignal.blue)} chroma=${formatAutoMetric(dialogSignal.chroma)}`,
+      );
+      lines.push(
+        `[auto] loading accent=${formatAutoMetric(loadingSignal.accent)} guard=${formatAutoMetric(loadingSignal.guardActivity)} / select left=${formatAutoMetric(selectionSignal.leftBright)}/${formatAutoMetric(selectionSignal.leftChroma)} right=${formatAutoMetric(selectionSignal.rightRed)}/${formatAutoMetric(selectionSignal.rightChroma)}`,
+      );
+      lines.push(
+        `[auto] locked badge=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
+      );
+
+      if (auto.lockedBaseline) {
+        const transitionSignal = getWaitingTransitionSignal(auto.lastMetrics, auto.lockedBaseline);
+        const waitingCandidateSignal = getWaitingCandidateSignal(auto.lastMetrics, auto.lockedBaseline, transitionSignal);
+        const battleHudSignal = getBattleHudSignal(auto.lastMetrics);
+        lines.push(
+          `[auto] transition barFade=${formatAutoMetric(transitionSignal.barFade)} badgeFade=${formatAutoMetric(transitionSignal.badgeFade)} prompt=${formatAutoMetric(transitionSignal.promptDisappear)} timer=${formatAutoMetric(transitionSignal.timerRise)} status=${formatAutoMetric(transitionSignal.statusRise)}`,
+        );
+        lines.push(
+          `[auto] waiting candidate leftDrop=${formatAutoMetric(waitingCandidateSignal.leftListDrop)} timer=${formatAutoMetric(waitingCandidateSignal.timerPresence)} status=${formatAutoMetric(waitingCandidateSignal.statusPresence)} promptWhite=${formatAutoMetric(waitingCandidateSignal.promptWhite)} enemy=${formatAutoMetric(waitingCandidateSignal.enemyRed)}/${formatAutoMetric(waitingCandidateSignal.enemyChroma)} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`,
+        );
+      } else {
+        lines.push("[auto] waiting baseline: 未取得");
+      }
+    } else {
+      lines.push("[auto] live metrics: まだありません。");
+    }
+
+    if (auto.fallbackBuffer) {
+      lines.push(
+        `[auto] fallback buffer: waiting_candidate @ ${new Date(auto.fallbackBuffer.capturedAt).toLocaleTimeString("ja-JP", { hour12: false })}`,
+      );
+    } else {
+      lines.push("[auto] fallback buffer: なし");
+    }
+
+    lines.push(`[auto] reset: ${auto.lastResetReason || "なし"}`);
+    lines.push(`[auto] ${auto.lastTriggerReason ? `last trigger: ${auto.lastTriggerReason}` : auto.lastReason}`);
+    return lines;
+  }
+
+  function getAutoPhaseLabel(phase) {
+    const auto = state.autoSnap;
+    if (phase === "loading_seen") {
+      return "loading";
+    }
+
+    if (phase === "selection_active") {
+      return "selection";
+    }
+
+    if (phase === "selection_locked") {
+      return "selection_locked";
+    }
+
+    if (phase === "waiting_transition_seen") {
+      return "waiting_transition";
+    }
+
+    if (phase === "waiting_candidate_seen") {
+      return "waiting_candidate";
+    }
+
+    if (phase === "snapped") {
+      return auto.lastSnapMode === "fallback" ? "fallback" : "waiting";
+    }
+
+    return "dialog";
+  }
+
+  function createAutoSnapState() {
+    return {
+      enabled: AUTO_SNAP_CONFIG.enabledByDefault,
+      frameId: 0,
+      frameRequestKind: "",
+      monitorActive: false,
+      lastFrameAt: 0,
+      phase: "idle",
+      dialogFrames: 0,
+      loadingFrames: 0,
+      selectionFrames: 0,
+      lockedFrames: 0,
+      dialogSeenAt: 0,
+      loadingSeenAt: 0,
+      selectionSeenAt: 0,
+      selectionLockedAt: 0,
+      waitingTransitionSeenAt: 0,
+      waitingCandidateSeenAt: 0,
+      lockedBaseline: null,
+      fallbackBuffer: null,
+      lastMetrics: null,
+      lastReason: "マッチング待機ダイアログ待ち",
+      lastTriggerReason: "",
+      lastResetReason: "initial",
+      lastSnapMode: "",
+      detectorCanvas: null,
+      detectorContext: null,
+    };
+  }
+
+  function captureReferenceFrameFromVideo(side) {
     const crop = state.crops[side];
     if (!crop) {
       throw new Error(`${side} のクロップ範囲がまだありません。`);
@@ -1100,7 +2266,25 @@
       frame.height,
     );
 
-    state.references[side] = frame;
+    return frame;
+  }
+
+  function cloneReferenceFrame(source) {
+    const frame = document.createElement("canvas");
+    frame.width = source.width;
+    frame.height = source.height;
+
+    const context = frame.getContext("2d");
+    if (!context) {
+      throw new Error("参照画像の複製に失敗しました。");
+    }
+
+    context.drawImage(source, 0, 0, frame.width, frame.height);
+    return frame;
+  }
+
+  function getPositiveDelta(currentValue, previousValue) {
+    return Math.max((currentValue || 0) - (previousValue || 0), 0);
   }
 
   function refreshCropPanels() {
