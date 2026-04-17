@@ -358,11 +358,12 @@
   }
 
   function handleDeviceSelectionChangeWithFocusReturn(event) {
-    handleDeviceSelectionChange();
-    focusTerminalInputIfAppropriate({
+    void runControlActionAndRestoreTerminalFocus(async () => {
+      handleDeviceSelectionChange();
+      await startSelectedVideo();
+    }, {
       event,
       target: event.currentTarget,
-      context: "control-complete",
     });
   }
 

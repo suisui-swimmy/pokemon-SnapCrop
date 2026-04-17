@@ -404,3 +404,24 @@
   - 実ブラウザで、select 変更後、toolbar ボタン後、`ready` 中 panel click 後の refocus と、`edit` 中の非干渉をまだ確認していない
 - Next step:
   - 実画面で `ready` / `edit` を切り替えながら select、各ボタン、音量スライダー、crop drag / resize を順に試し、terminal への復帰条件が想定どおりか確認する
+
+### 2026-04-18 05:50 JST — 映像入力 select 変更時の自動開始を既存フローへ接続
+- Status: done
+- Goal:
+  `映像入力` の選択変更だけで既存の開始処理を走らせ、`映像を開始` ボタンを fallback として残したまま導線を短くする
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - `device-select` の `change` ハンドラを `runControlActionAndRestoreTerminalFocus()` 経由に寄せ、選択 state 更新の直後に既存 `startSelectedVideo()` をそのまま呼ぶようにした
+  - これにより、video device 変更時は既存の `stopCurrentStream()` と `getUserMedia()` 再取得、音声選択の反映、focus return 判定を再利用したまま自動開始または安全な切り替えに乗るようになった
+  - README の映像開始手順を、select 変更で自動開始し、失敗時だけ `映像を開始` を押す流れに合わせて最小限更新した
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "handleDeviceSelectionChangeWithFocusReturn|映像開始を試みます|自動開始できなかった場合" app.js README.md`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、video device 変更時の自動開始、既存 stream からの切り替え、OBS Virtual Camera + 音声別入力の組み合わせはまだ未確認
+- Next step:
+  - 実画面で `映像入力` を切り替え、初回自動開始、配信中の安全な切り替え、音声未選択 / 音声別選択 / OBS Virtual Camera の 3 パターンを順に確認する
