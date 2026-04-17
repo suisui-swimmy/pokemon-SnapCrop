@@ -504,7 +504,7 @@ select {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
   column-gap: 0;
-  margin: 6px 0 0;
+  margin: 0;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.35;
@@ -579,7 +579,7 @@ select {
 }
 
 .terminal-entry + .terminal-entry {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .terminal-entry--command {

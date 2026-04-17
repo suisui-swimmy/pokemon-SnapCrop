@@ -203,3 +203,64 @@
 
 ### 2026-04-17 20:14 JST — f494902f2a937a9c8eb80f85bda7c802b2e45350 までロールバック(USER NOTE)
 - 軽量化導入後、認識が安定しないため、一度確実に認識が行えてた時点までgitによるロールバックを実施、なおロールバック前はbackup/before-rollback-20260417でbranchを切った。
+
+### 2026-04-17 21:01 JST — `debug` コマンドを追加し、認識範囲表示を debug 限定にした
+- Status: done
+- Goal:
+  普段の運用では認識範囲 overlay を隠し、必要なときだけ terminal から debug 表示を切り替えられるようにする
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - terminal に `debug on` / `debug off` / `debug status` を追加した
+  - 認識範囲 overlay の表示条件に `debugMode` を追加し、`ready + auto ON + debug ON` のときだけ UI 上へ出るようにした
+  - README のコマンド一覧と自動 snap 説明に、debug 表示が debug モード限定であることを追記した
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "debug on|debug off|debug status|handleDebugCommand|setDebugMode|getDebugStatusLines|state\\.debugMode|認識範囲表示" app.js README.md`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで `debug on` / `debug off` の表示切替はまだ未確認
+- Next step:
+  - 実画面で `debug on` 時だけ overlay が出て、`debug off` で即座に消えるか確認する
+
+### 2026-04-17 21:32 JST — 16:9 入力の左右クロップを固定プリセット化
+- Status: done
+- Goal:
+  16:9 入力では左右クロップを固定座標で扱い、4:3 入力だけ手動クロップ + `localStorage` 復元を残す
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - 16:9 入力用の左右クロップ固定プリセットを追加し、映像開始時は `localStorage` より先にそのプリセットを適用するようにした
+  - `edit` は 16:9 でも残しつつ、調整結果はそのセッションだけ有効で、4:3 入力のときだけ `localStorage` へ保存するようにした
+  - 新しい運用方針を UI 追加なしで terminal notice と README に反映した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで 16:9 入力時に固定プリセットがそのまま当たり、4:3 入力時に従来どおり復元されるかは未確認
+- Next step:
+  - 16:9 / 4:3 の両入力で起動して、固定プリセットと手動保存の分岐が想定どおりか確認する
+
+### 2026-04-17 21:39 JST — 16:9 入力時は自動で `ready` 開始に変更
+- Status: done
+- Goal:
+  16:9 入力では固定クロップ適用後にそのまま `ready` 状態へ入り、必要なときだけ terminal から `edit` へ戻せるようにする
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - 16:9 入力で映像開始したとき、固定プリセット適用後に `edit` から `ready` へ自動遷移するようにした
+  - terminal notice を、固定クロップ適用済みで `ready` 開始することと、必要なら `edit` で微調整できることが分かる文言に更新した
+  - README のクロップ調整説明にも、16:9 入力では `ready` 開始であることを追記した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで 16:9 入力時に自動で `ready` に入り、4:3 入力では従来どおり `edit` のまま始まるかは未確認
+- Next step:
+  - 16:9 / 4:3 の両入力で起動して、初期モード分岐が想定どおりか確認する

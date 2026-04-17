@@ -27,6 +27,20 @@
   const ASPECT_16_BY_9 = 16 / 9;
   const ASPECT_4_BY_3 = 4 / 3;
   const ASPECT_TOLERANCE = 0.02;
+  const FIXED_16_BY_9_CROP_RATIOS = {
+    my: {
+      x: 295 / 1920,
+      y: 96 / 1080,
+      width: 299 / 1920,
+      height: 807 / 1080,
+    },
+    enemy: {
+      x: 1326 / 1920,
+      y: 96 / 1080,
+      width: 299 / 1920,
+      height: 807 / 1080,
+    },
+  };
   const STREAM_PROFILES = [
     { width: { exact: 1920 }, height: { exact: 1080 } },
     { width: { exact: 1280 }, height: { exact: 720 } },
@@ -158,6 +172,7 @@
     terminalNoticeKeys: new Set(),
     commandHistory: [],
     commandHistoryIndex: -1,
+    debugMode: false,
     autoSnap: createAutoSnapState(),
   };
 
@@ -179,7 +194,7 @@
       "command-hint",
       [
         "[system] edit で範囲編集、ready で待機、空Enterか Ctrl+Enter で撮影できます。",
-        "[system] auto on / auto off / auto status で自動 snap を切り替えできます。",
+        "[system] auto on / auto off / auto status、debug on / debug off / debug status が使えます。",
       ],
       "system",
     );
@@ -621,14 +636,23 @@
     refreshWorkspaceLayout();
 
     CROP_SIDES.forEach((side) => {
-      const restored = restoreCrop(side, dimensions.width, dimensions.height);
-      const initialCrop = restored || getDefaultCrop(side, dimensions.width, dimensions.height);
+      const initialCrop = getInitialCrop(side, dimensions.width, dimensions.height);
       updateCrop(side, initialCrop, { save: false });
     });
     setCameraState(
       state.streamInfo.inputLabel,
       state.streamInfo.isSixteenByNine ? "success" : "working",
     );
+    if (state.streamInfo.isSixteenByNine) {
+      appendTerminalNotice(
+        "fixed-crop-16-9",
+        [
+          "[system] 現在は 16:9 入力です。左右クロップは固定プリセットを適用しています。",
+          "[system] デフォルトは ready で開始します。必要なら edit でこのセッションだけ微調整できます。",
+        ],
+        "system",
+      );
+    }
     if (!state.streamInfo.isSixteenByNine) {
       appendTerminalNotice(
         state.hasObsDevice ? "aspect-4-3-obs" : "aspect-4-3-generic",
@@ -649,6 +673,10 @@
     }
     renderCameraDetails();
     refreshCropPanels();
+    if (state.streamInfo.isSixteenByNine && state.mode === "edit") {
+      setMode("ready");
+      return;
+    }
     if (state.mode === "edit") {
       startPreviewLoop();
     }
@@ -769,7 +797,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / help",
           "ショートカット: Ctrl+Enter = snap both / Esc = ready",
         ],
         "system",
@@ -779,6 +807,11 @@
 
     if (command === "auto") {
       handleAutoCommand(arg);
+      return true;
+    }
+
+    if (command === "debug") {
+      handleDebugCommand(arg);
       return true;
     }
 
@@ -905,7 +938,7 @@
       drawCropPanel(side);
     }
 
-    if (save) {
+    if (save && shouldPersistCrop()) {
       persistCrop(side, state.crops[side], dimensions.width, dimensions.height);
     }
 
@@ -1036,9 +1069,10 @@
 
   function shouldShowAutoDebugOverlays() {
     return Boolean(
-      state.videoReady
-      && state.mode === "ready"
+      state.debugMode
       && state.autoSnap.enabled
+      && state.videoReady
+      && state.mode === "ready"
       && state.crops.my
       && state.crops.enemy,
     );
@@ -1219,6 +1253,15 @@
     refreshCropPanels();
     renderCropOverlays();
     syncAutoSnapMonitoring();
+    if (nextMode === "edit" && state.streamInfo?.isSixteenByNine) {
+      appendTerminalNotice(
+        "edit-16-9-session",
+        [
+          "[system] 16:9 入力では固定クロップが基準です。edit の調整はこのセッションだけ有効です。",
+        ],
+        "system",
+      );
+    }
     appendTerminalEntry(
       [
         nextMode === "edit"
@@ -1354,6 +1397,72 @@
       ],
       "system",
     );
+  }
+
+  function handleDebugCommand(arg) {
+    const action = arg || "status";
+
+    if (action === "on") {
+      setDebugMode(true);
+      return;
+    }
+
+    if (action === "off") {
+      setDebugMode(false);
+      return;
+    }
+
+    if (action === "status") {
+      appendTerminalEntry(getDebugStatusLines(), "system");
+      return;
+    }
+
+    appendTerminalEntry(
+      [
+        "debug は on / off / status を指定できます。",
+      ],
+      "error",
+    );
+  }
+
+  function setDebugMode(enabled) {
+    if (state.debugMode === enabled) {
+      appendTerminalEntry(
+        [
+          enabled ? "[debug] すでに ON です。" : "[debug] すでに OFF です。",
+        ],
+        "system",
+      );
+      return;
+    }
+
+    state.debugMode = enabled;
+    renderCropOverlays();
+    appendTerminalEntry(
+      [
+        enabled
+          ? "[debug] debug モードを ON にしました。認識範囲表示は debug 中だけ出ます。"
+          : "[debug] debug モードを OFF にしました。認識範囲表示を隠します。",
+      ],
+      "system",
+    );
+  }
+
+  function getDebugStatusLines() {
+    const lines = [
+      `[debug] ${state.debugMode ? "ON" : "OFF"}`,
+      `[debug] overlay: ${shouldShowAutoDebugOverlays() ? "visible" : "hidden"}`,
+    ];
+
+    if (!state.videoReady) {
+      lines.push("[debug] 映像未準備のため overlay は表示されません。");
+    } else if (state.mode !== "ready") {
+      lines.push("[debug] ready モード中だけ overlay を表示します。");
+    } else if (!state.autoSnap.enabled) {
+      lines.push("[debug] auto OFF 中は overlay を表示しません。");
+    }
+
+    return lines;
   }
 
   function syncAutoSnapMonitoring() {
@@ -2726,6 +2835,37 @@
 
   function scrollTerminalToBottom() {
     elements.terminalScreen.scrollTop = elements.terminalScreen.scrollHeight;
+  }
+
+  function shouldUseFixedSixteenByNineCrops() {
+    return Boolean(state.streamInfo?.isSixteenByNine);
+  }
+
+  function shouldPersistCrop() {
+    return !shouldUseFixedSixteenByNineCrops();
+  }
+
+  function getFixedSixteenByNineCrop(side, videoWidth, videoHeight) {
+    const ratios = FIXED_16_BY_9_CROP_RATIOS[side];
+    return clampCrop(
+      {
+        x: videoWidth * ratios.x,
+        y: videoHeight * ratios.y,
+        width: videoWidth * ratios.width,
+        height: videoHeight * ratios.height,
+      },
+      videoWidth,
+      videoHeight,
+    );
+  }
+
+  function getInitialCrop(side, videoWidth, videoHeight) {
+    if (shouldUseFixedSixteenByNineCrops()) {
+      return getFixedSixteenByNineCrop(side, videoWidth, videoHeight);
+    }
+
+    const restored = restoreCrop(side, videoWidth, videoHeight);
+    return restored || getDefaultCrop(side, videoWidth, videoHeight);
   }
 
   function getDefaultCrop(side, videoWidth, videoHeight) {
