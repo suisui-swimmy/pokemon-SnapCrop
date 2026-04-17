@@ -368,11 +368,12 @@
   }
 
   function handleAudioSelectionChangeWithFocusReturn(event) {
-    handleAudioSelectionChange();
-    focusTerminalInputIfAppropriate({
+    void runControlActionAndRestoreTerminalFocus(async () => {
+      const audioSelection = handleAudioSelectionChange();
+      await applySelectedAudioInput(audioSelection);
+    }, {
       event,
       target: event.currentTarget,
-      context: "control-complete",
     });
   }
 
@@ -534,8 +535,43 @@
   }
 
   function handleAudioSelectionChange() {
+    const previousSelectedAudioDeviceId = state.selectedAudioDeviceId;
     state.audioSelectionLocked = true;
     state.selectedAudioDeviceId = elements.audioSelect?.value || "";
+    return {
+      previousSelectedAudioDeviceId,
+      nextSelectedAudioDeviceId: state.selectedAudioDeviceId,
+    };
+  }
+
+  async function applySelectedAudioInput(selection = {}) {
+    const {
+      previousSelectedAudioDeviceId = "",
+      nextSelectedAudioDeviceId = state.selectedAudioDeviceId,
+    } = selection;
+    const selectedAudioDeviceId = nextSelectedAudioDeviceId || "";
+
+    if (selectedAudioDeviceId === previousSelectedAudioDeviceId && state.audioInputStream) {
+      return;
+    }
+
+    stopSelectedAudioInput();
+
+    if (!selectedAudioDeviceId) {
+      return;
+    }
+
+    const audioResult = await requestSelectedAudioStream(selectedAudioDeviceId);
+    if (!audioResult.stream) {
+      return;
+    }
+
+    state.audioInputStream = audioResult.stream;
+    const audioReady = await setupAudioPlayback({ stream: audioResult.stream });
+    if (!audioReady && state.audioInputStream) {
+      state.audioInputStream.getTracks().forEach((track) => track.stop());
+      state.audioInputStream = null;
+    }
   }
 
   async function startSelectedVideo() {
@@ -1457,12 +1493,7 @@
     stopPreviewLoop();
     stopAutoSnapMonitor();
     resetAutoSnapCycle("映像停止");
-    stopAudioPlayback();
-
-    if (state.audioInputStream) {
-      state.audioInputStream.getTracks().forEach((track) => track.stop());
-      state.audioInputStream = null;
-    }
+    stopSelectedAudioInput();
 
     if (state.stream) {
       state.stream.getTracks().forEach((track) => track.stop());
@@ -2972,6 +3003,15 @@
     state.audioTrackStream = null;
     state.audioReady = false;
     syncAudioControls();
+  }
+
+  function stopSelectedAudioInput() {
+    stopAudioPlayback();
+
+    if (state.audioInputStream) {
+      state.audioInputStream.getTracks().forEach((track) => track.stop());
+      state.audioInputStream = null;
+    }
   }
 
   function applyAudioOutputState() {

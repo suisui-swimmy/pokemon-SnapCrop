@@ -425,3 +425,24 @@
   - 実ブラウザで、video device 変更時の自動開始、既存 stream からの切り替え、OBS Virtual Camera + 音声別入力の組み合わせはまだ未確認
 - Next step:
   - 実画面で `映像入力` を切り替え、初回自動開始、配信中の安全な切り替え、音声未選択 / 音声別選択 / OBS Virtual Camera の 3 パターンを順に確認する
+
+### 2026-04-18 06:05 JST — audio-select 変更時の音声自動適用を追加
+- Status: done
+- Goal:
+  `audio-select` の変更で video を再初期化せず、音声入力だけを安全に止めて差し替えられるようにする
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - `handleAudioSelectionChangeWithFocusReturn()` を `runControlActionAndRestoreTerminalFocus()` 経由に寄せ、選択 state 更新後に音声だけを差し替える `applySelectedAudioInput()` を呼ぶようにした
+  - `applySelectedAudioInput()` を追加し、`audio-select` が空なら音声停止のみ、選択があれば `requestSelectedAudioStream()` と `setupAudioPlayback()` を使って音声だけを再取得するようにした
+  - 旧音声の停止処理を `stopSelectedAudioInput()` に寄せ、source node 切断と input track 停止を共通化したうえで、既存の `stopCurrentStream()` からも同じ helper を使うようにした
+  - mute / volume / autoplay 制限の処理は既存 `setupAudioPlayback()` / `resumeAudioContext()` / `applyAudioOutputState()` の流れをそのまま再利用し、video stream や `elements.video.srcObject` には触れないようにした
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "handleAudioSelectionChangeWithFocusReturn|applySelectedAudioInput|stopSelectedAudioInput" app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、audio-select 変更時に video が維持されたまま音声だけ切り替わること、`音声なし` で音だけ止まること、autoplay 保留文言が既存どおり出ることは未確認
+- Next step:
+  - 実画面で `音声なし -> 音声入力A -> 音声入力B -> 音声なし` を順に試し、video 非再初期化、音量 / ミュート維持、OBS Virtual Camera + 別 audio input の継続利用を確認する
