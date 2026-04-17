@@ -7,7 +7,7 @@
 - 映像入力デバイス一覧を表示して、キャプチャデバイスや OBS 仮想カメラを選択する
 - 16:9 入力では左右クロップに固定プリセットを自動適用し、必要なときだけ `edit` で一時調整する
 - `edit` / `ready` を切り替えながら、左右の参照画像を `snap both` で更新する
-- `ready` 中だけ、`loading -> 選出時計 -> 選出完了ラッチ -> 待機タイマー` の順序を小さいテンプレ照合で監視し、自動で `snap both` する
+- `ready` 中だけ、`loading -> 選出タイマー -> 選出完了ラッチ -> 待機タイマー` の順序を小さいテンプレ照合で監視し、自動で `snap both` する
 - 下段の CLI 風パネルでポケモン名を検索し、CSV からタイプ、特性、種族値を表示する
 - 4:3 入力ではクロップ位置とサイズを `localStorage` に保存し、次回起動時に復元する
 - PWA としてインストールしやすい最低限の構成で動かす
@@ -87,10 +87,18 @@ OBS Virtual Camera が見えている場合は、その入力を優先して使�
 主なコマンド:
 
 - `edit`: クロップ範囲を編集する
+- `e`: `edit`
 - `ready`: 実戦モードに戻る
+- `r`: `ready`
 - `snap my` / `snap enemy` / `snap both`: 参照画像を更新する
-- `auto on` / `auto off` / `auto status` / `auto reset`: 待機中画面の自動 snap を制御する
+- `s`: `snap both`
+- `sm`: `snap my`
+- `se`: `snap enemy`
+- `auto on` / `auto off` / `auto status` / `auto reset`: 待機中画面の自動 snap を制御する。`auto on` は `ready` への切り替えまでまとめて行う
 - `debug on` / `debug off` / `debug status`: 認識範囲のデバッグ表示を制御する
+- `status`: 現在の mode / auto / debug / input / video / audio を要約表示する
+- `clear` / `cls`: terminal の表示をクリアする
+- `crop reset [my|enemy|both]`: クロップを初期状態に戻す
 
 自動 snap の流れ:
 
@@ -99,7 +107,7 @@ OBS Virtual Camera が見えている場合は、その入力を優先して使�
 - 次に選出画面左上の時計アイコンを、別テンプレート `selection-timer-icon.png` と固定 ROI で照合して選出画面に入ったと判断します
 - 中央上部の待機タイマーが見えた最初のフレームで `snap both` します
 - 左端の番号帯と左下の `4/4` 完了バーによる `選出完了` ラッチは補助判定として残していて、主経路のテンプレ一致を邪魔しない safety gate として使います
-- `loading` / `選出時計` / `待機タイマー` は、1920x1080 基準の固定 ROI とユーザー提供のテンプレート画像で判定します
+- `loading` / `選出タイマー` / `待機タイマー` は、1920x1080 基準の固定 ROI とユーザー提供のテンプレート画像で判定します
 - 自動 snap は 16:9 入力専用です。4:3 入力ではクロップ補正はできますが、自動認識は動きません
 - fallback は待機タイマー候補を 1 度でも見た後だけ許可し、実 battle HUD が先に来たときだけ候補フレームを 1 回使います
 - UI 上の認識範囲表示は `debug on` のときだけ出ます。普段は表示しません

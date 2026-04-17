@@ -193,15 +193,10 @@
     appendTerminalNotice(
       "command-hint",
       [
-        "[system] edit で範囲編集、ready で待機、空Enterか Ctrl+Enter で撮影できます。",
-        "[system] auto on / auto off / auto status、debug on / debug off / debug status が使えます。",
-      ],
-      "system",
-    );
-    appendTerminalNotice(
-      "auto-default",
-      [
-        `[system] 待機中画面の自動 snap は ${AUTO_SNAP_CONFIG.enabledByDefault ? "ON" : "OFF"} です。`,
+        "[system] edit で範囲を調整、ready で待機できます。",
+        AUTO_SNAP_CONFIG.enabledByDefault
+          ? "[system] 自動 snap は ON です。状態は auto status / debug status / help で確認できます。"
+          : "[system] 自動 snap は OFF です。auto on で有効にできます。",
       ],
       "system",
     );
@@ -303,13 +298,9 @@
       state.csvReady = true;
     } catch (error) {
       state.csvReady = false;
-      appendTerminalEntry(
-        [
-          "[error] CSV の読み込みに失敗しました。",
-          "[error] ローカルサーバー経由で開いているか確認してください。",
-          `[error] 詳細: ${error.message}`,
-        ],
-        "error",
+      appendTerminalError(
+        "[error] CSV の読み込みに失敗しました。ローカルサーバー経由で開き直してください。",
+        error,
       );
     }
   }
@@ -326,8 +317,7 @@
       appendTerminalNotice(
         "unsupported-media-devices",
         [
-          "[error] このブラウザでは映像入力を使えません。",
-          "[error] MediaDevices API に対応したブラウザで開いてください。",
+          "[error] このブラウザでは映像入力を利用できません。MediaDevices API に対応したブラウザで開いてください。",
         ],
         "error",
       );
@@ -363,12 +353,9 @@
       renderCameraDetails();
     } catch (error) {
       setCameraState("失敗", "error");
-      appendTerminalEntry(
-        [
-          "[error] 映像デバイス一覧の取得に失敗しました。",
-          `[error] 詳細: ${error.message}`,
-        ],
-        "error",
+      appendTerminalError(
+        "[error] 映像入力の一覧取得に失敗しました。ページを再読み込みして、もう一度試してください。",
+        error,
       );
     }
   }
@@ -468,12 +455,8 @@
   async function startSelectedVideo() {
     if (!state.devices.length) {
       setCameraState("未接続", "error");
-      appendTerminalEntry(
-        [
-          "[error] 映像入力が見つからないため、映像を開始できません。",
-          "[error] キャプチャデバイスまたは OBS 仮想カメラを確認してください。",
-        ],
-        "error",
+      appendTerminalError(
+        "[error] 映像入力が見つかりません。キャプチャデバイスまたは OBS 仮想カメラを確認してください。",
       );
       return;
     }
@@ -509,7 +492,7 @@
         } else if (activeVideoDevice && isObsDevice(activeVideoDevice)) {
           appendTerminalEntry(
             [
-              "[system] OBS Virtual Camera は映像のみです。音が必要なら音声入力を別で選んでください。",
+              "[system] OBS Virtual Camera は映像のみです。音が必要な場合は音声入力を別で選んでください。",
             ],
             "system",
           );
@@ -596,29 +579,22 @@
     stopCurrentStream();
 
     let message = "失敗";
-    let detail = "映像入力の開始に失敗しました。";
+    let terminalMessage = "[error] 映像入力の開始に失敗しました。";
 
     if (error && error.name === "NotAllowedError") {
       message = "拒否";
-      detail = "ブラウザで映像アクセスが拒否されました。アドレスバーの権限設定を確認してください。";
+      terminalMessage = "[error] 映像入力へのアクセスが拒否されました。ブラウザの権限設定を確認してください。";
     } else if (error && error.name === "NotFoundError") {
       message = "未接続";
-      detail = "選択した映像入力が見つかりません。デバイスの再接続後に一覧更新してください。";
+      terminalMessage = "[error] 選択した映像入力が見つかりません。デバイスをつなぎ直して一覧を更新してください。";
     } else if (error && error.name === "NotReadableError") {
       message = "使用中";
-      detail = "映像入力が他アプリに占有されている可能性があります。OBS や別タブを確認してください。";
+      terminalMessage = "[error] 選択した映像入力を利用できません。他のアプリやブラウザタブで使用中の可能性があります。";
     }
 
     setCameraState(message, "error");
     renderCameraDetails();
-    appendTerminalEntry(
-      [
-        `[error] ${message}`,
-        `[error] ${detail}`,
-        `[error] 詳細: ${error.message}`,
-      ],
-      "error",
-    );
+    appendTerminalError(terminalMessage, error);
   }
 
   function handleVideoReady() {
@@ -647,19 +623,16 @@
       appendTerminalNotice(
         "fixed-crop-16-9",
         [
-          "[system] 現在は 16:9 入力です。左右クロップは固定プリセットを適用しています。",
-          "[system] デフォルトは ready で開始します。必要なら edit でこのセッションだけ微調整できます。",
+          "[system] 16:9 入力を検出しました。左右クロップに固定プリセットを適用しました。",
         ],
         "system",
       );
     }
     if (!state.streamInfo.isSixteenByNine) {
       appendTerminalNotice(
-        state.hasObsDevice ? "aspect-4-3-obs" : "aspect-4-3-generic",
+        "aspect-4-3-generic",
         [
-          state.hasObsDevice
-            ? "[system] 現在は 4:3 入力です。16:9 で使うなら OBS 仮想カメラが安定です。"
-            : "[system] 現在は 4:3 入力です。16:9 出力できる映像入力があると扱いやすいです。",
+          "[system] 4:3 入力を検出しました。16:9 で出力できる映像入力で自動 snap を有効にできます。",
         ],
         "system",
       );
@@ -704,12 +677,7 @@
     }
 
     if (!state.csvReady) {
-      appendTerminalEntry(
-        [
-          "CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。",
-        ],
-        "error",
-      );
+      appendTerminalError("[error] CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。");
       return;
     }
 
@@ -717,7 +685,7 @@
     if (!pokemon) {
       appendTerminalEntry(
         [
-          "不明なコマンド、または該当するポケモンがありません。",
+          "[error] 該当するポケモンが見つかりません。コマンドを確認したい場合は help を入力してください。",
         ],
         "error",
       );
@@ -782,7 +750,8 @@
   }
 
   function handleTerminalCommand(query) {
-    const [command = "", arg = ""] = query.toLowerCase().split(/\s+/, 2);
+    const normalizedQuery = normalizeTerminalAlias(query.toLowerCase().trim());
+    const [command = "", arg = "", extra = ""] = normalizedQuery.split(/\s+/).filter(Boolean);
 
     if (command === "edit") {
       setMode("edit");
@@ -797,8 +766,25 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / help",
-          "ショートカット: Ctrl+Enter = snap both / Esc = ready",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / help",
+          "短縮コマンド: e / r / s / sm / se",
+          "ショートカット: Ctrl + Enter = snap both / Esc = ready",
+        ],
+        "system",
+      );
+      return true;
+    }
+
+    if (command === "status") {
+      appendTerminalEntry(getTerminalStatusLines(), "system");
+      return true;
+    }
+
+    if (command === "clear" || command === "cls") {
+      clearTerminalOutput();
+      appendTerminalEntry(
+        [
+          "[system] terminal の表示をクリアしました。",
         ],
         "system",
       );
@@ -820,7 +806,7 @@
       if (!["my", "enemy", "both"].includes(target)) {
         appendTerminalEntry(
           [
-            "snap は my / enemy / both を指定できます。",
+            "[error] snap は my / enemy / both を指定できます。",
           ],
           "error",
         );
@@ -831,7 +817,45 @@
       return true;
     }
 
+    if (command === "crop") {
+      if (arg !== "reset") {
+        appendTerminalEntry(
+          [
+            "[error] crop は reset を指定できます。",
+          ],
+          "error",
+        );
+        return true;
+      }
+
+      const target = ["", "both"].includes(extra) ? "both" : extra;
+      if (!["my", "enemy", "both"].includes(target)) {
+        appendTerminalEntry(
+          [
+            "[error] crop reset は my / enemy / both を指定できます。",
+          ],
+          "error",
+        );
+        return true;
+      }
+
+      handleCropResetCommand(target);
+      return true;
+    }
+
     return false;
+  }
+
+  function normalizeTerminalAlias(query) {
+    const aliasMap = {
+      e: "edit",
+      r: "ready",
+      s: "snap both",
+      sm: "snap my",
+      se: "snap enemy",
+    };
+
+    return aliasMap[query] || query;
   }
 
   function pushCommandHistory(command) {
@@ -853,6 +877,51 @@
   function moveCaretToEnd(input) {
     const nextPosition = input.value.length;
     input.setSelectionRange(nextPosition, nextPosition);
+  }
+
+  function getTerminalStatusLines() {
+    return [
+      `[system] mode: ${state.mode}`,
+      `[system] auto: ${state.autoSnap.enabled ? "ON" : "OFF"}`,
+      `[system] debug: ${state.debugMode ? "ON" : "OFF"}`,
+      `[system] input: ${state.streamInfo?.ratioLabel || "unknown"}`,
+      `[system] video: ${state.videoReady ? "ready" : "not ready"}`,
+      `[system] audio: ${state.audioReady ? "ready" : "not ready"}`,
+    ];
+  }
+
+  function clearTerminalOutput() {
+    elements.terminalOutput.textContent = "";
+    scrollTerminalToBottom();
+  }
+
+  function handleCropResetCommand(target) {
+    const dimensions = getStreamDimensions();
+    if (!dimensions.width || !dimensions.height) {
+      appendTerminalEntry(
+        [
+          "[error] 映像の準備ができていないため、クロップを初期状態に戻せません。",
+        ],
+        "error",
+      );
+      return;
+    }
+
+    const sides = target === "both" ? CROP_SIDES : [target];
+    sides.forEach((side) => {
+      updateCrop(side, getResetCrop(side, dimensions.width, dimensions.height), { save: true });
+    });
+
+    appendTerminalEntry(
+      [
+        target === "my"
+          ? "[system] 自分側のクロップ範囲を初期状態に戻しました。"
+          : target === "enemy"
+            ? "[system] 相手側のクロップ範囲を初期状態に戻しました。"
+            : "[system] 左右のクロップ範囲を初期状態に戻しました。",
+      ],
+      "system",
+    );
   }
 
   function startCropInteraction(event) {
@@ -1236,7 +1305,8 @@
     return;
   }
 
-  function setMode(nextMode) {
+  function setMode(nextMode, options = {}) {
+    const { suppressTerminalMessage = false } = options;
     if (state.mode === nextMode) {
       return;
     }
@@ -1262,14 +1332,16 @@
         "system",
       );
     }
-    appendTerminalEntry(
-      [
-        nextMode === "edit"
-          ? "編集モードに入りました。ドラッグと右下ハンドルで範囲調整できます。"
-          : "実戦モードに戻りました。撮影の準備が完了しました。空Enterか Ctrl+Enter で撮影できます。",
-      ],
-      "system",
-    );
+    if (!suppressTerminalMessage) {
+      appendTerminalEntry(
+        [
+          nextMode === "edit"
+            ? "[system] edit に入りました。ドラッグまたは右下ハンドルで範囲を調整できます。"
+            : "[system] ready に戻りました。クロップ調整を終えて待機中です。空 Enter または Ctrl + Enter で撮影できます。",
+        ],
+        "system",
+      );
+    }
   }
 
   async function handleSnapCommand(target, options = {}) {
@@ -1280,19 +1352,16 @@
       appendTerminalEntry(
         [
           source === "auto"
-            ? `[auto] ${message}${reason ? ` (${reason})` : ""}`
-            : message,
+            ? `[auto] ${message}`
+            : `[system] ${message}`,
         ],
         "success",
       );
+      if (source === "auto" && reason) {
+        appendTerminalDebug([`[debug] 自動撮影の詳細: ${reason}`]);
+      }
     } catch (error) {
-      appendTerminalEntry(
-        [
-          "表示用画像の更新に失敗しました。",
-          `詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] 参照画像の更新に失敗しました。", error);
     }
   }
 
@@ -1357,7 +1426,7 @@
 
     appendTerminalEntry(
       [
-        "auto は on / off / status / reset を指定できます。",
+        "[error] auto は on / off / status / reset を指定できます。",
       ],
       "error",
     );
@@ -1378,12 +1447,16 @@
     resetAutoSnapCycle(enabled ? "auto on" : "auto off");
 
     if (enabled) {
-      syncAutoSnapMonitoring();
+      if (state.mode !== "ready") {
+        setMode("ready", { suppressTerminalMessage: true });
+      } else {
+        syncAutoSnapMonitoring();
+      }
       appendTerminalEntry(
         [
           state.streamInfo && !state.streamInfo.isSixteenByNine
-            ? "[auto] 自動 snap を ON にしました。16:9 入力に切り替わるまで監視は待機します。"
-            : "[auto] 自動 snap を ON にしました。ready モード中だけ監視します。",
+            ? "[auto] 自動 snap を ON にし、ready に切り替えました。16:9 入力に切り替わるまで監視は待機します。"
+            : "[auto] 自動 snap を ON にし、ready に切り替えました。クロップ調整を終えた待機状態で監視を始めます。",
         ],
         "system",
       );
@@ -1419,7 +1492,7 @@
 
     appendTerminalEntry(
       [
-        "debug は on / off / status を指定できます。",
+        "[error] debug は on / off / status を指定できます。",
       ],
       "error",
     );
@@ -1441,8 +1514,8 @@
     appendTerminalEntry(
       [
         enabled
-          ? "[debug] debug モードを ON にしました。認識範囲表示は debug 中だけ出ます。"
-          : "[debug] debug モードを OFF にしました。認識範囲表示を隠します。",
+          ? "[debug] デバッグ表示を ON にしました。認識範囲を表示しました。"
+          : "[debug] デバッグ表示を OFF にしました。認識範囲を非表示にしました。",
       ],
       "system",
     );
@@ -1451,15 +1524,15 @@
   function getDebugStatusLines() {
     const lines = [
       `[debug] ${state.debugMode ? "ON" : "OFF"}`,
-      `[debug] overlay: ${shouldShowAutoDebugOverlays() ? "visible" : "hidden"}`,
+      `[debug] 認識範囲表示: ${shouldShowAutoDebugOverlays() ? "表示中" : "非表示"}`,
     ];
 
     if (!state.videoReady) {
-      lines.push("[debug] 映像未準備のため overlay は表示されません。");
+      lines.push("[debug] 映像の準備ができていないため、認識範囲は表示されません。");
     } else if (state.mode !== "ready") {
-      lines.push("[debug] ready モード中だけ overlay を表示します。");
+      lines.push("[debug] 認識範囲は ready モード中のみ表示されます。");
     } else if (!state.autoSnap.enabled) {
-      lines.push("[debug] auto OFF 中は overlay を表示しません。");
+      lines.push("[debug] auto が OFF のため、認識範囲は表示されません。");
     }
 
     return lines;
@@ -1625,11 +1698,10 @@
       auto.lastTriggerReason = "";
       auto.loadingSeenAt = now;
       auto.lastReason = `loading を検出 coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`;
-      appendTerminalEntry(
+      appendTerminalDebug(
         [
-          `[auto] 本物の loading を検出しました。選出時計を待ちます。 (${auto.lastReason})`,
+          `[debug] 読み込み中 を検出しました。 ${auto.lastReason}`,
         ],
-        "system",
       );
       return;
     }
@@ -1644,8 +1716,8 @@
       if (!selectionSignal.matched) {
         auto.selectionFrames = 0;
         auto.lastReason = selectionSignal.templateReady
-          ? `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`
-          : "選出時計テンプレートの読み込み待ちです。";
+          ? `選出タイマー待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`
+          : "選出タイマーテンプレートの読み込み待ちです。";
         return;
       }
 
@@ -1659,12 +1731,11 @@
       auto.selectionFrames = 0;
       auto.selectionSeenAt = now;
       auto.lockedFrames = 0;
-      auto.lastReason = `選出時計を検出 coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`;
-      appendTerminalEntry(
+      auto.lastReason = `選出タイマーを検出 coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`;
+      appendTerminalDebug(
         [
-          `[auto] 選出画面の時計アイコンを検出しました。待機タイマーを優先しつつ、選出完了ラッチも補助で見ます。 (${auto.lastReason})`,
+          `[debug] 選出画面のタイマーを検出しました。 ${auto.lastReason}`,
         ],
-        "system",
       );
       return;
     }
@@ -1683,11 +1754,10 @@
           auto.lockedBaseline = buildLockedBaseline(metrics);
           auto.fallbackBuffer = null;
           auto.lastReason = `選出完了をラッチ badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
-          appendTerminalEntry(
+          appendTerminalDebug(
             [
-              `[auto] 選出完了をラッチしました。待機タイマー優先のまま、補助情報として保持します。 (${auto.lastReason})`,
+              `[debug] 選出完了を検出しました。 ${auto.lastReason}`,
             ],
-            "system",
           );
         }
       } else {
@@ -1710,7 +1780,7 @@
       const selectionSignal = getSelectionTimerSignal(metrics);
       auto.lastReason = selectionSignal.matched
         ? `待機タイマー優先 / ラッチ補助 badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)} icon=${formatAutoMetric(timerIconSignal.coverageScore)}/${formatAutoMetric(timerIconSignal.spillScore)}`
-        : `選出時計待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
+        : `選出タイマー待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
       return;
     }
 
@@ -1985,11 +2055,16 @@
     auto.lastReason = `待機タイマーを検出 coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
     appendTerminalEntry(
       [
-        latched
-          ? `[auto] 待機タイマーを検出しました。ここで即 snap を試し、fallback はこの候補 frame だけで許可します。 (${auto.lastReason})`
-          : `[auto] 待機タイマーを検出しました。選出完了ラッチ前でもテンプレ一致を優先してここで snap します。 (${auto.lastReason})`,
+        "[auto] 待機中画面を検出しました。自動で撮影します。",
       ],
       "system",
+    );
+    appendTerminalDebug(
+      [
+        latched
+          ? `[debug] 待機画面のタイマーを検出しました。選出完了後の待機から自動撮影します。${auto.lastReason}`
+          : `[debug] 待機画面のタイマーを検出しました。選出完了前でもテンプレート一致を優先して撮影します。${auto.lastReason}`,
+      ],
     );
 
     try {
@@ -1999,18 +2074,13 @@
       const message = performSnapCapture("both");
       appendTerminalEntry(
         [
-          `[auto] ${message} (${auto.lastTriggerReason})`,
+          `[auto] ${message}`,
         ],
         "success",
       );
+      appendTerminalDebug([`[debug] 自動撮影の詳細: ${auto.lastTriggerReason}`]);
     } catch (error) {
-      appendTerminalEntry(
-        [
-          "[auto] 待機中画面の自動 snap に失敗しました。",
-          `詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] 自動 snap に失敗しました。", error);
       auto.phase = latched ? "selection_locked" : "selection_active";
     }
 
@@ -2018,8 +2088,8 @@
   }
 
   function loadAutoTemplates() {
-    loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "loading 画像の読み込みに失敗しました。");
-    loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出時計画像の読み込みに失敗しました。");
+    loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "読み込み中 画像の読み込みに失敗しました。");
+    loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出タイマー画像の読み込みに失敗しました。");
     loadAutoTemplate("waitingTimer", AUTO_TEMPLATE_PATHS.waitingTimer, "auto-waiting-template-load-failed", "待機タイマー画像の読み込みに失敗しました。");
   }
 
@@ -2034,7 +2104,7 @@
       appendTerminalNotice(
         noticeKey,
         [
-          `[auto] ${message} auto snap のテンプレ判定は動きません。`,
+          `[error] ${message} 自動 snap の一部判定が利用できません。`,
         ],
         "error",
       );
@@ -2284,12 +2354,8 @@
       : "battle HUD が先に来たため waiting icon frame を使用";
 
     if (!auto.fallbackBuffer?.frames) {
-      appendTerminalEntry(
-        [
-          `[auto:fallback] waiting icon frame が保持できていないため snap できませんでした。 (${auto.lastTriggerReason})`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] 自動 snap に失敗しました。");
+      appendTerminalDebug([`[debug] 予備経路に切り替えましたが、待機中タイマーを検出したフレームを保持できていません。(${auto.lastTriggerReason})`]);
       return;
     }
 
@@ -2299,18 +2365,14 @@
       });
       appendTerminalEntry(
         [
-          `[auto:fallback] ${message} (${auto.lastTriggerReason})`,
+          `[auto] ${message}`,
         ],
         "success",
       );
+      appendTerminalDebug([`[debug] 予備経路で撮影しました。${auto.lastTriggerReason}`]);
     } catch (error) {
-      appendTerminalEntry(
-        [
-          "[auto:fallback] waiting icon frame の適用に失敗しました。",
-          `詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] 自動 snap に失敗しました。", error);
+      appendTerminalDebug(["[debug] 予備経路で保持していたフレームの適用に失敗しました。"]);
     }
   }
 
@@ -2321,52 +2383,112 @@
   function getAutoStatusLines() {
     const auto = state.autoSnap;
     const lines = [
-      `[auto] ${auto.enabled ? "ON" : "OFF"} / phase: ${getAutoPhaseLabel(auto.phase)} / monitor: ${auto.monitorActive ? (auto.frameRequestKind || "active") : "idle"}`,
+      `[auto] ${auto.enabled ? "ON" : "OFF"}`,
+      `[auto] 状態: ${getAutoStatusSummaryLabel()}`,
+      `[auto] 前回の結果: ${getAutoLastResultSummary()}`,
     ];
 
     if (!state.streamInfo?.isSixteenByNine) {
-      lines.push("[auto] 16:9 入力以外は自動認識非対応です。");
+      lines.push("[auto] 16:9 入力以外では自動認識は利用できません。");
     }
+
+    if (state.debugMode) {
+      lines.push(...getAutoStatusDebugLines(auto));
+    }
+
+    return lines;
+  }
+
+  function getAutoStatusSummaryLabel() {
+    const auto = state.autoSnap;
+
+    if (!auto.enabled) {
+      return "停止中";
+    }
+
+    if (!state.streamInfo?.isSixteenByNine) {
+      return "16:9 入力待ち";
+    }
+
+    if (!state.videoReady || !state.stream) {
+      return "映像待ち";
+    }
+
+    if (state.mode !== "ready") {
+      return "ready モード待ち";
+    }
+
+    if (auto.phase === "loading_seen" || auto.phase === "selection_active") {
+      return "選出画面を監視中";
+    }
+
+    if (auto.phase === "selection_locked") {
+      return "選出完了後の待機中";
+    }
+
+    if (auto.phase === "waiting_icon_seen") {
+      return "予備経路待機中";
+    }
+
+    return "読み込み画面待ち";
+  }
+
+  function getAutoLastResultSummary() {
+    if (state.autoSnap.lastSnapMode === "fallback") {
+      return "予備経路で撮影しました。";
+    }
+
+    if (state.autoSnap.lastSnapMode === "waiting") {
+      return "待機中画面を検出して撮影しました。";
+    }
+
+    return "まだありません。";
+  }
+
+  function getAutoStatusDebugLines(auto) {
+    const lines = [
+      `[debug] phase: ${getAutoPhaseLabel(auto.phase)}`,
+      `[debug] monitor: ${auto.monitorActive ? (auto.frameRequestKind || "active") : "idle"}`,
+      `[debug] reset: ${auto.lastResetReason || "none"}`,
+    ];
 
     if (auto.lastMetrics) {
       const loadingSignal = getLoadingTemplateSignal(auto.lastMetrics);
       const selectionSignal = getSelectionTimerSignal(auto.lastMetrics);
       const waitingTimerSignal = getWaitingTimerIconSignal(auto.lastMetrics);
       const lockedSignal = getSelectionLockedSignal(auto.lastMetrics);
+      const battleHudSignal = getBattleHudSignal(auto.lastMetrics);
       lines.push(
         loadingSignal.templateReady
-          ? `[auto] loading coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`
-          : "[auto] loading: テンプレート読み込み待ち",
+          ? `[debug] loading coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`
+          : "[debug] loading: テンプレート読み込み待ち",
       );
       lines.push(
         selectionSignal.templateReady
-          ? `[auto] selection icon coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`
-          : "[auto] selection icon: テンプレート読み込み待ち",
+          ? `[debug] selection icon coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`
+          : "[debug] selection icon: テンプレート読み込み待ち",
       );
       lines.push(
-        `[auto] locked badge=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
+        `[debug] locked badge=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
       );
-
-      const battleHudSignal = getBattleHudSignal(auto.lastMetrics);
       lines.push(
         waitingTimerSignal.templateReady
-          ? `[auto] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
-          : "[auto] waiting icon: テンプレート読み込み待ち",
+          ? `[debug] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
+          : "[debug] waiting icon: テンプレート読み込み待ち",
       );
     } else {
-      lines.push("[auto] live metrics: まだありません。");
+      lines.push("[debug] live metrics: まだありません。");
     }
 
     if (auto.fallbackBuffer) {
       lines.push(
-        `[auto] fallback buffer: waiting_icon @ ${new Date(auto.fallbackBuffer.capturedAt).toLocaleTimeString("ja-JP", { hour12: false })}`,
+        `[debug] fallback buffer: waiting_icon @ ${new Date(auto.fallbackBuffer.capturedAt).toLocaleTimeString("ja-JP", { hour12: false })}`,
       );
     } else {
-      lines.push("[auto] fallback buffer: なし");
+      lines.push("[debug] fallback buffer: なし");
     }
 
-    lines.push(`[auto] reset: ${auto.lastResetReason || "なし"}`);
-    lines.push(`[auto] ${auto.lastTriggerReason ? `last trigger: ${auto.lastTriggerReason}` : auto.lastReason}`);
+    lines.push(`[debug] ${auto.lastTriggerReason ? `last trigger: ${auto.lastTriggerReason}` : `last reason: ${auto.lastReason}`}`);
     return lines;
   }
 
@@ -2561,7 +2683,7 @@
       appendTerminalNotice(
         "audio-playback-blocked",
         [
-          "[system] 音声再生は自動再生制限で保留されました。音量かミュートを操作すると再開を試します。",
+          "[system] 音声再生は自動再生制限で保留されました。音量またはミュートを操作すると再開を試します。",
         ],
         "system",
       );
@@ -2572,7 +2694,7 @@
       appendTerminalNotice(
         "audio-playback-blocked",
         [
-          "[system] 音声再生は自動再生制限で保留されました。音量かミュートを操作すると再開を試します。",
+          "[system] 音声再生は自動再生制限で保留されました。音量またはミュートを操作すると再開を試します。",
         ],
         "system",
       );
@@ -2630,10 +2752,10 @@
       appendTerminalEntry(
         [
           "[error] 音声再生の開始に失敗しました。",
-          `[error] 詳細: ${error.message}`,
         ],
         "error",
       );
+      appendTerminalDebug([`[debug] 詳細: ${error.message}`], "error");
       return false;
     }
   }
@@ -2651,14 +2773,7 @@
       });
       return { stream, error: null };
     } catch (error) {
-      appendTerminalEntry(
-        [
-          `[error] ${getAudioInputErrorTitle(error)}`,
-          `[error] ${getAudioInputErrorDetail(error)}`,
-          `[error] 詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError(`[error] ${getAudioInputErrorMessage(error)}`, error);
       return { stream: null, error };
     }
   }
@@ -2715,33 +2830,17 @@
     syncAudioControls();
   }
 
-  function getAudioInputErrorTitle(error) {
+  function getAudioInputErrorMessage(error) {
     if (error.name === "NotAllowedError") {
-      return "権限拒否";
+      return "音声入力へのアクセスが拒否されました。ブラウザの権限設定を確認してください。";
     }
 
     if (error.name === "NotReadableError") {
-      return "使用中";
+      return "選択した音声入力を利用できません。他のアプリに占有されている可能性があります。";
     }
 
     if (error.name === "NotFoundError") {
-      return "未接続";
-    }
-
-    return "音声入力失敗";
-  }
-
-  function getAudioInputErrorDetail(error) {
-    if (error.name === "NotAllowedError") {
-      return "選択した音声入力の権限が拒否されました。ブラウザの権限設定を確認してください。";
-    }
-
-    if (error.name === "NotReadableError") {
-      return "選択した音声入力が使えません。他アプリに占有されている可能性があります。";
-    }
-
-    if (error.name === "NotFoundError") {
-      return "選択した音声入力が見つかりません。デバイスをつなぎ直して一覧更新してください。";
+      return "選択した音声入力が見つかりません。デバイスをつなぎ直して一覧を更新してください。";
     }
 
     return "選択した音声入力の開始に失敗しました。";
@@ -2824,6 +2923,22 @@
     scrollTerminalToBottom();
   }
 
+  function appendTerminalDebug(lines, tone = "system") {
+    if (!state.debugMode) {
+      return;
+    }
+
+    appendTerminalEntry(lines, tone);
+  }
+
+  function appendTerminalError(lines, error = null) {
+    const normalized = Array.isArray(lines) ? [...lines] : [String(lines)];
+    if (state.debugMode && error?.message) {
+      normalized.push(`[debug] 詳細: ${error.message}`);
+    }
+    appendTerminalEntry(normalized, "error");
+  }
+
   function appendTerminalNotice(key, lines, tone = "system") {
     if (state.terminalNoticeKeys.has(key)) {
       return;
@@ -2843,6 +2958,14 @@
 
   function shouldPersistCrop() {
     return !shouldUseFixedSixteenByNineCrops();
+  }
+
+  function getResetCrop(side, videoWidth, videoHeight) {
+    if (shouldUseFixedSixteenByNineCrops()) {
+      return getFixedSixteenByNineCrop(side, videoWidth, videoHeight);
+    }
+
+    return getDefaultCrop(side, videoWidth, videoHeight);
   }
 
   function getFixedSixteenByNineCrop(side, videoWidth, videoHeight) {
@@ -3138,13 +3261,7 @@
     try {
       await navigator.serviceWorker.register("./sw.js");
     } catch (error) {
-      appendTerminalEntry(
-        [
-          "[error] Service Worker の登録に失敗しました。",
-          `[error] 詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] Service Worker の登録に失敗しました。", error);
     }
   }
 
@@ -3156,13 +3273,7 @@
         await document.documentElement.requestFullscreen();
       }
     } catch (error) {
-      appendTerminalEntry(
-        [
-          "[error] 全画面表示に切り替えできませんでした。",
-          `[error] 詳細: ${error.message}`,
-        ],
-        "error",
-      );
+      appendTerminalError("[error] 全画面表示に切り替えられませんでした。", error);
     } finally {
       syncFullscreenButton();
     }
