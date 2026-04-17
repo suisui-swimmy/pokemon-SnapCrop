@@ -27,6 +27,18 @@
   const ASPECT_16_BY_9 = 16 / 9;
   const ASPECT_4_BY_3 = 4 / 3;
   const ASPECT_TOLERANCE = 0.02;
+  const TERMINAL_FOCUS_RETURN_GRACE_MS = 180;
+  const PANEL_CLICK_INTERACTIVE_SELECTOR = [
+    "a[href]",
+    "button",
+    "input",
+    "label",
+    "option",
+    "select",
+    "summary",
+    "textarea",
+    "[contenteditable='true']",
+  ].join(", ");
   const FIXED_16_BY_9_CROP_RATIOS = {
     my: {
       x: 295 / 1920,
@@ -160,7 +172,9 @@
       enemy: null,
     },
     drag: null,
+    lastCropInteractionEndedAt: 0,
     previewFrameId: 0,
+    focusRestoreFrameId: 0,
     audioContext: null,
     audioGainNode: null,
     audioSourceNode: null,
@@ -206,6 +220,7 @@
   }
 
   function cacheElements() {
+    elements.workspaceTop = document.querySelector(".workspace-top");
     elements.deviceSelect = document.getElementById("device-select");
     elements.audioSelect = document.getElementById("audio-select");
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
@@ -248,17 +263,19 @@
   }
 
   function bindEvents() {
-    elements.refreshDevicesButton.addEventListener("click", refreshDevices);
-    elements.startVideoButton.addEventListener("click", startSelectedVideo);
-    elements.toggleFullscreenButton?.addEventListener("click", toggleFullscreen);
-    elements.toggleAudioMuteButton?.addEventListener("click", toggleAudioMute);
+    elements.refreshDevicesButton.addEventListener("click", handleRefreshDevicesButtonClick);
+    elements.startVideoButton.addEventListener("click", handleStartVideoButtonClick);
+    elements.toggleFullscreenButton?.addEventListener("click", handleToggleFullscreenButtonClick);
+    elements.toggleAudioMuteButton?.addEventListener("click", handleToggleAudioMuteButtonClick);
     elements.audioVolume?.addEventListener("input", handleAudioVolumeChange);
-    elements.deviceSelect.addEventListener("change", handleDeviceSelectionChange);
-    elements.audioSelect?.addEventListener("change", handleAudioSelectionChange);
+    elements.audioVolume?.addEventListener("change", handleAudioVolumeCommit);
+    elements.deviceSelect.addEventListener("change", handleDeviceSelectionChangeWithFocusReturn);
+    elements.audioSelect?.addEventListener("change", handleAudioSelectionChangeWithFocusReturn);
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
+    elements.workspaceTop?.addEventListener("click", handleWorkspaceTopClick);
     CROP_SIDES.forEach((side) => {
       elements.cropSlots[side].overlay?.addEventListener("pointerdown", startCropInteraction);
     });
@@ -303,6 +320,74 @@
         error,
       );
     }
+  }
+
+  async function runControlActionAndRestoreTerminalFocus(action, options = {}) {
+    try {
+      await action();
+    } finally {
+      focusTerminalInputIfAppropriate({
+        ...options,
+        context: "control-complete",
+      });
+    }
+  }
+
+  function handleRefreshDevicesButtonClick(event) {
+    void runControlActionAndRestoreTerminalFocus(refreshDevices, {
+      target: event.currentTarget,
+    });
+  }
+
+  function handleStartVideoButtonClick(event) {
+    void runControlActionAndRestoreTerminalFocus(startSelectedVideo, {
+      target: event.currentTarget,
+    });
+  }
+
+  function handleToggleFullscreenButtonClick(event) {
+    void runControlActionAndRestoreTerminalFocus(toggleFullscreen, {
+      target: event.currentTarget,
+    });
+  }
+
+  function handleToggleAudioMuteButtonClick(event) {
+    void runControlActionAndRestoreTerminalFocus(toggleAudioMute, {
+      target: event.currentTarget,
+    });
+  }
+
+  function handleDeviceSelectionChangeWithFocusReturn(event) {
+    handleDeviceSelectionChange();
+    focusTerminalInputIfAppropriate({
+      event,
+      target: event.currentTarget,
+      context: "control-complete",
+    });
+  }
+
+  function handleAudioSelectionChangeWithFocusReturn(event) {
+    handleAudioSelectionChange();
+    focusTerminalInputIfAppropriate({
+      event,
+      target: event.currentTarget,
+      context: "control-complete",
+    });
+  }
+
+  function handleAudioVolumeCommit(event) {
+    focusTerminalInputIfAppropriate({
+      event,
+      target: event.currentTarget,
+      context: "control-complete",
+    });
+  }
+
+  function handleWorkspaceTopClick(event) {
+    focusTerminalInputIfAppropriate({
+      event,
+      context: "panel-click",
+    });
   }
 
   async function refreshDevices() {
@@ -871,12 +956,110 @@
       return;
     }
 
-    elements.terminalInput.focus();
+    focusTerminalInputIfAppropriate({
+      event,
+      context: "terminal-panel",
+    });
   }
 
   function moveCaretToEnd(input) {
     const nextPosition = input.value.length;
     input.setSelectionRange(nextPosition, nextPosition);
+  }
+
+  function focusTerminalInputIfAppropriate(options = {}) {
+    const {
+      event = null,
+      target = null,
+      context = "control-complete",
+    } = options;
+
+    if (!elements.terminalInput) {
+      return;
+    }
+
+    if (context === "terminal-panel") {
+      queueTerminalInputFocus();
+      return;
+    }
+
+    if (state.mode === "edit" || state.drag) {
+      return;
+    }
+
+    if (context === "panel-click" && shouldSkipPanelClickFocusRestore(event, target)) {
+      return;
+    }
+
+    queueTerminalInputFocus();
+  }
+
+  function queueTerminalInputFocus() {
+    if (!elements.terminalInput) {
+      return;
+    }
+
+    if (state.focusRestoreFrameId) {
+      window.cancelAnimationFrame(state.focusRestoreFrameId);
+    }
+
+    state.focusRestoreFrameId = window.requestAnimationFrame(() => {
+      state.focusRestoreFrameId = 0;
+      if (!elements.terminalInput || document.activeElement === elements.terminalInput) {
+        return;
+      }
+
+      try {
+        elements.terminalInput.focus({ preventScroll: true });
+      } catch {
+        elements.terminalInput.focus();
+      }
+    });
+  }
+
+  function shouldSkipPanelClickFocusRestore(event, target) {
+    if (state.mode !== "ready") {
+      return true;
+    }
+
+    const now = performance.now();
+    if (
+      state.lastCropInteractionEndedAt
+      && now - state.lastCropInteractionEndedAt < TERMINAL_FOCUS_RETURN_GRACE_MS
+    ) {
+      return true;
+    }
+
+    if (eventPathContainsSelector(event, ".crop-overlay, .crop-overlay__handle")) {
+      return true;
+    }
+
+    const targetElement = getTargetElement(target || event?.target);
+    if (!targetElement || targetElement === elements.terminalInput) {
+      return true;
+    }
+
+    return Boolean(targetElement.closest(PANEL_CLICK_INTERACTIVE_SELECTOR));
+  }
+
+  function eventPathContainsSelector(event, selector) {
+    if (!event || typeof event.composedPath !== "function") {
+      return false;
+    }
+
+    return event.composedPath().some((node) => node instanceof Element && node.matches(selector));
+  }
+
+  function getTargetElement(target) {
+    if (target instanceof Element) {
+      return target;
+    }
+
+    if (target instanceof Node) {
+      return target.parentElement;
+    }
+
+    return null;
   }
 
   function getTerminalStatusLines() {
@@ -991,6 +1174,7 @@
     }
 
     state.drag = null;
+    state.lastCropInteractionEndedAt = performance.now();
   }
 
   function updateCrop(side, nextCrop, options = {}) {

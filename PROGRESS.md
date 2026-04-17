@@ -384,3 +384,23 @@
   - 実ブラウザで `crop reset` 実行時の見え方は未確認
 - Next step:
   - `crop reset my / enemy / both` を実行して、ログ文言が「範囲」を戻した意味で自然に見えるか確認する
+
+### 2026-04-18 01:19 JST — terminal へ安全にフォーカスを戻す最小差分を追加
+- Status: done
+- Goal:
+  terminal 以外の UI を触ったあとも、`ready` 中は terminal input に戻りやすくしつつ、`edit` 中の crop / 数値入力 / slider 操作は邪魔しない
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - `app.js` に `focusTerminalInputIfAppropriate()` と `runControlActionAndRestoreTerminalFocus()` を追加し、toolbar ボタンや select の完了後だけ terminal へ戻す判定を helper に集約した
+  - `device-select` / `audio-select` は `change` 後、音量は既存 `input` を維持したまま `change` 後だけ terminal に戻すようにした
+  - `workspace-top` に delegated click を追加し、`ready` 中の panel 空き領域 click だけ terminal へ戻し、`edit` 中、interactive 要素、crop overlay / handle、drag 中、drag 終了直後は除外するようにした
+  - `finishCropInteraction()` で drag 終了時刻を記録し、crop 操作直後の click 誤爆で terminal に戻らないようにした
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、select 変更後、toolbar ボタン後、`ready` 中 panel click 後の refocus と、`edit` 中の非干渉をまだ確認していない
+- Next step:
+  - 実画面で `ready` / `edit` を切り替えながら select、各ボタン、音量スライダー、crop drag / resize を順に試し、terminal への復帰条件が想定どおりか確認する
