@@ -848,3 +848,63 @@
   - 実ブラウザで `help` の 2 行目が terminal 幅に対して読みづらくないかは未確認
 - Next step:
   - 必要なら `help` の短縮コマンド表記を 2 行に分けてさらに見やすくする
+
+### 2026-04-19 03:29 JST — button / select / badge にだけ 2px の微小 radius を追加
+- Status: done
+- Goal:
+  panel の角丸ゼロ骨格は維持したまま、button / select 系だけをわずかに柔らかくして圧を少し下げる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `.ui-button`、`.toolbar-select`、`.camera-badge` の `border-radius` を `2px` に設定した
+  - panel、video stage、terminal panel、overlay、splitter など骨格側の `border-radius: 0` は触らなかった
+  - サイズ、配置、hover / active の挙動や色味には変更を入れなかった
+- Verification:
+  - `git diff -- style.css`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで 2px が「気づくか気づかないか程度」の柔らかさに収まっているかは未確認
+- Next step:
+  - localhost で toolbar と badge だけ見て、必要なら 2px のままか 3px へ上げるかを判断する
+
+### 2026-04-19 03:58 JST — refresh icon を添付 SVG へ差し替え、icon button に hover 説明を追加
+- Status: done
+- Goal:
+  `refresh-devices` を添付 SVG デザインへ置き換えつつ、toolbar の icon button に簡潔な hover 説明を出す
+- Changed files:
+  - `index.html`
+  - `PROGRESS.md`
+- What changed:
+  - `refresh-devices` の inline SVG を、ユーザー添付の `リロードアイコン.svg` の path 形状へ差し替えた
+  - `refresh-devices`、`start-video`、`toggle-fullscreen`、`toggle-audio-mute` の4ボタンへ `title` を追加し、hover 時に `デバイス一覧を更新`、`映像を開始`、`全画面を切り替え`、`音声ミュートを切り替え` が出るようにした
+  - button の ID、`aria-label`、既存イベントや state 切替には触れなかった
+- Verification:
+  - `git diff -- index.html`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで添付 refresh icon の見え方と、ネイティブ tooltip の表示タイミングは未確認
+- Next step:
+  - desktop ブラウザで4つの icon button を hover し、tooltip 文言と refresh icon の収まりを確認する
+
+### 2026-04-19 03:41 JST — 映像/音声デバイスと音量の設定保持を追加
+- Status: done
+- Goal:
+  既存の開始フローや auto snap を壊さず、映像デバイス、音声デバイス、音量を `localStorage` に保存・復元できるようにする
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - `STORAGE_KEYS` に `videoDevice`、`audioDevice`、`audioVolume` を追加し、保存済みの選択と音量を扱うための小さい helper を追加した
+  - `init()` の早い段階で保存済みの deviceId と音量を復元し、音量は不正値なら既存デフォルト `1` に戻すようにした
+  - `populateDeviceSelect()` は保存済みの映像 deviceId が現在の一覧に存在する時だけそれを優先し、見つからない場合は既存の OBS 優先/先頭選択ロジックへ自然にフォールバックするようにした
+  - `populateAudioSelect()` は保存済みの音声 deviceId が存在すればそれを維持し、保存済みで `音声なし` を選んでいた場合も自動補完に上書きされないようにした
+  - `handleDeviceSelectionChange()`、`handleAudioSelectionChange()`、`handleAudioVolumeChange()` でそれぞれ選択/音量を保存するようにした
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "videoDevice|audioDevice|audioVolume|restorePersistedSelections|restoreAudioVolume|persistStoredValue|hasPersistedAudioSelection" app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - localhost でリロード後に device と音量が意図どおり復元され、保存済み deviceId が見つからないケースでも既存挙動へ静かにフォールバックすることは未確認
+- Next step:
+  - localhost で映像 device、音声 device、音量を変更してリロードし、復元、`音声なし` の維持、未接続 device 時の自然なフォールバックを順に確認する

@@ -9,6 +9,9 @@
     my: "pokemon-snapcrop.my-crop",
     enemy: "pokemon-snapcrop.enemy-crop",
     terminalHeight: "pokemon-snapcrop.terminal-height",
+    videoDevice: "pokemon-snapcrop.video-device",
+    audioDevice: "pokemon-snapcrop.audio-device",
+    audioVolume: "pokemon-snapcrop.audio-volume",
   };
   const CROP_SIDES = ["my", "enemy"];
   const REQUIRED_HEADERS = [
@@ -166,6 +169,7 @@
     hasObsDevice: false,
     selectedDeviceId: "",
     selectedAudioDeviceId: "",
+    hasPersistedAudioSelection: false,
     deviceSelectionLocked: false,
     audioSelectionLocked: false,
     mode: "edit",
@@ -207,6 +211,8 @@
   function init() {
     cacheElements();
     bindEvents();
+    restorePersistedSelections();
+    restoreAudioVolume();
     setCameraState("未取得", "idle");
     renderCameraDetails();
     syncFullscreenButton();
@@ -496,7 +502,7 @@
     } else if (state.stream && state.selectedDeviceId) {
       selected = state.devices.find((device) => device.deviceId === state.selectedDeviceId) || null;
     } else {
-      selected = findObsDevice() || state.devices.find((device) => device.deviceId === currentValue) || state.devices[0];
+      selected = state.devices.find((device) => device.deviceId === currentValue) || findObsDevice() || state.devices[0];
     }
 
     elements.deviceSelect.value = selected.deviceId;
@@ -536,6 +542,8 @@
       selectedValue = state.audioDevices.some((device) => device.deviceId === currentValue) ? currentValue : "";
     } else if (currentValue && state.audioDevices.some((device) => device.deviceId === currentValue)) {
       selectedValue = currentValue;
+    } else if (state.hasPersistedAudioSelection && currentValue === "") {
+      selectedValue = "";
     } else if (hadOptions) {
       selectedValue = "";
     } else if (suggestedAudioDevice) {
@@ -550,6 +558,7 @@
   function handleDeviceSelectionChange() {
     state.deviceSelectionLocked = true;
     state.selectedDeviceId = elements.deviceSelect.value;
+    persistStoredValue(STORAGE_KEYS.videoDevice, state.selectedDeviceId);
     if (!state.audioSelectionLocked) {
       populateAudioSelect();
     }
@@ -559,7 +568,9 @@
   function handleAudioSelectionChange() {
     const previousSelectedAudioDeviceId = state.selectedAudioDeviceId;
     state.audioSelectionLocked = true;
+    state.hasPersistedAudioSelection = true;
     state.selectedAudioDeviceId = elements.audioSelect?.value || "";
+    persistStoredValue(STORAGE_KEYS.audioDevice, state.selectedAudioDeviceId);
     return {
       previousSelectedAudioDeviceId,
       nextSelectedAudioDeviceId: state.selectedAudioDeviceId,
@@ -1257,6 +1268,46 @@
       return Number.isFinite(parsed) ? parsed : null;
     } catch {
       return null;
+    }
+  }
+
+  function restorePersistedSelections() {
+    state.selectedDeviceId = restoreStoredValue(STORAGE_KEYS.videoDevice);
+    state.selectedAudioDeviceId = restoreStoredValue(STORAGE_KEYS.audioDevice);
+    state.hasPersistedAudioSelection = hasStoredValue(STORAGE_KEYS.audioDevice);
+  }
+
+  function restoreAudioVolume() {
+    const raw = restoreStoredValue(STORAGE_KEYS.audioVolume);
+    if (raw === "") {
+      return;
+    }
+
+    const parsed = clamp(Number(raw), 0, 1);
+    state.audioVolume = Number.isFinite(parsed) ? parsed : 1;
+  }
+
+  function restoreStoredValue(key) {
+    try {
+      return localStorage.getItem(key) ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  function persistStoredValue(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      return;
+    }
+  }
+
+  function hasStoredValue(key) {
+    try {
+      return localStorage.getItem(key) !== null;
+    } catch {
+      return false;
     }
   }
 
@@ -3426,6 +3477,7 @@
 
   async function handleAudioVolumeChange(event) {
     state.audioVolume = clamp(Number(event.target.value || 0) / 100, 0, 1);
+    persistStoredValue(STORAGE_KEYS.audioVolume, String(state.audioVolume));
     await resumeAudioContext();
     applyAudioOutputState();
     syncAudioControls();

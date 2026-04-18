@@ -205,6 +205,7 @@ select {
   min-height: var(--toolbar-height);
   padding: 0 10px;
   border: 1px solid var(--border-strong);
+  border-radius: 2px;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
@@ -244,7 +245,7 @@ select {
   min-height: var(--toolbar-height);
   padding: 7px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 0;
+  border-radius: 2px;
   background: var(--surface);
   color: var(--text);
 }
@@ -297,7 +298,7 @@ select {
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(127, 90, 240, 0.42);
-  border-radius: 0;
+  border-radius: 2px;
   background: rgba(127, 90, 240, 0.1);
   color: var(--text);
   cursor: pointer;
