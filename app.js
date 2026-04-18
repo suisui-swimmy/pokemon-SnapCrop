@@ -916,7 +916,7 @@
       appendTerminalEntry(
         [
           "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / help",
-          "短縮コマンド: e / r / s / sm / se",
+          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr",
           "ショートカット: Ctrl + Enter = snap both / Esc = ready",
         ],
         "system",
@@ -1002,6 +1002,7 @@
       s: "snap both",
       sm: "snap my",
       se: "snap enemy",
+      cr: "crop reset",
     };
 
     return aliasMap[query] || query;
@@ -1973,8 +1974,8 @@
     appendTerminalEntry(
       [
         source === "auto"
-          ? `[auto] 前回の参照画像をクリアしました。${reason ? ` (${reason})` : ""}`
-          : `[system] 前回の参照画像をクリアしました。${reason ? ` (${reason})` : ""}`,
+          ? `[auto] ${reason ? `${reason}、` : ""}前回の参照画像をクリアしました。`
+          : `[system] ${reason ? `${reason}、` : ""}前回の参照画像をクリアしました。`,
       ],
       "system",
     );
@@ -3405,7 +3406,7 @@
     elements.toggleAudioMuteButton.disabled = !state.audioReady;
     elements.audioVolume.disabled = !state.audioReady;
     elements.audioVolume.value = String(Math.round(state.audioVolume * 100));
-    elements.toggleAudioMuteButton.textContent = !state.audioReady ? "🔇" : (state.audioMuted ? "🔇" : "🔊");
+    elements.toggleAudioMuteButton.dataset.iconState = !state.audioReady || state.audioMuted ? "muted" : "unmuted";
     elements.toggleAudioMuteButton.setAttribute(
       "aria-label",
       state.audioMuted ? "音声ミュート解除" : "音声ミュート",
@@ -3730,10 +3731,10 @@
 
   function getInputLabel(ratioValue) {
     if (isAspectRatio(ratioValue, ASPECT_16_BY_9)) {
-      return "16:9入力";
+      return "入力(16:9)";
     }
 
-    return "4:3入力";
+    return "入力(非16:9)";
   }
 
   function formatRatioLabel(ratioValue) {
@@ -3898,6 +3899,6 @@
       return;
     }
 
-    elements.toggleFullscreenButton.textContent = document.fullscreenElement ? "⤡" : "⤢";
+    elements.toggleFullscreenButton.dataset.iconState = document.fullscreenElement ? "exit" : "enter";
   }
 })();

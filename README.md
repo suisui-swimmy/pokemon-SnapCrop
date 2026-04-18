@@ -100,6 +100,7 @@ OBS Virtual Camera が見えている場合は、その入力を優先して使�
 - `s`: `snap both`
 - `sm`: `snap my`
 - `se`: `snap enemy`
+- `cr`: `crop reset`
 - `auto on` / `auto off` / `auto status` / `auto reset`: 待機中画面の自動 snap を制御する。`auto on` は `ready` への切り替えまでまとめて行う
 - `debug on` / `debug off` / `debug status`: 認識範囲のデバッグ表示を制御する
 - `status`: 現在の mode / auto / debug / input / video / audio を要約表示する

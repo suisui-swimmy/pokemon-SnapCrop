@@ -687,3 +687,143 @@
   - 実ブラウザで日本語ログ、英数字、prompt `>` の見え方はまだ未確認
 - Next step:
   - desktop ブラウザで terminal を開き、UDEV Gothic 導入環境と未導入環境の両方で見え方に破綻がないか確認する
+
+### 2026-04-18 23:07 JST — 参照画像クリアログの語順を理由先頭へ調整
+- Status: done
+- Goal:
+  前回の参照画像をクリアした理由が先に読めるよう、terminal ログの語順だけを自然な日本語へ整える
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - 参照画像クリア時の terminal ログを `前回の参照画像をクリアしました。 (理由)` 形式から、`理由、前回の参照画像をクリアしました。` 形式へ変更した
+  - `auto` / `system` の prefix と既存のクリア挙動はそのまま維持し、文言テンプレート 1 か所だけを最小差分で更新した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで選出画面遷移時の見え方は未確認
+- Next step:
+  - 必要なら理由文の語感だけを追加で微調整する
+
+### 2026-04-19 00:32 JST — camera-badge の入力ラベル文言を括弧表記へ変更
+- Status: done
+- Goal:
+  `camera-badge` の入力状態表示だけを、より揃った表記の `入力(16:9)` / `入力(非16:9)` へ変更する
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - `getInputLabel()` の戻り値だけを更新し、16:9 判定時は `入力(16:9)`、それ以外は `入力(非16:9)` を返すようにした
+  - 判定条件、tone、badge 更新タイミング、他 UI 文言やロジックには触れなかった
+- Verification:
+  - `rg -n "入力\\(16:9\\)|入力\\(非16:9\\)|16:9入力|4:3入力" app.js README.md PROGRESS.md`: pass
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで `camera-badge` の見え方は未確認
+- Next step:
+  - 必要なら `camera-badge` の他ステータス文言も同じトーンに揃える
+
+### 2026-04-19 00:49 JST — toolbar ボタンを inline SVG icon 化
+- Status: done
+- Goal:
+  toolbar の横幅を少し節約しつつ、`refresh` / `start` / `fullscreen` / `mute` を既存機能そのままで icon button 化する
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - `refresh-devices`、`start-video`、`toggle-fullscreen`、`toggle-audio-mute` の4ボタンを inline SVG ベースへ差し替え、button 要素、ID、`aria-label` はそのまま維持した
+  - `style.css` に `ui-button--icon` と `toolbar-icon` 周りの最小スタイルを追加し、既存の dark toolbar に馴染む単色 `currentColor` アイコンへ揃えた
+  - `app.js` は `syncFullscreenButton()` と `syncAudioControls()` だけを最小差分で更新し、既存の text 書き換えを `data-icon-state` 切替へ置き換えて、fullscreen / mute の見た目だけ state 連動するようにした
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "ui-button--icon|toolbar-icon|data-icon-state|toggleAudioMuteButton\\.dataset\\.iconState|toggleFullscreenButton\\.dataset\\.iconState" index.html style.css app.js`: pass
+  - `Invoke-WebRequest http://127.0.0.1:8765/` / `style.css` / `app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで toolbar の横幅改善量、hover 感、disabled 時の見え方は未確認
+  - fullscreen / mute の icon 切替見た目は、ローカル配信確認までは通したが目視確認は未実施
+- Next step:
+  - desktop ブラウザで toolbar を開き、4ボタンの見え方と fullscreen / mute の icon 切替が自然かを確認する
+
+### 2026-04-19 01:26 JST — toolbar icon を一回り拡大し、fullscreen exit 形状を修正
+- Status: done
+- Goal:
+  toolbar icon の視認性を少し上げつつ、崩れていた fullscreen 解除アイコンを自然な形へ直す
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `style.css` の `.toolbar-icon` を `18px` から `20px` に上げ、4つの icon 全体を一回りだけ大きくした
+  - `index.html` の `toolbar-icon--fullscreen-exit` を、余分な線が出にくい単純な内向き4コーナー形へ差し替えた
+  - button の ID、`aria-label`、state 切替、`app.js` の挙動には触れなかった
+- Verification:
+  - `rg -n "toolbar-icon \\{|toolbar-icon--fullscreen-exit" style.css index.html`: pass
+  - `Invoke-WebRequest http://127.0.0.1:8765/` / `style.css`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで icon のサイズ感と fullscreen exit の見え方は未確認
+- Next step:
+  - desktop ブラウザで toolbar を開き、4ボタンのサイズ感と fullscreen enter / exit の視認性を確認する
+
+### 2026-04-19 01:49 JST — fullscreen icon を添付 SVG へ差し替え
+- Status: done
+- Goal:
+  `toggle-fullscreen` の enter / exit icon を、ユーザー添付の SVG デザインへそのまま置き換える
+- Changed files:
+  - `index.html`
+  - `PROGRESS.md`
+- What changed:
+  - `toggle-fullscreen-enter.svg` と `toggle-fullscreen-exit.svg` の polygon 形状を、`index.html` 内の inline SVG へ移植した
+  - 色は既存 toolbar と同じく `currentColor` に合わせ、button の ID、`aria-label`、`data-icon-state`、切替ロジックには触れなかった
+- Verification:
+  - `git diff -- index.html`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、添付 SVG の見え方が toolbar 上でも意図どおりかは未確認
+- Next step:
+  - desktop ブラウザで fullscreen の enter / exit を切り替え、添付 SVG の収まりと視認性を確認する
+
+### 2026-04-19 01:53 JST — refresh / play / audio icon の占有率を引き上げ
+- Status: done
+- Goal:
+  `更新`、`再生`、`音量` icon の外枠サイズは維持したまま、中の path だけを一回り大きく見えるように調整する
+- Changed files:
+  - `index.html`
+  - `PROGRESS.md`
+- What changed:
+  - `refresh-devices` の円弧と矢印を少し外側まで広げ、20x20 表示内での余白を減らした
+  - `start-video` の三角形を上下左右に広げて、fullscreen icon に近い視覚的な重さへ寄せた
+  - `toggle-audio-mute` の speaker 本体と波形 / mute 線を拡大し、周囲の余白を詰めた
+  - button サイズ、CSS、`aria-label`、機能や state 切替には触れなかった
+- Verification:
+  - `git diff -- index.html`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで 3 icon の見え方が fullscreen icon と十分揃っているかは未確認
+- Next step:
+  - desktop ブラウザで toolbar を見て、refresh / play / audio の見た目の重さが揃ったか確認する
+
+### 2026-04-19 02:24 JST — `cr` alias を追加し help の短縮コマンド表記を具体化
+- Status: done
+- Goal:
+  terminal の短縮入力を少し増やし、`help` だけ見ても各 alias の対応関係が分かるようにする
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - `normalizeTerminalAlias()` に `cr -> crop reset` を追加し、既存の `crop reset` コマンド処理へそのまま流れるようにした
+  - `help` の `短縮コマンド` 行を `edit = e` 形式へ変更し、`ready` / `snap both` / `snap my` / `snap enemy` / `crop reset` の対応を明記した
+  - README のコマンド一覧にも `cr: crop reset` を 1 行追加した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで `help` の 2 行目が terminal 幅に対して読みづらくないかは未確認
+- Next step:
+  - 必要なら `help` の短縮コマンド表記を 2 行に分けてさらに見やすくする

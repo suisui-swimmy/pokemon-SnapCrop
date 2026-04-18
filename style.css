@@ -282,6 +282,9 @@ select {
   height: var(--toolbar-height);
   min-height: var(--toolbar-height);
   padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(255, 106, 92, 0.36);
   border-radius: 0;
   background: rgba(255, 106, 92, 0.08);
@@ -304,18 +307,37 @@ select {
   background: #12151a;
 }
 
-.fullscreen-button {
-  min-width: 40px;
+.ui-button--icon {
+  width: var(--toolbar-height);
+  min-width: var(--toolbar-height);
   padding: 0;
-  font-size: 18px;
-  line-height: 1;
+}
+
+.toolbar-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.toolbar-icon--fullscreen,
+.toolbar-icon--audio {
+  display: none;
+}
+
+.fullscreen-button[data-icon-state="enter"] .toolbar-icon--fullscreen-enter,
+.fullscreen-button[data-icon-state="exit"] .toolbar-icon--fullscreen-exit,
+.audio-button[data-icon-state="unmuted"] .toolbar-icon--audio-on,
+.audio-button[data-icon-state="muted"] .toolbar-icon--audio-muted {
+  display: block;
+}
+
+.fullscreen-button {
+  flex: 0 0 auto;
 }
 
 .audio-button {
-  min-width: 40px;
-  padding: 0;
-  font-size: 14px;
-  line-height: 1;
+  flex: 0 0 auto;
 }
 
 .audio-volume {
