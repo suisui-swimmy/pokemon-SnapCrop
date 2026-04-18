@@ -1610,6 +1610,29 @@
     return "左右の参照画像を更新しました。";
   }
 
+  function clearReferenceImages(options = {}) {
+    const { source = "system", reason = "" } = options;
+    const hadReferences = CROP_SIDES.some((side) => Boolean(state.references[side]));
+    CROP_SIDES.forEach((side) => {
+      state.references[side] = null;
+    });
+    refreshCropPanels();
+
+    if (!hadReferences) {
+      return false;
+    }
+
+    appendTerminalEntry(
+      [
+        source === "auto"
+          ? `[auto] 前回の参照画像をクリアしました。${reason ? ` (${reason})` : ""}`
+          : `[system] 前回の参照画像をクリアしました。${reason ? ` (${reason})` : ""}`,
+      ],
+      "system",
+    );
+    return true;
+  }
+
   function handleAutoCommand(arg) {
     const action = arg || "status";
 
@@ -1947,6 +1970,10 @@
       auto.selectionFrames = 0;
       auto.selectionSeenAt = now;
       auto.lockedFrames = 0;
+      clearReferenceImages({
+        source: "auto",
+        reason: "選出画面に入ったため",
+      });
       auto.lastReason = `選出タイマーを検出 coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)} offset=${selectionSignal.offsetX},${selectionSignal.offsetY}`;
       appendTerminalDebug(
         [

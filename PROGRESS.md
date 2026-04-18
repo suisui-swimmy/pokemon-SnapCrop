@@ -446,3 +446,23 @@
   - 実ブラウザで、audio-select 変更時に video が維持されたまま音声だけ切り替わること、`音声なし` で音だけ止まること、autoplay 保留文言が既存どおり出ることは未確認
 - Next step:
   - 実画面で `音声なし -> 音声入力A -> 音声入力B -> 音声なし` を順に試し、video 非再初期化、音量 / ミュート維持、OBS Virtual Camera + 別 audio input の継続利用を確認する
+
+### 2026-04-18 06:24 JST — 新しい選出画面に入った時点で前回参照画像を自動クリア
+- Status: done
+- Goal:
+  `読み込み中 -> 選出タイマー` が成立したとき、前試合の左右参照画像が残っていれば自動で消して次の snap 待ちへ入れるようにする
+- Changed files:
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - 左右参照画像をまとめて消して panel 表示も更新する `clearReferenceImages()` を追加した
+  - auto phase が `loading_seen -> selection_active` へ遷移した瞬間に、前回参照画像が残っていれば `[auto]` ログ付きで自動クリアするようにした
+  - README の自動 snap 説明にも、新しい選出画面を検出した時点で前回参照を消す挙動を追記した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、前回参照が残っている状態から `選出タイマー` 検出時に即クリアされることは未確認
+- Next step:
+  - 連戦中の動画入力で、前試合の参照が残ったまま `loading -> 選出時計` に入ったケースを確認し、期待どおりクリアされるかを見る
