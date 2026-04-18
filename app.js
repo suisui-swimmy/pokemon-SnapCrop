@@ -1,5 +1,5 @@
 (() => {
-  const CSV_PATH = "./data/champions_%20Reg_M-A.csv";
+  const CSV_PATH = "./data/pokemon-reference.csv";
   const AUTO_TEMPLATE_PATHS = {
     loading: "./assets/auto/loading-indicator.png",
     selectionTimer: "./assets/auto/selection-timer-icon.png",
