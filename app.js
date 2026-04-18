@@ -31,6 +31,8 @@
   const MOBILE_LAYOUT_MEDIA_QUERY = "(max-width: 1080px)";
   const TERMINAL_FOCUS_RETURN_GRACE_MS = 180;
   const TERMINAL_MIN_WORKSPACE_HEIGHT = 220;
+  const TERMINAL_COMPACT_VERTICAL_PADDING = 6;
+  const TERMINAL_COMPACT_BUFFER = 16;
   const PANEL_CLICK_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button",
@@ -1136,6 +1138,19 @@
     return elements.terminalPanel?.dataset.collapsed === "true";
   }
 
+  function getTerminalCompactMinHeight() {
+    const inputHeight = Math.ceil(elements.terminalForm?.getBoundingClientRect().height || 0);
+    return Math.max(inputHeight + TERMINAL_COMPACT_VERTICAL_PADDING * 2, 28);
+  }
+
+  function getTerminalCompactThreshold() {
+    return getTerminalCompactMinHeight() + TERMINAL_COMPACT_BUFFER;
+  }
+
+  function getTerminalCollapseThreshold() {
+    return Math.max(Math.floor(getTerminalCompactMinHeight() * 0.5), 12);
+  }
+
   function handleWindowResize() {
     applyResponsiveTerminalLayout({ refresh: true });
   }
@@ -1167,7 +1182,7 @@
     elements.layoutSplitter?.classList.remove("is-active");
     document.body.classList.remove("is-layout-resizing");
     elements.appShell?.style.removeProperty("--terminal-panel-size");
-    syncTerminalPanelCollapsedState(false);
+    syncTerminalPanelLayoutState("normal");
     if (refresh) {
       refreshWorkspaceLayout();
     }
@@ -1211,20 +1226,44 @@
       return null;
     }
 
-    const nextSize = clamp(Math.round(sizePx), 0, getMaxTerminalPanelHeight());
-    elements.appShell.style.setProperty("--terminal-panel-size", `${nextSize}px`);
-    syncTerminalPanelCollapsedState(nextSize === 0);
+    const resolved = resolveTerminalPanelLayoutSize(sizePx);
+    elements.appShell.style.setProperty("--terminal-panel-size", `${resolved.size}px`);
+    syncTerminalPanelLayoutState(resolved.mode);
     if (refresh) {
       refreshWorkspaceLayout();
     }
-    return nextSize;
+    return resolved.size;
   }
 
-  function syncTerminalPanelCollapsedState(collapsed) {
+  function resolveTerminalPanelLayoutSize(sizePx) {
+    const nextSize = clamp(Math.round(sizePx), 0, getMaxTerminalPanelHeight());
+    if (nextSize === 0 || nextSize <= getTerminalCollapseThreshold()) {
+      return {
+        size: 0,
+        mode: "collapsed",
+      };
+    }
+
+    if (nextSize <= getTerminalCompactThreshold()) {
+      return {
+        size: Math.max(nextSize, getTerminalCompactMinHeight()),
+        mode: "compact",
+      };
+    }
+
+    return {
+      size: nextSize,
+      mode: "normal",
+    };
+  }
+
+  function syncTerminalPanelLayoutState(mode) {
     if (!elements.terminalPanel || !elements.terminalScreen || !elements.terminalInput) {
       return;
     }
 
+    const collapsed = mode === "collapsed";
+    elements.terminalPanel.dataset.terminalMode = mode;
     elements.terminalPanel.dataset.collapsed = collapsed ? "true" : "false";
 
     if (collapsed && state.focusRestoreFrameId) {

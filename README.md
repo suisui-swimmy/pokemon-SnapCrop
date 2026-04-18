@@ -84,6 +84,7 @@ OBS Virtual Camera が見えている場合は、その入力を優先して使�
 
 - desktop 幅では `workspace-top` と terminal の間に dot grip 付き splitter があり、上下ドラッグで terminal 高さを変えられます
 - terminal は drag で `0` まで縮められます。完全に隠したあとも splitter は残るので、再度ドラッグして戻せます
+- 高さを小さくしていくと、先にログ表示だけが消える compact terminal へ入り、最後まで `>` と入力欄を優先して残します
 - splitter の可変レイアウトは desktop only で、`max-width: 1080px` 以下では既存の固定レイアウトに戻ります
 - 入力欄にはポケモン名だけを入れます
 - Enter で実行します

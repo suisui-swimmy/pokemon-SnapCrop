@@ -545,3 +545,28 @@
   - 実ブラウザで、hover 時の淡さと dot の均一感が狙いどおりかは未確認
 - Next step:
   - 必要なら hover 時の alpha か dot 間隔だけをさらに詰める
+
+### 2026-04-18 19:23 JST — terminal 縮小時に input 優先の compact terminal を追加
+- Status: done
+- Goal:
+  splitter で terminal を縮めたとき、ログと入力欄が重ならないようにしつつ、入力欄を最後まで優先して残せる compact terminal 挙動を入れる
+- Changed files:
+  - `style.css`
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - `terminal-output` を「ログ」と「入力行」の縦 flex として分離し、通常時から log 側だけが独立スクロールする形へ整理した
+  - `app.js` に `normal / compact / collapsed` の 3 状態を解決する helper を追加し、terminal 高さが閾値以下になったら compact、さらに低い領域では 0 高さの collapsed へ落とすようにした
+  - compact では `data-terminal-mode=\"compact\"` を使って log を非表示にし、`>` と入力欄だけが見える input 優先の見た目へ切り替えるようにした
+  - collapsed 中の focus return / hidden input ガードは既存のまま維持し、compact 中は通常どおり入力できるようにした
+  - README に、terminal を小さくすると先にログが消えて compact terminal へ入ることを追記した
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "syncTerminalPanelLayoutState|resolveTerminalPanelLayoutSize|getTerminalCompactMinHeight|getTerminalCompactThreshold|getTerminalCollapseThreshold|data-terminal-mode" app.js style.css README.md`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、compact へ切り替わる高さがちょうどよいか、splitter drag 中に見た目が自然かは未確認
+  - fullscreen / reload 後に compact 領域で復元されたときの見え方は未確認
+- Next step:
+  - desktop ブラウザで normal -> compact -> collapsed の順に drag し、compact 中の入力可否と restore の見え方を確認する

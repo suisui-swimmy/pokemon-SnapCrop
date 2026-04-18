@@ -579,11 +579,13 @@ select {
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.35;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .terminal-log {
   min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
 }
 
 .terminal-entry--input {
@@ -592,9 +594,21 @@ select {
   align-items: baseline;
   column-gap: 0;
   margin: 0;
+  flex: 0 0 auto;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.terminal-panel[data-terminal-mode="compact"] .terminal-output {
+  gap: 0;
+  margin-bottom: 0;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.terminal-panel[data-terminal-mode="compact"] .terminal-log {
+  display: none;
 }
 
 .terminal-prompt {
