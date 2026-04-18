@@ -385,6 +385,58 @@
 - Next step:
   - `crop reset my / enemy / both` を実行して、ログ文言が「範囲」を戻した意味で自然に見えるか確認する
 
+### 2026-04-18 20:53 JST — ポケモン検索結果の区切り表記を微調整
+- Status: done
+- Goal:
+  ポケモン名入力に対する 1 行レスポンスを、採用した区切り記法に合わせて微調整する
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - 検索成功時の `タイプ` / `特性` 区切りを ` / ` から `/` に変更した
+  - `種族値` の各値を `H108` 形式から `H 108` 形式へ変更した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実際の検索結果表示で読みやすさを見た最終確認は未実施
+- Next step:
+  - 任意のポケモン名で検索して、`タイプ` / `特性` / `種族値` の区切りが想定どおりに見えるか確認する
+
+### 2026-04-18 20:57 JST — 種族値の区切りを `H/108` 形式へ再調整
+- Status: done
+- Goal:
+  ポケモン検索結果の種族値表記を、より見やすい区切り記法へ微調整する
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - 検索成功時の種族値表示を `H 108` 形式から `H/108` 形式へ変更した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実際の検索結果表示で `/` 区切りの視認性を見た最終確認は未実施
+- Next step:
+  - 任意のポケモン名で検索して、`H/108 A/130 ...` の区切りが想定どおりに見えるか確認する
+
+### 2026-04-18 21:00 JST — 種族値の区切りを `H-108` 形式へ再調整
+- Status: done
+- Goal:
+  ポケモン検索結果の種族値表記を、見やすさ確認のため `-` 区切りへ微調整する
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - 検索成功時の種族値表示を `H/108` 形式から `H-108` 形式へ変更した
+- Verification:
+  - `node --check app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実際の検索結果表示で `-` 区切りの視認性を見た最終確認は未実施
+- Next step:
+  - 任意のポケモン名で検索して、`H-108 A-130 ...` の区切りが想定どおりに見えるか確認する
+
 ### 2026-04-18 01:19 JST — terminal へ安全にフォーカスを戻す最小差分を追加
 - Status: done
 - Goal:
@@ -570,3 +622,68 @@
   - fullscreen / reload 後に compact 領域で復元されたときの見え方は未確認
 - Next step:
   - desktop ブラウザで normal -> compact -> collapsed の順に drag し、compact 中の入力可否と restore の見え方を確認する
+
+### 2026-04-18 20:03 JST — terminal 新規ログの autoscroll を near-bottom 条件付きに修正
+- Status: done
+- Goal:
+  splitter で terminal を小さくした状態でも最新ログが入力欄の下に隠れないようにしつつ、過去ログを読んでいる最中は勝手に最下段へ戻さない
+- Changed files:
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - terminal log 側の scroll 位置を `terminal-output` で見るようにし、下端付近かどうかを判定する helper と scroll listener を追加した
+  - 通常ログは「追加前に下端付近だったときだけ」自動で最下段へ追従し、ユーザーが上へスクロールしている間は現在位置を維持するようにした
+  - terminal submit / `Ctrl + Enter` / `snap` 系 / control 操作起点のログは、処理完了まで強制 autoscroll する wrapper に通し、自分の操作結果は自然に最新行が見えるようにした
+  - compact / collapsed 中は見えない log へ無理に scroll せず pending 扱いにし、normal 表示へ戻った時だけ安全に最下段を復元するようにした
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "TERMINAL_AUTOSCROLL_THRESHOLD_PX|terminalLogAutoFollow|terminalLogPendingBottomScroll|runWithForcedTerminalAutoscroll|handleTerminalLogScroll|isTerminalLogNearBottom|shouldForceTerminalAutoscroll|scrollTerminalToBottom" app.js`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、過去ログを読んでいる途中の append が本当に位置維持になるかは未確認
+  - compact / collapsed から normal へ戻した時の pending scroll の見え方は未確認
+- Next step:
+  - desktop ブラウザで near-bottom / 手動で上スクロール中 / compact / collapsed の4パターンを順に確認する
+
+### 2026-04-18 20:30 JST — terminal 文字サイズを 13px へ上げて可読性を微調整
+- Status: done
+- Goal:
+  terminal の dark / console 寄りの見た目は維持したまま、`0 / 8 / S` を含む文字の視認性を少し上げる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `.terminal-output`、`.terminal-entry--input`、`.terminal-entry` の font-size を `12px` から `13px` へ揃えて上げた
+  - line-height は既存の `1.35` を維持し、terminal の高さ、入力欄、compact 時の収まりに効くレイアウト条件は変えないまま可読性だけを調整した
+  - `index.html` / `app.js` には触れず、terminal UI の見た目だけを最小差分で調整した
+- Verification:
+  - `rg -n "\\.terminal-output|\\.terminal-entry--input|\\.terminal-entry \\{|font-size: 13px;" style.css`: pass
+  - `git diff -- style.css`: pass
+  - `Invoke-WebRequest http://127.0.0.1:8765/` / `Invoke-WebRequest http://127.0.0.1:8765/style.css`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで 13px の見え方、compact terminal、splitter で縮めた時の収まりはまだ未確認
+  - browser automation での localhost 目視チェックはタイムアウトしたため未完了
+- Next step:
+  - desktop ブラウザで terminal の通常表示と compact 表示を見て、13px のままで十分か、14px まで上げる必要があるかを判断する
+
+### 2026-04-18 20:46 JST — terminal の monospace を UDEV Gothic 系優先へ差し替え
+- Status: done
+- Goal:
+  terminal だけを対象に、日本語と英数字が混在しても自然に読める monospace 系 stack へ安全に寄せる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `:root` に terminal 専用の `--terminal-mono` を追加し、`"UDEV Gothic"`, `"UDEV Gothic 35JPDOC"`, `"BIZ UDGothic"`, `Consolas`, `monospace` の順で fallback する stack を定義した
+  - `.terminal-output`、`.terminal-entry--input`、`.terminal-entry` の `font-family` だけを `var(--terminal-mono)` へ差し替え、他 UI が参照する既存 `--mono` は変更しなかった
+  - line-height やレイアウト条件、HTML / JS には触れず、terminal の見た目調整だけに閉じた
+- Verification:
+  - `rg -n "terminal-mono|font-family: var\\(--terminal-mono\\)" style.css`: pass
+  - `git diff -- style.css`: pass
+  - Manual check: not run
+- Remaining issues:
+  - UDEV Gothic 未導入環境では fallback 表示になるため、実機での見え方は環境依存
+  - 実ブラウザで日本語ログ、英数字、prompt `>` の見え方はまだ未確認
+- Next step:
+  - desktop ブラウザで terminal を開き、UDEV Gothic 導入環境と未導入環境の両方で見え方に破綻がないか確認する

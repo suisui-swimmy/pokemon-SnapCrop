@@ -16,6 +16,7 @@
   --toolbar-height: 36px;
   --terminal-panel-default-size: clamp(148px, 18svh, 196px);
   --mono: "Cascadia Code", "Consolas", "BIZ UDGothic", monospace;
+  --terminal-mono: "UDEV Gothic", "UDEV Gothic 35JPDOC", "BIZ UDGothic", Consolas, monospace;
   --ui: "Yu Gothic UI", "BIZ UDPGothic", "Hiragino Sans", sans-serif;
 }
 
@@ -576,8 +577,8 @@ select {
   border: 0;
   border-radius: 0;
   background: #121417;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-family: var(--terminal-mono);
+  font-size: 13px;
   line-height: 1.35;
   overflow: hidden;
 }
@@ -595,8 +596,8 @@ select {
   column-gap: 0;
   margin: 0;
   flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-family: var(--terminal-mono);
+  font-size: 13px;
   line-height: 1.35;
 }
 
@@ -673,8 +674,8 @@ select {
 }
 
 .terminal-entry {
-  font-family: var(--mono);
-  font-size: 12px;
+  font-family: var(--terminal-mono);
+  font-size: 13px;
   line-height: 1.35;
   white-space: pre-wrap;
 }

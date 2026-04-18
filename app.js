@@ -33,6 +33,7 @@
   const TERMINAL_MIN_WORKSPACE_HEIGHT = 220;
   const TERMINAL_COMPACT_VERTICAL_PADDING = 6;
   const TERMINAL_COMPACT_BUFFER = 16;
+  const TERMINAL_AUTOSCROLL_THRESHOLD_PX = 16;
   const PANEL_CLICK_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button",
@@ -195,6 +196,9 @@
     commandHistory: [],
     commandHistoryIndex: -1,
     debugMode: false,
+    terminalLogAutoFollow: true,
+    terminalLogPendingBottomScroll: false,
+    terminalForceAutoscrollDepth: 0,
     autoSnap: createAutoSnapState(),
   };
 
@@ -287,6 +291,7 @@
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
+    elements.terminalOutput.addEventListener("scroll", handleTerminalLogScroll, { passive: true });
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
     elements.layoutSplitter?.addEventListener("pointerdown", startLayoutResize);
     elements.workspaceTop?.addEventListener("click", handleWorkspaceTopClick);
@@ -341,7 +346,7 @@
 
   async function runControlActionAndRestoreTerminalFocus(action, options = {}) {
     try {
-      await action();
+      await runWithForcedTerminalAutoscroll(action);
     } finally {
       focusTerminalInputIfAppropriate({
         ...options,
@@ -799,44 +804,47 @@
     event.preventDefault();
 
     const query = elements.terminalInput.value.trim();
-    if (!query) {
-      if (state.mode === "ready") {
-        appendTerminalEntry(["> snap both"], "command");
-        void handleSnapCommand("both");
+    void runWithForcedTerminalAutoscroll(() => {
+      if (!query) {
+        if (state.mode === "ready") {
+          appendTerminalEntry(["> snap both"], "command");
+          return handleSnapCommand("both");
+        }
+        return null;
       }
-      return;
-    }
 
-    pushCommandHistory(query);
-    appendTerminalEntry([`> ${query}`], "command");
-    elements.terminalInput.value = "";
+      pushCommandHistory(query);
+      appendTerminalEntry([`> ${query}`], "command");
+      elements.terminalInput.value = "";
 
-    if (handleTerminalCommand(query)) {
-      return;
-    }
+      if (handleTerminalCommand(query)) {
+        return null;
+      }
 
-    if (!state.csvReady) {
-      appendTerminalError("[error] CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。");
-      return;
-    }
+      if (!state.csvReady) {
+        appendTerminalError("[error] CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。");
+        return null;
+      }
 
-    const pokemon = state.pokemonMap.get(query);
-    if (!pokemon) {
+      const pokemon = state.pokemonMap.get(query);
+      if (!pokemon) {
+        appendTerminalEntry(
+          [
+            "[error] 該当するポケモンが見つかりません。コマンドを確認したい場合は help を入力してください。",
+          ],
+          "error",
+        );
+        return null;
+      }
+
       appendTerminalEntry(
         [
-          "[error] 該当するポケモンが見つかりません。コマンドを確認したい場合は help を入力してください。",
+          `タイプ: ${pokemon.types.join("/")} | 特性: ${pokemon.abilities.join("/")} | 種族値: H-${pokemon.stats.H} A-${pokemon.stats.A} B-${pokemon.stats.B} C-${pokemon.stats.C} D-${pokemon.stats.D} S-${pokemon.stats.S}`,
         ],
-        "error",
+        "success",
       );
-      return;
-    }
-
-    appendTerminalEntry(
-      [
-        `タイプ: ${pokemon.types.join(" / ")} | 特性: ${pokemon.abilities.join(" / ")} | 種族値: H${pokemon.stats.H} A${pokemon.stats.A} B${pokemon.stats.B} C${pokemon.stats.C} D${pokemon.stats.D} S${pokemon.stats.S}`,
-      ],
-      "success",
-    );
+      return null;
+    });
   }
 
   function handleTerminalInputKeydown(event) {
@@ -877,8 +885,10 @@
   function handleGlobalKeydown(event) {
     if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Enter") {
       event.preventDefault();
-      appendTerminalEntry(["> snap both"], "command");
-      void handleSnapCommand("both");
+      void runWithForcedTerminalAutoscroll(() => {
+        appendTerminalEntry(["> snap both"], "command");
+        return handleSnapCommand("both");
+      });
       return;
     }
 
@@ -952,7 +962,7 @@
         return true;
       }
 
-      void handleSnapCommand(target);
+      void runWithForcedTerminalAutoscroll(() => handleSnapCommand(target));
       return true;
     }
 
@@ -1019,6 +1029,53 @@
   function moveCaretToEnd(input) {
     const nextPosition = input.value.length;
     input.setSelectionRange(nextPosition, nextPosition);
+  }
+
+  function runWithForcedTerminalAutoscroll(action) {
+    state.terminalForceAutoscrollDepth += 1;
+    const release = () => {
+      state.terminalForceAutoscrollDepth = Math.max(0, state.terminalForceAutoscrollDepth - 1);
+    };
+
+    try {
+      const result = action();
+      if (result && typeof result.then === "function") {
+        return Promise.resolve(result).finally(release);
+      }
+
+      release();
+      return result;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
+  function handleTerminalLogScroll() {
+    if (!elements.terminalOutput || isTerminalCollapsed()) {
+      return;
+    }
+
+    state.terminalLogAutoFollow = isTerminalLogNearBottom();
+  }
+
+  function isTerminalLogNearBottom(threshold = TERMINAL_AUTOSCROLL_THRESHOLD_PX) {
+    if (!elements.terminalOutput) {
+      return true;
+    }
+
+    const remaining = elements.terminalOutput.scrollHeight
+      - elements.terminalOutput.clientHeight
+      - elements.terminalOutput.scrollTop;
+    return remaining <= threshold;
+  }
+
+  function shouldForceTerminalAutoscroll() {
+    return state.terminalForceAutoscrollDepth > 0;
+  }
+
+  function isTerminalLogVisible() {
+    return Boolean(elements.terminalOutput?.getClientRects().length);
   }
 
   function focusTerminalInputIfAppropriate(options = {}) {
@@ -1289,6 +1346,15 @@
 
     elements.terminalScreen.removeAttribute("aria-hidden");
     elements.terminalInput.removeAttribute("tabindex");
+
+    if (mode === "normal" && state.terminalLogPendingBottomScroll) {
+      window.requestAnimationFrame(() => {
+        if (elements.terminalPanel?.dataset.terminalMode !== "normal") {
+          return;
+        }
+        scrollTerminalToBottom();
+      });
+    }
   }
 
   function startLayoutResize(event) {
@@ -1392,6 +1458,8 @@
 
   function clearTerminalOutput() {
     elements.terminalOutput.textContent = "";
+    state.terminalLogAutoFollow = true;
+    state.terminalLogPendingBottomScroll = false;
     scrollTerminalToBottom();
   }
 
@@ -3448,11 +3516,14 @@
   }
 
   function appendTerminalEntry(lines, tone = "system") {
+    const shouldFollow = shouldForceTerminalAutoscroll() || state.terminalLogAutoFollow;
     const entry = document.createElement("div");
     entry.className = `terminal-entry terminal-entry--${tone}`;
     entry.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines);
     elements.terminalOutput.append(entry);
-    scrollTerminalToBottom();
+    if (shouldFollow) {
+      scrollTerminalToBottom();
+    }
   }
 
   function appendTerminalDebug(lines, tone = "system") {
@@ -3481,7 +3552,18 @@
   }
 
   function scrollTerminalToBottom() {
-    elements.terminalScreen.scrollTop = elements.terminalScreen.scrollHeight;
+    if (!elements.terminalOutput) {
+      return;
+    }
+
+    if (isTerminalCollapsed() || !isTerminalLogVisible()) {
+      state.terminalLogPendingBottomScroll = true;
+      return;
+    }
+
+    elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
+    state.terminalLogPendingBottomScroll = false;
+    state.terminalLogAutoFollow = true;
   }
 
   function shouldUseFixedSixteenByNineCrops() {
