@@ -466,3 +466,82 @@
   - 実ブラウザで、前回参照が残っている状態から `選出タイマー` 検出時に即クリアされることは未確認
 - Next step:
   - 連戦中の動画入力で、前試合の参照が残ったまま `loading -> 選出時計` に入ったケースを確認し、期待どおりクリアされるかを見る
+
+### 2026-04-18 17:31 JST — workspace と terminal の間に desktop 用 splitter を追加
+- Status: done
+- Goal:
+  `workspace-top` と `terminal-panel` の間を上下ドラッグで可変にしつつ、terminal を 0 まで安全に縮められる UI 基盤を入れる
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - `index.html` に `workspace-top` と `terminal-panel` の sibling として `layout-splitter` を追加し、dot grip 見た目の drag handle を差し込んだ
+  - `style.css` で `terminal-panel` の高さを CSS 変数管理へ切り替え、splitter は見た目より少し広い hit area を持つ desktop only UI にした
+  - terminal 自体の padding / border 依存を外し、`flex-basis: 0` でも splitter だけ残して再展開できるように整理した
+  - `app.js` に splitter drag、px 保存 / 復元、fullscreen / resize 時の再 clamp、mobile fallback 復帰、layout resize 中の focus return / crop drag ガードを追加した
+  - terminal collapsed 時は `blur` に加えて `#terminal-screen` へ `inert` / `aria-hidden`、input へ `tabindex=-1` を適用し、hidden input に Tab や自動 focus が入らないようにした
+  - `README.md` を、desktop splitter の使い方、0 まで縮められること、保存対象に terminal 高さが増えたことに合わせて更新した
+- Verification:
+  - `node --check app.js`: pass
+  - `rg -n "layout-splitter|terminal-height|data-collapsed|inert|tabindex|MOBILE_LAYOUT_MEDIA_QUERY" index.html style.css app.js README.md`: pass
+  - Manual check: not run
+- Remaining issues:
+  - desktop 実ブラウザでの drag、0 collapse、reload 復元、fullscreen / PWA standalone の見え方はまだ未確認
+  - narrow width への切り替え時に、実機で既存 mobile fallback の見え方が十分自然かは未確認
+- Next step:
+  - desktop ブラウザで splitter の drag、0 collapse、reload、fullscreen を順に確認し、必要なら grip の視認性や clamp を微調整する
+
+### 2026-04-18 17:38 JST — splitter の見た目だけをフラット寄りに微調整
+- Status: done
+- Goal:
+  splitter 下側の不要な線を消しつつ、ドラッグハンドルをより平面的でシンプルな pill + dots の見た目へ寄せる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `terminal-output` の上端線を外し、splitter 直下に見えていた余分な水平線を消した
+  - `layout-splitter__grip` を、単純なドットだけの見た目からフラットな丸 pill の中に 2x3 の dots を持つアイコン寄りの見た目へ調整した
+  - hover / active 時の変化量も少し抑え、より無骨で平面的なトーンに寄せた
+- Verification:
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、線の消え方と grip の見え方が添付イメージの意図に十分近いかは未確認
+- Next step:
+  - 必要なら grip の横幅、ドットサイズ、pill の明度だけを微調整する
+
+### 2026-04-18 17:41 JST — splitter アイコンを少し小さくし、ドット色をラインへ揃えた
+- Status: done
+- Goal:
+  splitter の pill + dots アイコンを少し小さくし、ドット色をラインと同系色に寄せて主張を下げる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - splitter アイコン全体をおよそ 80% サイズへ縮小した
+  - ドット色を常時白ではなく splitter ラインと同系色に変更し、hover / active 時だけラインと一緒に白っぽく見えるように揃えた
+- Verification:
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、縮小後のサイズ感と通常時の主張の弱さがちょうどよいかは未確認
+- Next step:
+  - 必要なら dot 間隔か pill の枠色だけをさらに微調整する
+
+### 2026-04-18 17:44 JST — splitter hover 時の色合わせと dot 形状を補正
+- Status: done
+- Goal:
+  hover 時の dot 色を splitter line と同色へ揃え、上下 2 段の dot が同じ大きさに見えるようにする
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - hover / active 時の dot 色を splitter line hover と同じ色へ合わせた
+  - dot を 4px に揃え、下段も `bottom` ではなく `top` 基準の固定配置にして上下の見え方を均一にした
+- Verification:
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで、hover 時の淡さと dot の均一感が狙いどおりかは未確認
+- Next step:
+  - 必要なら hover 時の alpha か dot 間隔だけをさらに詰める

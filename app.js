@@ -8,6 +8,7 @@
   const STORAGE_KEYS = {
     my: "pokemon-snapcrop.my-crop",
     enemy: "pokemon-snapcrop.enemy-crop",
+    terminalHeight: "pokemon-snapcrop.terminal-height",
   };
   const CROP_SIDES = ["my", "enemy"];
   const REQUIRED_HEADERS = [
@@ -27,7 +28,9 @@
   const ASPECT_16_BY_9 = 16 / 9;
   const ASPECT_4_BY_3 = 4 / 3;
   const ASPECT_TOLERANCE = 0.02;
+  const MOBILE_LAYOUT_MEDIA_QUERY = "(max-width: 1080px)";
   const TERMINAL_FOCUS_RETURN_GRACE_MS = 180;
+  const TERMINAL_MIN_WORKSPACE_HEIGHT = 220;
   const PANEL_CLICK_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button",
@@ -173,6 +176,9 @@
     },
     drag: null,
     lastCropInteractionEndedAt: 0,
+    layoutResize: null,
+    lastLayoutResizeEndedAt: 0,
+    layoutResizeFrameId: 0,
     previewFrameId: 0,
     focusRestoreFrameId: 0,
     audioContext: null,
@@ -199,7 +205,7 @@
     renderCameraDetails();
     syncFullscreenButton();
     syncAudioControls();
-    refreshWorkspaceLayout();
+    applyResponsiveTerminalLayout({ refresh: true });
     refreshDevices();
     loadAutoTemplates();
     loadPokemonCsv();
@@ -214,13 +220,17 @@
       ],
       "system",
     );
-    window.requestAnimationFrame(() => {
-      elements.terminalInput?.focus();
-    });
+    if (!isTerminalCollapsed()) {
+      window.requestAnimationFrame(() => {
+        elements.terminalInput?.focus();
+      });
+    }
   }
 
   function cacheElements() {
+    elements.appShell = document.querySelector(".app-shell");
     elements.workspaceTop = document.querySelector(".workspace-top");
+    elements.layoutSplitter = document.getElementById("layout-splitter");
     elements.deviceSelect = document.getElementById("device-select");
     elements.audioSelect = document.getElementById("audio-select");
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
@@ -256,6 +266,7 @@
       topTimer: document.getElementById("debug-overlay-top-timer"),
       battleHud: document.getElementById("debug-overlay-battle-hud"),
     };
+    elements.terminalPanel = document.querySelector(".terminal-panel");
     elements.terminalScreen = document.getElementById("terminal-screen");
     elements.terminalForm = document.getElementById("terminal-form");
     elements.terminalInput = document.getElementById("terminal-input");
@@ -275,14 +286,18 @@
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
+    elements.layoutSplitter?.addEventListener("pointerdown", startLayoutResize);
     elements.workspaceTop?.addEventListener("click", handleWorkspaceTopClick);
     CROP_SIDES.forEach((side) => {
       elements.cropSlots[side].overlay?.addEventListener("pointerdown", startCropInteraction);
     });
     window.addEventListener("pointermove", updateCropInteraction);
+    window.addEventListener("pointermove", updateLayoutResize);
     window.addEventListener("pointerup", finishCropInteraction);
+    window.addEventListener("pointerup", finishLayoutResize);
     window.addEventListener("pointercancel", finishCropInteraction);
-    window.addEventListener("resize", refreshWorkspaceLayout);
+    window.addEventListener("pointercancel", finishLayoutResize);
+    window.addEventListener("resize", handleWindowResize);
     document.addEventListener("keydown", handleGlobalKeydown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
@@ -1020,7 +1035,17 @@
       return;
     }
 
-    if (state.mode === "edit" || state.drag) {
+    const now = performance.now();
+    if (
+      state.mode === "edit"
+      || state.drag
+      || state.layoutResize
+      || isTerminalCollapsed()
+      || (
+        state.lastLayoutResizeEndedAt
+        && now - state.lastLayoutResizeEndedAt < TERMINAL_FOCUS_RETURN_GRACE_MS
+      )
+    ) {
       return;
     }
 
@@ -1042,7 +1067,11 @@
 
     state.focusRestoreFrameId = window.requestAnimationFrame(() => {
       state.focusRestoreFrameId = 0;
-      if (!elements.terminalInput || document.activeElement === elements.terminalInput) {
+      if (
+        !elements.terminalInput
+        || document.activeElement === elements.terminalInput
+        || isTerminalCollapsed()
+      ) {
         return;
       }
 
@@ -1099,6 +1128,218 @@
     return null;
   }
 
+  function usesMobileLayout() {
+    return window.matchMedia(MOBILE_LAYOUT_MEDIA_QUERY).matches;
+  }
+
+  function isTerminalCollapsed() {
+    return elements.terminalPanel?.dataset.collapsed === "true";
+  }
+
+  function handleWindowResize() {
+    applyResponsiveTerminalLayout({ refresh: true });
+  }
+
+  function applyResponsiveTerminalLayout(options = {}) {
+    const { refresh = true } = options;
+
+    if (usesMobileLayout()) {
+      resetDesktopTerminalLayout({ refresh });
+      return;
+    }
+
+    const storedHeight = restoreTerminalPanelHeight();
+    if (storedHeight === null) {
+      resetDesktopTerminalLayout({ refresh });
+      return;
+    }
+
+    applyTerminalPanelSize(storedHeight, { refresh });
+  }
+
+  function resetDesktopTerminalLayout(options = {}) {
+    const { refresh = true } = options;
+    if (state.layoutResizeFrameId) {
+      window.cancelAnimationFrame(state.layoutResizeFrameId);
+      state.layoutResizeFrameId = 0;
+    }
+    state.layoutResize = null;
+    elements.layoutSplitter?.classList.remove("is-active");
+    document.body.classList.remove("is-layout-resizing");
+    elements.appShell?.style.removeProperty("--terminal-panel-size");
+    syncTerminalPanelCollapsedState(false);
+    if (refresh) {
+      refreshWorkspaceLayout();
+    }
+  }
+
+  function restoreTerminalPanelHeight() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.terminalHeight);
+      if (raw === null) {
+        return null;
+      }
+
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function persistTerminalPanelHeight(sizePx) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.terminalHeight, String(Math.round(sizePx)));
+    } catch {
+      return;
+    }
+  }
+
+  function getMaxTerminalPanelHeight() {
+    const shellHeight = elements.appShell?.clientHeight || 0;
+    const splitterHeight = elements.layoutSplitter?.offsetHeight || 0;
+    return Math.max(shellHeight - splitterHeight - TERMINAL_MIN_WORKSPACE_HEIGHT, 0);
+  }
+
+  function getCurrentTerminalPanelHeight() {
+    return Math.max(0, Math.round(elements.terminalPanel?.getBoundingClientRect().height || 0));
+  }
+
+  function applyTerminalPanelSize(sizePx, options = {}) {
+    const { refresh = true } = options;
+    if (!elements.appShell) {
+      return null;
+    }
+
+    const nextSize = clamp(Math.round(sizePx), 0, getMaxTerminalPanelHeight());
+    elements.appShell.style.setProperty("--terminal-panel-size", `${nextSize}px`);
+    syncTerminalPanelCollapsedState(nextSize === 0);
+    if (refresh) {
+      refreshWorkspaceLayout();
+    }
+    return nextSize;
+  }
+
+  function syncTerminalPanelCollapsedState(collapsed) {
+    if (!elements.terminalPanel || !elements.terminalScreen || !elements.terminalInput) {
+      return;
+    }
+
+    elements.terminalPanel.dataset.collapsed = collapsed ? "true" : "false";
+
+    if (collapsed && state.focusRestoreFrameId) {
+      window.cancelAnimationFrame(state.focusRestoreFrameId);
+      state.focusRestoreFrameId = 0;
+    }
+
+    if (
+      collapsed
+      && elements.terminalPanel.contains(document.activeElement)
+      && document.activeElement instanceof HTMLElement
+    ) {
+      document.activeElement.blur();
+    }
+
+    elements.terminalScreen.toggleAttribute("inert", collapsed);
+
+    if (collapsed) {
+      elements.terminalScreen.setAttribute("aria-hidden", "true");
+      elements.terminalInput.setAttribute("tabindex", "-1");
+      return;
+    }
+
+    elements.terminalScreen.removeAttribute("aria-hidden");
+    elements.terminalInput.removeAttribute("tabindex");
+  }
+
+  function startLayoutResize(event) {
+    if (
+      usesMobileLayout()
+      || state.drag
+      || state.layoutResize
+      || event.button !== 0
+      || !elements.appShell
+      || !elements.layoutSplitter
+    ) {
+      return;
+    }
+
+    state.layoutResize = {
+      pointerId: event.pointerId,
+      pendingSize: getCurrentTerminalPanelHeight(),
+    };
+
+    if (elements.layoutSplitter.setPointerCapture) {
+      elements.layoutSplitter.setPointerCapture(event.pointerId);
+    }
+
+    elements.layoutSplitter.classList.add("is-active");
+    document.body.classList.add("is-layout-resizing");
+    queueLayoutResize(event.clientY);
+    event.preventDefault();
+  }
+
+  function updateLayoutResize(event) {
+    if (!state.layoutResize || event.pointerId !== state.layoutResize.pointerId) {
+      return;
+    }
+
+    queueLayoutResize(event.clientY);
+    event.preventDefault();
+  }
+
+  function queueLayoutResize(clientY) {
+    if (!state.layoutResize || !elements.appShell) {
+      return;
+    }
+
+    const shellRect = elements.appShell.getBoundingClientRect();
+    const nextSize = clamp(Math.round(shellRect.bottom - clientY), 0, getMaxTerminalPanelHeight());
+    state.layoutResize.pendingSize = nextSize;
+
+    if (state.layoutResizeFrameId) {
+      return;
+    }
+
+    state.layoutResizeFrameId = window.requestAnimationFrame(() => {
+      state.layoutResizeFrameId = 0;
+      if (!state.layoutResize) {
+        return;
+      }
+
+      applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
+    });
+  }
+
+  function finishLayoutResize(event) {
+    if (!state.layoutResize || event.pointerId !== state.layoutResize.pointerId) {
+      return;
+    }
+
+    if (state.layoutResizeFrameId) {
+      window.cancelAnimationFrame(state.layoutResizeFrameId);
+      state.layoutResizeFrameId = 0;
+    }
+
+    const appliedSize = applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
+    if (appliedSize !== null && !usesMobileLayout()) {
+      persistTerminalPanelHeight(appliedSize);
+    }
+
+    if (elements.layoutSplitter?.releasePointerCapture) {
+      try {
+        elements.layoutSplitter.releasePointerCapture(event.pointerId);
+      } catch {
+        // ignore pointer capture release errors from already-finished drags
+      }
+    }
+
+    elements.layoutSplitter?.classList.remove("is-active");
+    document.body.classList.remove("is-layout-resizing");
+    state.layoutResize = null;
+    state.lastLayoutResizeEndedAt = performance.now();
+  }
+
   function getTerminalStatusLines() {
     return [
       `[system] mode: ${state.mode}`,
@@ -1145,7 +1386,7 @@
   }
 
   function startCropInteraction(event) {
-    if (!state.videoReady || state.mode !== "edit" || event.button !== 0) {
+    if (!state.videoReady || state.mode !== "edit" || state.layoutResize || event.button !== 0) {
       return;
     }
 
@@ -1237,7 +1478,7 @@
 
   function handleFullscreenChange() {
     syncFullscreenButton();
-    refreshWorkspaceLayout();
+    applyResponsiveTerminalLayout({ refresh: true });
   }
 
   function refreshWorkspaceLayout() {
