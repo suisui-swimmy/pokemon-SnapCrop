@@ -57,39 +57,43 @@
           </svg>
           <span class="sr-only">全画面切替</span>
         </button>
-        <button
-          class="ui-button ui-button--subtle ui-button--icon audio-button"
-          id="toggle-audio-mute"
-          type="button"
-          aria-label="音声ミュート切替"
-          title="音声ミュートを切り替え"
-          disabled
-          data-icon-state="muted"
-        >
-          <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-on" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M17 8.5a4.8 4.8 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M19.75 6.25a8.15 8.15 0 0 1 0 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-muted" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="m16.5 8.5 4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="m21 8.5-4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="sr-only">音声ミュート切替</span>
-        </button>
-        <label class="sr-only" for="audio-volume">音量</label>
-        <input
-          id="audio-volume"
-          class="audio-volume"
-          type="range"
-          min="0"
-          max="100"
-          value="100"
-          step="1"
-          aria-label="音量"
-          disabled
-        >
+        <div class="audio-control">
+          <button
+            class="ui-button ui-button--subtle ui-button--icon audio-button"
+            id="toggle-audio-mute"
+            type="button"
+            aria-label="音声ミュート切替"
+            title="音声ミュートを切り替え"
+            disabled
+            data-icon-state="muted"
+          >
+            <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-on" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M17 8.5a4.8 4.8 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M19.75 6.25a8.15 8.15 0 0 1 0 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-muted" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="m16.5 8.5 4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="m21 8.5-4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sr-only">音声ミュート切替</span>
+          </button>
+          <div class="audio-volume-shell">
+            <label class="sr-only" for="audio-volume">音量</label>
+            <input
+              id="audio-volume"
+              class="audio-volume"
+              type="range"
+              min="0"
+              max="100"
+              value="100"
+              step="1"
+              aria-label="音量"
+              disabled
+            >
+          </div>
+        </div>
       </header>
 
       <aside class="panel crop-panel crop-panel--my" aria-label="自パーティクロップ">
