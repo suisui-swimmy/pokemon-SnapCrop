@@ -808,6 +808,27 @@
 - Next step:
   - desktop ブラウザで toolbar を見て、refresh / play / audio の見た目の重さが揃ったか確認する
 
+### 2026-04-19 02:56 JST — toolbar 系 UI にだけ LINE Seed JP を適用
+- Status: done
+- Goal:
+  terminal の monospace は維持したまま、toolbar / select / button / badge だけを `LINE Seed JP` で少し柔らかいトーンへ寄せる
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - `<head>` に `fonts.googleapis.com` / `fonts.gstatic.com` の `preconnect` と、`display=swap` 付き `LINE Seed JP` `wght@400` の Google Fonts 読み込みを追加した
+  - `style.css` に `--toolbar-ui` を追加し、`.workspace-toolbar`、`.workspace-toolbar .ui-button`、`.workspace-toolbar .toolbar-select`、`.camera-badge` だけへ `LINE Seed JP` を適用した
+  - `body` や terminal 系セレクタ、`--terminal-mono` には触れず、terminal の既存 monospace はそのまま維持した
+- Verification:
+  - `rg -n "LINE Seed JP|toolbar-ui|workspace-toolbar,|fonts.googleapis.com|fonts.gstatic.com|display=swap" index.html style.css`: pass
+  - `Invoke-WebRequest http://127.0.0.1:8765/` / `style.css`: pass
+  - Manual check: not run
+- Remaining issues:
+  - 実ブラウザで LINE Seed JP 読み込み後の見え方と swap 時の印象は未確認
+- Next step:
+  - desktop ブラウザで toolbar のみフォントが変わり、terminal が monospace のまま保たれているか確認する
+
 ### 2026-04-19 02:24 JST — `cr` alias を追加し help の短縮コマンド表記を具体化
 - Status: done
 - Goal:
