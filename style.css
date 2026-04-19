@@ -174,9 +174,17 @@ select {
   grid-area: toolbar;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   min-height: 0;
   border-bottom: 1px solid var(--border);
+}
+
+.toolbar-main-controls {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .workspace-toolbar,
@@ -440,6 +448,27 @@ select {
   writing-mode: vertical-lr;
   direction: rtl;
   -webkit-appearance: slider-vertical;
+}
+
+.toolbar-help-link {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 4px;
+  color: var(--icon-secondary);
+  text-decoration: none;
+  outline: none;
+}
+
+.toolbar-help-link:hover,
+.toolbar-help-link:focus-visible {
+  color: var(--text);
+}
+
+.toolbar-icon--help {
+  width: 20px;
+  height: 20px;
 }
 
 .helper-text {
@@ -887,6 +916,10 @@ select {
   }
 
   .workspace-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-main-controls {
     flex-wrap: wrap;
   }
 
