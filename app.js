@@ -2153,7 +2153,7 @@
     appendTerminalEntry(
       [
         enabled
-          ? "[debug] デバッグ表示を ON にしました。認識範囲を表示しました。"
+          ? "[debug] デバッグ表示を ON にしました。自動 snap の認識範囲を表示可能にしました。"
           : "[debug] デバッグ表示を OFF にしました。認識範囲を非表示にしました。",
       ],
       "system",

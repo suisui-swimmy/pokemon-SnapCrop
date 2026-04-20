@@ -1,7 +1,7 @@
 {
   "name": "pokemon-SnapCrop",
   "short_name": "SnapCrop",
-  "description": "対戦画面の敵パーティ領域を縦長クロップ表示しつつ、CLI 風パネルでポケモン情報を参照する静的 Web アプリです。",
+  "description": "「Pokémon Champions」において、対戦中の自分 / 相手のパーティを自動で撮影 / 表示することができるアプリです。",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",

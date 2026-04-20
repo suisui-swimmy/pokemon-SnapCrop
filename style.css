@@ -447,7 +447,6 @@ select {
   flex: 0 0 auto;
   writing-mode: vertical-lr;
   direction: rtl;
-  -webkit-appearance: slider-vertical;
 }
 
 .toolbar-help-link {
