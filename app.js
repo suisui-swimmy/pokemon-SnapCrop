@@ -787,14 +787,14 @@
       appendTerminalNotice(
         "aspect-4-3-generic",
         [
-          "[system] 4:3 入力を検出しました。16:9 で出力できる映像入力で自動 snap を有効にできます。",
+          "[system] 入力を検出しました。自動 snap を有効にするには 16:9 の映像入力が必要です。",
         ],
         "system",
       );
       appendTerminalNotice(
         "auto-unsupported-4-3",
         [
-          "[auto] 自動 snap は 16:9 入力専用です。4:3 入力では監視しません。",
+          "[auto] 自動 snap は 16:9 入力にのみ対応しています。",
         ],
         "system",
       );
