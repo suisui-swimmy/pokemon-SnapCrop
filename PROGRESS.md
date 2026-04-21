@@ -1,0 +1,138 @@
+### 2026-04-21 No.1 — terminal ポケモンサジェスト実装開始
+- Status: in_progress
+- Goal: terminal 入力欄にポケモン名サジェスト、ゴースト補完、IME 対応を追加する
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `app.js`
+  - `PROGRESS.md`
+- What changed:
+  - 実装前の計画を確定した
+  - terminal submit / keydown / CSV 読み込み / focus return の既存挙動を確認した
+  - `PROGRESS.md` の記録を開始した
+- Verification:
+  - `git status --short`: pass
+  - Manual check: not run
+- Remaining issues:
+  - サジェスト UI と検索インデックスの実装は未着手
+- Next step:
+  - `index.html`, `style.css`, `app.js` に最小差分でサジェスト機能を追加する
+
+### 2026-04-21 No.2 — terminal ポケモンサジェスト実装完了
+- Status: done
+- Goal: terminal 入力欄にポケモン名サジェスト、ゴースト補完、IME 対応を追加する
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - terminal 入力欄の直上に候補一覧、入力欄上にゴースト補完レイヤーを追加した
+  - CSV から毎回検索インデックスを構築し、正式名・ベース名・括弧付きフォルム・性別記号揺れを拾えるようにした
+  - `Tab` / `↑` / `↓` / `Esc` / `Enter` の既存 submit と両立するサジェスト操作を追加した
+  - IME 変換中は候補とゴーストを抑制する制御を追加した
+  - README に候補操作の説明を短く追記した
+- Verification:
+  - `node --check app.js`: pass
+  - `git diff --check`: pass
+  - Manual check: not run
+- Remaining issues:
+  - ブラウザ上での実操作確認は未実施
+  - `ニャオニクス` のような曖昧なベース名は、明示選択なしの `Enter` では自動確定しない
+- Next step:
+  - localhost で `Tab` / `↑` / `↓` / `Esc` / IME 中抑制 / 既存コマンド優先の手動確認を行う
+
+### 2026-04-21 No.3 — ライト / ダークテーマ切替を追加
+- Status: done
+- Goal: ツールバーの icon button からライト / ダークテーマを切り替え、設定を保存できるようにする
+- Changed files:
+  - `index.html`
+  - `style.css`
+  - `app.js`
+  - `README.md`
+  - `PROGRESS.md`
+- What changed:
+  - ツールバーに sun / moon のテーマ切替ボタンを追加した
+  - `html[data-theme]` と `localStorage` で `dark` / `light` を管理し、初期値は既存互換の `dark` にした
+  - 既存 dark の見た目を保ちつつ、toolbar / panel / terminal / crop overlay / debug overlay を CSS 変数ベースで light テーマ対応した
+  - テーマ切替後も既存の terminal focus return 方針に乗るよう、control button 系の処理に寄せた
+  - README にテーマ切替と保存について最小限だけ追記した
+- Verification:
+  - `node --check app.js`: pass
+  - `git diff --check`: pass
+  - Manual check: not run
+- Remaining issues:
+  - ブラウザ上でのライト / ダーク切替、再読み込み復元、fullscreen や terminal 導線との併用確認は未実施
+- Next step:
+  - localhost でテーマ切替、保存復元、toolbar / live panel / crop preview / terminal / debug overlay の目視確認を行う
+
+### 2026-04-21 No.4 — ライトテーマの入力サジェスト文字色を調整
+- Status: done
+- Goal: ライトモード時の入力サジェスト一覧だけ、ダークモードより見劣りしない視認性に寄せる
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - サジェスト一覧用の文字色変数を追加した
+  - dark は既存相当のまま維持し、light だけ未選択候補・選択候補・一致文字・タイプ文字の色差を強めた
+  - 変更範囲は入力サジェストのリスト内文字色だけに限定した
+- Verification:
+  - `git diff --check`: not run
+  - Manual check: not run
+- Remaining issues:
+  - ライトテーマ実画面でのコントラスト最終確認は未実施
+- Next step:
+  - ライトテーマで候補一覧を開き、未選択候補と選択候補、タイプ表示の見分けやすさを目視確認する
+
+### 2026-04-21 No.5 — ライトテーマのサジェスト文字色をさらに強調
+- Status: done
+- Goal: ライトモードの入力サジェスト一覧で、候補文字の差をもう少し大胆に出す
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - ライトテーマ限定のサジェスト文字色をさらに濃くし、選択中と一致文字はより深い紺寄りにした
+  - タイプ文字は候補名とぶつからないよう、やや明るい別トーンに振った
+- Verification:
+  - `git diff --check`: not run
+  - Manual check: not run
+- Remaining issues:
+  - 実画面で十分な視認差になっているかは未確認
+- Next step:
+  - ライトテーマでサジェスト一覧を開き、候補名とタイプ文字の分離感を目視確認する
+
+### 2026-04-21 No.6 — ライトテーマの一致文字色を `#ffd803` に変更
+- Status: done
+- Goal: ライトモードだけ、サジェスト内の一致文字をより目立つ黄色にする
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - ダークモードの一致文字色は既存のままに戻した
+  - ライトテーマ限定で、サジェスト内の一致文字色を `#ffd803` に変更した
+- Verification:
+  - `git diff --check`: not run
+  - Manual check: not run
+- Remaining issues:
+  - ライトテーマ実画面で黄色が強すぎないか、候補文字として読みやすいかは未確認
+- Next step:
+  - ライトテーマでサジェスト一覧を開き、一致文字の目立ち方と可読性を目視確認する
+
+### 2026-04-21 No.7 — ライトテーマの選択中候補名を `#ffd803` に変更
+- Status: done
+- Goal: ライトモードでも、↑↓で選択中の候補ポケモン名全体がはっきり目立つようにする
+- Changed files:
+  - `style.css`
+  - `PROGRESS.md`
+- What changed:
+  - 選択中候補名専用の色変数を追加した
+  - dark は既存相当を維持し、light だけ選択中候補のポケモン名全体を `#ffd803` にした
+  - 変更対象はサジェスト一覧内の選択中候補名だけに限定した
+- Verification:
+  - `git diff --check`: not run
+  - Manual check: not run
+- Remaining issues:
+  - ライトテーマ実画面で、選択中候補名と一致文字ハイライトの見え方が干渉しないかは未確認
+- Next step:
+  - ライトテーマで↑↓選択を行い、選択中候補名全体が意図通り `#ffd803` になるか目視確認する

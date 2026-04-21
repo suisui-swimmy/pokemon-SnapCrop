@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -73,6 +73,23 @@
               >
             </div>
           </div>
+          <button
+            class="ui-button ui-button--subtle ui-button--icon theme-toggle-button"
+            id="toggle-theme"
+            type="button"
+            aria-label="ライトモードに切り替え"
+            title="ライトモードに切り替え"
+            data-icon-state="dark"
+          >
+            <svg class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.5 3.5a8.5 8.5 0 1 0 6 14.5A9 9 0 0 1 14.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.25" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M12 2.5v2.25M12 19.25v2.25M21.5 12h-2.25M4.75 12H2.5M18.72 5.28l-1.6 1.6M6.88 17.12l-1.6 1.6M18.72 18.72l-1.6-1.6M6.88 6.88l-1.6-1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <span class="sr-only">テーマ切替</span>
+          </button>
           <button
             class="ui-button ui-button--subtle ui-button--icon fullscreen-button"
             id="toggle-fullscreen"
@@ -199,10 +216,12 @@
     <section class="panel terminal-panel" aria-label="CLI パネル">
       <div class="terminal-output" id="terminal-screen">
         <div class="terminal-log" id="terminal-output" role="log" aria-live="polite"></div>
+        <div class="terminal-suggestions is-hidden" id="terminal-suggestions" aria-hidden="true"></div>
         <form class="terminal-entry terminal-entry--input" id="terminal-form" autocomplete="off">
           <span class="terminal-prompt terminal-prompt--active" aria-hidden="true">&gt; </span>
           <label class="terminal-input-wrap" for="terminal-input">
             <span class="sr-only">terminal input</span>
+            <span class="terminal-ghost" id="terminal-ghost" aria-hidden="true"></span>
             <input
               id="terminal-input"
               type="text"

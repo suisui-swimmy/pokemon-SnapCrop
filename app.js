@@ -12,6 +12,11 @@
     videoDevice: "pokemon-snapcrop.video-device",
     audioDevice: "pokemon-snapcrop.audio-device",
     audioVolume: "pokemon-snapcrop.audio-volume",
+    theme: "pokemon-snapcrop.theme",
+  };
+  const THEMES = {
+    dark: "dark",
+    light: "light",
   };
   const CROP_SIDES = ["my", "enemy"];
   const REQUIRED_HEADERS = [
@@ -37,6 +42,26 @@
   const TERMINAL_COMPACT_VERTICAL_PADDING = 6;
   const TERMINAL_COMPACT_BUFFER = 16;
   const TERMINAL_AUTOSCROLL_THRESHOLD_PX = 16;
+  const TERMINAL_SUGGESTION_MAX_ITEMS = 5;
+  const TERMINAL_GHOST_MIN_SCORE_GAP = 120;
+  const TERMINAL_COMMAND_TOKENS = new Set([
+    "edit",
+    "ready",
+    "snap",
+    "auto",
+    "debug",
+    "status",
+    "help",
+    "clear",
+    "cls",
+    "crop",
+    "e",
+    "r",
+    "s",
+    "sm",
+    "se",
+    "cr",
+  ]);
   const PANEL_CLICK_INTERACTIVE_SELECTOR = [
     "a[href]",
     "button",
@@ -160,6 +185,7 @@
   const state = {
     csvHeaders: [],
     pokemonMap: new Map(),
+    pokemonSearchIndex: [],
     csvReady: false,
     stream: null,
     streamInfo: null,
@@ -196,9 +222,15 @@
     audioMuted: false,
     audioVolume: 1,
     audioReady: false,
+    theme: THEMES.dark,
     terminalNoticeKeys: new Set(),
     commandHistory: [],
     commandHistoryIndex: -1,
+    suggestions: [],
+    selectedSuggestionIndex: -1,
+    ghostSuggestion: null,
+    isComposing: false,
+    suppressSuggestions: false,
     debugMode: false,
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
@@ -209,8 +241,10 @@
   document.addEventListener("DOMContentLoaded", init);
 
   function init() {
+    restoreThemePreference();
     cacheElements();
     bindEvents();
+    syncThemeToggleButton();
     restorePersistedSelections();
     restoreAudioVolume();
     setCameraState("未取得", "idle");
@@ -248,6 +282,7 @@
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
     elements.startVideoButton = document.getElementById("start-video");
     elements.toggleFullscreenButton = document.getElementById("toggle-fullscreen");
+    elements.toggleThemeButton = document.getElementById("toggle-theme");
     elements.toggleAudioMuteButton = document.getElementById("toggle-audio-mute");
     elements.audioVolume = document.getElementById("audio-volume");
     elements.cameraState = document.getElementById("camera-state");
@@ -282,6 +317,8 @@
     elements.terminalScreen = document.getElementById("terminal-screen");
     elements.terminalForm = document.getElementById("terminal-form");
     elements.terminalInput = document.getElementById("terminal-input");
+    elements.terminalGhost = document.getElementById("terminal-ghost");
+    elements.terminalSuggestions = document.getElementById("terminal-suggestions");
     elements.terminalOutput = document.getElementById("terminal-output");
   }
 
@@ -289,6 +326,7 @@
     elements.refreshDevicesButton.addEventListener("click", handleRefreshDevicesButtonClick);
     elements.startVideoButton.addEventListener("click", handleStartVideoButtonClick);
     elements.toggleFullscreenButton?.addEventListener("click", handleToggleFullscreenButtonClick);
+    elements.toggleThemeButton?.addEventListener("click", handleToggleThemeButtonClick);
     elements.toggleAudioMuteButton?.addEventListener("click", handleToggleAudioMuteButtonClick);
     elements.audioVolume?.addEventListener("input", handleAudioVolumeChange);
     elements.audioVolume?.addEventListener("change", handleAudioVolumeCommit);
@@ -296,7 +334,10 @@
     elements.audioSelect?.addEventListener("change", handleAudioSelectionChangeWithFocusReturn);
     elements.video.addEventListener("loadedmetadata", handleVideoReady);
     elements.terminalForm.addEventListener("submit", handleTerminalSubmit);
+    elements.terminalInput.addEventListener("input", handleTerminalInputChange);
     elements.terminalInput.addEventListener("keydown", handleTerminalInputKeydown);
+    elements.terminalInput.addEventListener("compositionstart", handleTerminalCompositionStart);
+    elements.terminalInput.addEventListener("compositionend", handleTerminalCompositionEnd);
     elements.terminalOutput.addEventListener("scroll", handleTerminalLogScroll, { passive: true });
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
     elements.layoutSplitter?.addEventListener("pointerdown", startLayoutResize);
@@ -332,15 +373,18 @@
 
       state.csvHeaders = headers;
       state.pokemonMap.clear();
+      state.pokemonSearchIndex = [];
 
       records.forEach((record) => {
         const normalized = normalizePokemonRecord(record);
         if (normalized) {
           state.pokemonMap.set(normalized.name, normalized);
+          state.pokemonSearchIndex.push(buildPokemonSearchEntry(normalized));
         }
       });
 
       state.csvReady = true;
+      refreshTerminalSuggestions();
     } catch (error) {
       state.csvReady = false;
       appendTerminalError(
@@ -375,6 +419,12 @@
 
   function handleToggleFullscreenButtonClick(event) {
     void runControlActionAndRestoreTerminalFocus(toggleFullscreen, {
+      target: event.currentTarget,
+    });
+  }
+
+  function handleToggleThemeButtonClick(event) {
+    void runControlActionAndRestoreTerminalFocus(toggleTheme, {
       target: event.currentTarget,
     });
   }
@@ -814,9 +864,10 @@
   function handleTerminalSubmit(event) {
     event.preventDefault();
 
-    const query = elements.terminalInput.value.trim();
+    const rawQuery = elements.terminalInput.value.trim();
+    const submission = resolveTerminalSubmission(rawQuery);
     void runWithForcedTerminalAutoscroll(() => {
-      if (!query) {
+      if (!submission.query) {
         if (state.mode === "ready") {
           appendTerminalEntry(["> snap both"], "command");
           return handleSnapCommand("both");
@@ -824,11 +875,12 @@
         return null;
       }
 
-      pushCommandHistory(query);
-      appendTerminalEntry([`> ${query}`], "command");
+      pushCommandHistory(rawQuery);
+      appendTerminalEntry([`> ${rawQuery}`], "command");
       elements.terminalInput.value = "";
+      clearTerminalSuggestions();
 
-      if (handleTerminalCommand(query)) {
+      if (handleTerminalCommand(submission.query)) {
         return null;
       }
 
@@ -837,7 +889,7 @@
         return null;
       }
 
-      const pokemon = state.pokemonMap.get(query);
+      const pokemon = state.pokemonMap.get(submission.query);
       if (!pokemon) {
         appendTerminalEntry(
           [
@@ -858,8 +910,42 @@
     });
   }
 
+  function handleTerminalInputChange() {
+    state.commandHistoryIndex = -1;
+    state.suppressSuggestions = false;
+    refreshTerminalSuggestions();
+  }
+
+  function handleTerminalCompositionStart() {
+    state.isComposing = true;
+    dismissTerminalSuggestions();
+  }
+
+  function handleTerminalCompositionEnd() {
+    state.isComposing = false;
+    state.suppressSuggestions = false;
+    refreshTerminalSuggestions();
+  }
+
   function handleTerminalInputKeydown(event) {
+    if (event.isComposing || state.isComposing) {
+      return;
+    }
+
+    if (event.key === "Tab") {
+      if (acceptTerminalSuggestion()) {
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (event.key === "ArrowUp") {
+      if (hasVisibleTerminalSuggestions()) {
+        event.preventDefault();
+        moveTerminalSuggestionSelection(-1);
+        return;
+      }
+
       if (!state.commandHistory.length) {
         return;
       }
@@ -872,10 +958,17 @@
       }
       elements.terminalInput.value = state.commandHistory[state.commandHistoryIndex];
       moveCaretToEnd(elements.terminalInput);
+      refreshTerminalSuggestions();
       return;
     }
 
     if (event.key === "ArrowDown") {
+      if (hasVisibleTerminalSuggestions()) {
+        event.preventDefault();
+        moveTerminalSuggestionSelection(1);
+        return;
+      }
+
       if (!state.commandHistory.length || state.commandHistoryIndex < 0) {
         return;
       }
@@ -889,8 +982,230 @@
         elements.terminalInput.value = state.commandHistory[state.commandHistoryIndex];
       }
       moveCaretToEnd(elements.terminalInput);
+      refreshTerminalSuggestions();
       return;
     }
+
+    if (event.key === "Escape" && hasVisibleTerminalSuggestions()) {
+      event.preventDefault();
+      event.stopPropagation();
+      dismissTerminalSuggestions();
+      return;
+    }
+  }
+
+  function resolveTerminalSubmission(rawQuery) {
+    const query = String(rawQuery || "").trim();
+    if (!query) {
+      return { query: "" };
+    }
+
+    if (shouldPreferTerminalCommand(query)) {
+      return { query };
+    }
+
+    const selectedSuggestion = getSelectedTerminalSuggestion();
+    if (selectedSuggestion) {
+      return { query: selectedSuggestion.name };
+    }
+
+    const exactPokemon = findExactPokemonMatch(query);
+    if (exactPokemon) {
+      return { query: exactPokemon.name };
+    }
+
+    return { query };
+  }
+
+  function acceptTerminalSuggestion() {
+    const suggestion = state.ghostSuggestion || getSelectedTerminalSuggestion();
+    if (!suggestion) {
+      return false;
+    }
+
+    elements.terminalInput.value = suggestion.name;
+    moveCaretToEnd(elements.terminalInput);
+    state.suppressSuggestions = false;
+    refreshTerminalSuggestions();
+    return true;
+  }
+
+  function moveTerminalSuggestionSelection(direction) {
+    if (!state.suggestions.length) {
+      return;
+    }
+
+    if (direction < 0) {
+      if (state.selectedSuggestionIndex < 0) {
+        state.selectedSuggestionIndex = state.suggestions.length - 1;
+      } else {
+        state.selectedSuggestionIndex = Math.max(0, state.selectedSuggestionIndex - 1);
+      }
+    } else if (state.selectedSuggestionIndex < 0) {
+      state.selectedSuggestionIndex = 0;
+    } else {
+      state.selectedSuggestionIndex = Math.min(state.suggestions.length - 1, state.selectedSuggestionIndex + 1);
+    }
+
+    state.ghostSuggestion = null;
+    renderTerminalSuggestions();
+  }
+
+  function getSelectedTerminalSuggestion() {
+    if (state.selectedSuggestionIndex < 0 || state.selectedSuggestionIndex >= state.suggestions.length) {
+      return null;
+    }
+
+    return state.suggestions[state.selectedSuggestionIndex];
+  }
+
+  function hasVisibleTerminalSuggestions() {
+    return state.suggestions.length > 0 && !elements.terminalSuggestions?.classList.contains("is-hidden");
+  }
+
+  function dismissTerminalSuggestions() {
+    state.suppressSuggestions = true;
+    clearTerminalSuggestions();
+  }
+
+  function clearTerminalSuggestions() {
+    state.suggestions = [];
+    state.selectedSuggestionIndex = -1;
+    state.ghostSuggestion = null;
+    renderTerminalSuggestions();
+  }
+
+  function refreshTerminalSuggestions() {
+    const inputValue = elements.terminalInput?.value || "";
+    const query = inputValue.trim();
+
+    if (!state.csvReady || !query || state.isComposing || state.suppressSuggestions || shouldSuppressPokemonSuggestions(query)) {
+      clearTerminalSuggestions();
+      return;
+    }
+
+    state.suggestions = getPokemonSuggestions(query);
+    state.selectedSuggestionIndex = -1;
+    state.ghostSuggestion = getGhostSuggestion(query, state.suggestions);
+    renderTerminalSuggestions(query);
+  }
+
+  function renderTerminalSuggestions(query = elements.terminalInput?.value?.trim() || "") {
+    if (elements.terminalGhost) {
+      const ghostText = getGhostDisplayText(query, state.ghostSuggestion);
+      elements.terminalGhost.textContent = ghostText;
+    }
+
+    if (!elements.terminalSuggestions) {
+      return;
+    }
+
+    elements.terminalSuggestions.textContent = "";
+    if (!state.suggestions.length) {
+      elements.terminalSuggestions.classList.add("is-hidden");
+      elements.terminalSuggestions.setAttribute("aria-hidden", "true");
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    state.suggestions.forEach((suggestion, index) => {
+      const row = document.createElement("div");
+      row.className = "terminal-suggestion";
+      if (index === state.selectedSuggestionIndex) {
+        row.classList.add("is-selected");
+      }
+
+      const name = document.createElement("span");
+      name.className = "terminal-suggestion__name";
+      appendHighlightedSuggestionName(name, suggestion.name, query);
+
+      const types = document.createElement("span");
+      types.className = "terminal-suggestion__types";
+      types.textContent = suggestion.types.length ? suggestion.types.join("/") : "-";
+
+      row.append(name, types);
+      fragment.append(row);
+    });
+
+    elements.terminalSuggestions.append(fragment);
+    elements.terminalSuggestions.classList.remove("is-hidden");
+    elements.terminalSuggestions.setAttribute("aria-hidden", "false");
+  }
+
+  function appendHighlightedSuggestionName(container, name, query) {
+    const matchRange = findSuggestionHighlightRange(name, query);
+    if (!matchRange) {
+      container.textContent = name;
+      return;
+    }
+
+    const { start, end } = matchRange;
+    if (start > 0) {
+      container.append(document.createTextNode(name.slice(0, start)));
+    }
+
+    const highlight = document.createElement("span");
+    highlight.className = "terminal-suggestion__match";
+    highlight.textContent = name.slice(start, end);
+    container.append(highlight);
+
+    if (end < name.length) {
+      container.append(document.createTextNode(name.slice(end)));
+    }
+  }
+
+  function findSuggestionHighlightRange(name, query) {
+    const trimmedQuery = String(query || "").trim();
+    if (!trimmedQuery) {
+      return null;
+    }
+
+    const directIndex = name.indexOf(trimmedQuery);
+    if (directIndex >= 0) {
+      return { start: directIndex, end: directIndex + trimmedQuery.length };
+    }
+
+    const normalizedName = normalizePokemonDisplayText(name);
+    const normalizedQuery = normalizePokemonDisplayText(trimmedQuery);
+    const normalizedIndex = normalizedName.indexOf(normalizedQuery);
+    if (normalizedIndex < 0 || normalizedIndex + normalizedQuery.length > name.length) {
+      return null;
+    }
+
+    return { start: normalizedIndex, end: normalizedIndex + normalizedQuery.length };
+  }
+
+  function getGhostDisplayText(query, suggestion) {
+    if (!suggestion) {
+      return "";
+    }
+
+    const prefixLength = getGhostPrefixLength(query, suggestion.name);
+    if (prefixLength <= 0 || prefixLength >= suggestion.name.length) {
+      return "";
+    }
+
+    return `${" ".repeat(prefixLength)}${suggestion.name.slice(prefixLength)}`;
+  }
+
+  function getGhostPrefixLength(query, name) {
+    const trimmedQuery = String(query || "").trim();
+    if (!trimmedQuery) {
+      return 0;
+    }
+
+    const directPrefix = name.startsWith(trimmedQuery) ? trimmedQuery.length : 0;
+    if (directPrefix > 0) {
+      return directPrefix;
+    }
+
+    const normalizedName = normalizePokemonDisplayText(name);
+    const normalizedQuery = normalizePokemonDisplayText(trimmedQuery);
+    if (!normalizedQuery || !normalizedName.startsWith(normalizedQuery)) {
+      return 0;
+    }
+
+    return Math.min(trimmedQuery.length, name.length);
   }
 
   function handleGlobalKeydown(event) {
@@ -1017,6 +1332,205 @@
     };
 
     return aliasMap[query] || query;
+  }
+
+  function shouldPreferTerminalCommand(query) {
+    const trimmed = String(query || "").trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const normalizedQuery = normalizeTerminalAlias(trimmed.toLowerCase());
+    const [command = ""] = normalizedQuery.split(/\s+/).filter(Boolean);
+    return TERMINAL_COMMAND_TOKENS.has(command);
+  }
+
+  function shouldSuppressPokemonSuggestions(query) {
+    const trimmed = String(query || "").trim();
+    if (!trimmed) {
+      return true;
+    }
+
+    if (/^[a-z0-9\s]+$/i.test(trimmed)) {
+      return true;
+    }
+
+    return shouldPreferTerminalCommand(trimmed);
+  }
+
+  function findExactPokemonMatch(query) {
+    const normalizedQuery = normalizePokemonSearchText(query);
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    let bestEntry = null;
+    let bestScore = -1;
+    let isAmbiguous = false;
+
+    state.pokemonSearchIndex.forEach((entry) => {
+      entry.searchKeys.forEach((searchKey) => {
+        if (searchKey.normalized !== normalizedQuery) {
+          return;
+        }
+
+        const score = getExactMatchScore(searchKey.kind);
+        if (score > bestScore) {
+          bestEntry = entry;
+          bestScore = score;
+          isAmbiguous = false;
+          return;
+        }
+
+        if (score === bestScore && bestEntry && bestEntry.name !== entry.name) {
+          isAmbiguous = true;
+        }
+      });
+    });
+
+    if (isAmbiguous) {
+      return null;
+    }
+
+    return bestEntry;
+  }
+
+  function getPokemonSuggestions(query) {
+    const normalizedQuery = normalizePokemonSearchText(query);
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    return state.pokemonSearchIndex
+      .map((entry) => scorePokemonSuggestion(entry, normalizedQuery))
+      .filter(Boolean)
+      .sort((left, right) => {
+      if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (left.matchLength !== right.matchLength) {
+          return left.matchLength - right.matchLength;
+        }
+        if (left.sortWeight !== right.sortWeight) {
+          return left.sortWeight - right.sortWeight;
+        }
+        return left.name.localeCompare(right.name, "ja");
+      })
+      .slice(0, TERMINAL_SUGGESTION_MAX_ITEMS);
+  }
+
+  function scorePokemonSuggestion(entry, normalizedQuery) {
+    let bestMatch = null;
+
+    entry.searchKeys.forEach((searchKey) => {
+      const score = getPokemonSuggestionScore(searchKey, normalizedQuery);
+      if (!score) {
+        return;
+      }
+
+      if (!bestMatch || score.score > bestMatch.score || (score.score === bestMatch.score && searchKey.sortWeight < bestMatch.sortWeight)) {
+        bestMatch = {
+          score: score.score,
+          matchType: score.matchType,
+          matchLength: searchKey.normalized.length,
+          sortWeight: searchKey.sortWeight,
+        };
+      }
+    });
+
+    if (!bestMatch) {
+      return null;
+    }
+
+    return {
+      name: entry.name,
+      types: entry.types,
+      score: bestMatch.score,
+      matchType: bestMatch.matchType,
+      matchLength: bestMatch.matchLength,
+      sortWeight: bestMatch.sortWeight,
+    };
+  }
+
+  function getPokemonSuggestionScore(searchKey, normalizedQuery) {
+    const { normalized, kind } = searchKey;
+    if (!normalized || !normalizedQuery) {
+      return null;
+    }
+
+    if (normalized === normalizedQuery) {
+      return { score: getExactMatchScore(kind), matchType: "exact" };
+    }
+
+    if (normalized.startsWith(normalizedQuery)) {
+      return { score: getPrefixMatchScore(kind), matchType: "prefix" };
+    }
+
+    if (normalized.includes(normalizedQuery)) {
+      return { score: getPartialMatchScore(kind), matchType: "partial" };
+    }
+
+    return null;
+  }
+
+  function getExactMatchScore(kind) {
+    switch (kind) {
+      case "official":
+        return 1000;
+      case "base":
+        return 860;
+      case "form":
+        return 780;
+      default:
+        return 720;
+    }
+  }
+
+  function getPrefixMatchScore(kind) {
+    switch (kind) {
+      case "official":
+        return 660;
+      case "base":
+        return 540;
+      case "form":
+        return 500;
+      default:
+        return 440;
+    }
+  }
+
+  function getPartialMatchScore(kind) {
+    switch (kind) {
+      case "official":
+        return 280;
+      case "base":
+        return 220;
+      case "form":
+        return 190;
+      default:
+        return 150;
+    }
+  }
+
+  function getGhostSuggestion(query, suggestions) {
+    if (!suggestions.length || state.selectedSuggestionIndex >= 0) {
+      return null;
+    }
+
+    const [first, second] = suggestions;
+    if (!first || first.matchType !== "prefix") {
+      return null;
+    }
+
+    if (getGhostPrefixLength(query, first.name) <= 0) {
+      return null;
+    }
+
+    if (second && first.score - second.score < TERMINAL_GHOST_MIN_SCORE_GAP) {
+      return null;
+    }
+
+    return first;
   }
 
   function pushCommandHistory(command) {
@@ -1275,6 +1789,10 @@
     state.selectedDeviceId = restoreStoredValue(STORAGE_KEYS.videoDevice);
     state.selectedAudioDeviceId = restoreStoredValue(STORAGE_KEYS.audioDevice);
     state.hasPersistedAudioSelection = hasStoredValue(STORAGE_KEYS.audioDevice);
+  }
+
+  function restoreThemePreference() {
+    applyTheme(restoreStoredValue(STORAGE_KEYS.theme) || THEMES.dark);
   }
 
   function restoreAudioVolume() {
@@ -3844,6 +4362,122 @@
     };
   }
 
+  function buildPokemonSearchEntry(pokemon) {
+    const baseName = getPokemonBaseName(pokemon.name);
+    const formName = getPokemonFormName(pokemon.name);
+    const searchKeys = [];
+
+    addPokemonSearchKey(searchKeys, pokemon.name, "official", 0);
+    addPokemonSearchKey(searchKeys, baseName, "base", 1);
+
+    if (formName) {
+      addPokemonSearchKey(searchKeys, `${baseName} ${formName}`, "form", 2);
+      addPokemonSearchKey(searchKeys, `${baseName}${formName}`, "form", 3);
+      addPokemonSearchKey(searchKeys, `${baseName}(${formName})`, "form", 4);
+    }
+
+    getPokemonGenderAliases(pokemon.name).forEach((alias, index) => {
+      addPokemonSearchKey(searchKeys, alias, "alias", 10 + index);
+    });
+
+    getPokemonFormAliases(pokemon.name).forEach((alias, index) => {
+      addPokemonSearchKey(searchKeys, alias, "alias", 20 + index);
+    });
+
+    return {
+      name: pokemon.name,
+      types: pokemon.types,
+      searchKeys,
+    };
+  }
+
+  function addPokemonSearchKey(searchKeys, value, kind, sortWeight) {
+    const trimmed = cleanCell(value);
+    const normalized = normalizePokemonSearchText(trimmed);
+    if (!trimmed || !normalized || searchKeys.some((searchKey) => searchKey.normalized === normalized)) {
+      return;
+    }
+
+    searchKeys.push({
+      value: trimmed,
+      normalized,
+      kind,
+      sortWeight,
+    });
+  }
+
+  function getPokemonBaseName(name) {
+    return cleanCell(String(name || "").replace(/\s*[（(][^()（）]*[)）]\s*/g, "").replace(/[♂♀]/g, ""));
+  }
+
+  function getPokemonFormName(name) {
+    const match = String(name || "").match(/[（(]([^()（）]+)[)）]/);
+    return cleanCell(match?.[1] || "");
+  }
+
+  function getPokemonGenderAliases(name) {
+    const aliases = [];
+    const source = String(name || "");
+
+    if (source.includes("♂")) {
+      aliases.push(source.replace(/♂/g, "オス"));
+      aliases.push(source.replace(/♂/g, ""));
+    }
+
+    if (source.includes("♀")) {
+      aliases.push(source.replace(/♀/g, "メス"));
+      aliases.push(source.replace(/♀/g, ""));
+    }
+
+    return aliases.map(cleanCell).filter(Boolean);
+  }
+
+  function getPokemonFormAliases(name) {
+    const aliases = [];
+    const source = String(name || "");
+    const normalizedBrackets = source.replace(/（/g, "(").replace(/）/g, ")");
+    const baseName = getPokemonBaseName(source);
+    const formName = getPokemonFormName(source);
+
+    if (normalizedBrackets !== source) {
+      aliases.push(normalizedBrackets);
+    }
+
+    if (formName) {
+      aliases.push(`${baseName} ${formName}`);
+      aliases.push(`${baseName}${formName}`);
+    }
+
+    return aliases.map(cleanCell).filter(Boolean);
+  }
+
+  function normalizePokemonSearchText(value) {
+    return normalizePokemonDisplayText(value)
+      .replace(/\s*[()]\s*/g, " ")
+      .replace(/[・･·/_\-‐‑‒–—―]+/g, " ")
+      .replace(/\s+/g, "")
+      .replace(/♂/g, "オス")
+      .replace(/♀/g, "メス");
+  }
+
+  function normalizePokemonDisplayText(value) {
+    return toKatakana(
+      String(value ?? "")
+        .normalize("NFKC")
+        .replace(/（/g, "(")
+        .replace(/）/g, ")")
+        .replace(/\u3000/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
+  }
+
+  function toKatakana(value) {
+    return String(value || "").replace(/[\u3041-\u3096]/g, (character) =>
+      String.fromCharCode(character.charCodeAt(0) + 0x60),
+    );
+  }
+
   function validateHeaders(headers) {
     const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
     if (missing.length > 0) {
@@ -3952,5 +4586,35 @@
     }
 
     elements.toggleFullscreenButton.dataset.iconState = document.fullscreenElement ? "exit" : "enter";
+  }
+
+  function normalizeTheme(theme) {
+    return theme === THEMES.light ? THEMES.light : THEMES.dark;
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = normalizeTheme(theme);
+    state.theme = nextTheme;
+    document.documentElement.dataset.theme = nextTheme;
+  }
+
+  function syncThemeToggleButton() {
+    if (!elements.toggleThemeButton) {
+      return;
+    }
+
+    const currentTheme = normalizeTheme(state.theme);
+    const nextTheme = currentTheme === THEMES.light ? THEMES.dark : THEMES.light;
+    const nextThemeLabel = nextTheme === THEMES.light ? "ライト" : "ダーク";
+    elements.toggleThemeButton.dataset.iconState = currentTheme;
+    elements.toggleThemeButton.setAttribute("aria-label", `${nextThemeLabel}モードに切り替え`);
+    elements.toggleThemeButton.title = `${nextThemeLabel}モードに切り替え`;
+  }
+
+  function toggleTheme() {
+    const nextTheme = state.theme === THEMES.light ? THEMES.dark : THEMES.light;
+    applyTheme(nextTheme);
+    persistStoredValue(STORAGE_KEYS.theme, nextTheme);
+    syncThemeToggleButton();
   }
 })();
