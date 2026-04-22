@@ -169,7 +169,7 @@
       waitingTimerIcon: {
         x: 0.41094,
         y: 0.0963,
-        width: 0.01823,
+        width: 0.04635,
         height: 0.03611,
       },
       battleHud: {
