@@ -934,19 +934,14 @@
     }
 
     if (event.key === "Tab") {
-      if (acceptTerminalSuggestion()) {
+      if (hasVisibleTerminalSuggestions()) {
         event.preventDefault();
+        moveTerminalSuggestionSelection(event.shiftKey ? -1 : 1);
       }
       return;
     }
 
     if (event.key === "ArrowUp") {
-      if (hasVisibleTerminalSuggestions()) {
-        event.preventDefault();
-        moveTerminalSuggestionSelection(-1);
-        return;
-      }
-
       if (!state.commandHistory.length) {
         return;
       }
@@ -964,12 +959,6 @@
     }
 
     if (event.key === "ArrowDown") {
-      if (hasVisibleTerminalSuggestions()) {
-        event.preventDefault();
-        moveTerminalSuggestionSelection(1);
-        return;
-      }
-
       if (!state.commandHistory.length || state.commandHistoryIndex < 0) {
         return;
       }
@@ -992,6 +981,12 @@
       event.stopPropagation();
       dismissTerminalSuggestions();
       return;
+    }
+
+    if (event.key === "Enter" && hasVisibleTerminalSuggestions() && getSelectedTerminalSuggestion()) {
+      event.preventDefault();
+      state.suppressSuggestions = false;
+      elements.terminalForm?.requestSubmit();
     }
   }
 
@@ -1018,19 +1013,6 @@
     return { query };
   }
 
-  function acceptTerminalSuggestion() {
-    const suggestion = state.ghostSuggestion || getSelectedTerminalSuggestion();
-    if (!suggestion) {
-      return false;
-    }
-
-    elements.terminalInput.value = suggestion.name;
-    moveCaretToEnd(elements.terminalInput);
-    state.suppressSuggestions = false;
-    refreshTerminalSuggestions();
-    return true;
-  }
-
   function moveTerminalSuggestionSelection(direction) {
     if (!state.suggestions.length) {
       return;
@@ -1040,12 +1022,12 @@
       if (state.selectedSuggestionIndex < 0) {
         state.selectedSuggestionIndex = state.suggestions.length - 1;
       } else {
-        state.selectedSuggestionIndex = Math.max(0, state.selectedSuggestionIndex - 1);
+        state.selectedSuggestionIndex = (state.selectedSuggestionIndex - 1 + state.suggestions.length) % state.suggestions.length;
       }
     } else if (state.selectedSuggestionIndex < 0) {
       state.selectedSuggestionIndex = 0;
     } else {
-      state.selectedSuggestionIndex = Math.min(state.suggestions.length - 1, state.selectedSuggestionIndex + 1);
+      state.selectedSuggestionIndex = (state.selectedSuggestionIndex + 1) % state.suggestions.length;
     }
 
     state.ghostSuggestion = null;
