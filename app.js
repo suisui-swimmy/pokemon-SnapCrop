@@ -41,6 +41,7 @@
   const TERMINAL_MIN_WORKSPACE_HEIGHT = 220;
   const TERMINAL_COMPACT_VERTICAL_PADDING = 6;
   const TERMINAL_COMPACT_BUFFER = 16;
+  const TERMINAL_RESIZE_STEP_FALLBACK = 18;
   const TERMINAL_AUTOSCROLL_THRESHOLD_PX = 16;
   const TERMINAL_SUGGESTION_MAX_ITEMS = 5;
   const TERMINAL_GHOST_MIN_SCORE_GAP = 120;
@@ -1734,6 +1735,24 @@
     return Math.max(Math.floor(getTerminalCompactMinHeight() * 0.5), 12);
   }
 
+  function getTerminalResizeStep() {
+    const lineHeight = Number.parseFloat(
+      window.getComputedStyle(elements.terminalOutput || elements.terminalForm || document.body).lineHeight,
+    );
+    if (Number.isFinite(lineHeight) && lineHeight > 0) {
+      return Math.max(1, Math.round(lineHeight));
+    }
+
+    return TERMINAL_RESIZE_STEP_FALLBACK;
+  }
+
+  function snapNormalTerminalPanelHeight(sizePx) {
+    const compactMinHeight = getTerminalCompactMinHeight();
+    const resizeStep = getTerminalResizeStep();
+    const snappedSteps = Math.max(1, Math.round((sizePx - compactMinHeight) / resizeStep));
+    return clamp(compactMinHeight + snappedSteps * resizeStep, compactMinHeight + resizeStep, getMaxTerminalPanelHeight());
+  }
+
   function handleWindowResize() {
     applyResponsiveTerminalLayout({ refresh: true });
   }
@@ -1879,7 +1898,7 @@
     }
 
     return {
-      size: nextSize,
+      size: snapNormalTerminalPanelHeight(nextSize),
       mode: "normal",
     };
   }
