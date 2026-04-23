@@ -78,6 +78,7 @@
   | `snap both` | `s` / 空 Enter (`ready` 中) / `Ctrl + Enter` | 左右両方のパーティ画像を更新します |
   | `snap my` | `sm` | 自分側のパーティ画像だけ更新します |
   | `snap enemy` | `se` | 相手側のパーティ画像だけ更新します |
+  | `snap clear` | - | 撮影済みのパーティ画像をクリアします |
   | `auto on` | - | 自動 snap を ON にし、必要なら `ready` に切り替えて監視を始めます |
   | `auto off` | - | 自動 snap を OFF にして監視を止めます |
   | `auto status` | - | 自動 snap の状態を表示します |

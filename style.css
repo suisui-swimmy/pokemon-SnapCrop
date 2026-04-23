@@ -207,6 +207,10 @@ html:not([data-theme="light"]) .workspace-top {
   background: var(--panel-strong);
 }
 
+html[data-theme="light"] .workspace-top {
+  background: var(--panel);
+}
+
 .layout-splitter {
   position: relative;
   flex: 0 0 var(--splitter-hit-size);
@@ -264,6 +268,11 @@ html:not([data-theme="light"]) .workspace-top {
 .workspace-column-splitter:hover::before,
 .workspace-column-splitter.is-active::before {
   background: var(--splitter-line-hover);
+}
+
+html[data-theme="light"] .layout-splitter,
+html[data-theme="light"] .workspace-column-splitter {
+  background: var(--panel);
 }
 
 .panel {
@@ -860,6 +869,10 @@ html:not([data-theme="light"]) .crop-preview-shell {
   background: var(--panel-strong);
 }
 
+html[data-theme="light"] .terminal-panel {
+  background: var(--panel);
+}
+
 .terminal-panel[data-collapsed="true"] #terminal-screen {
   visibility: hidden;
   pointer-events: none;
@@ -881,6 +894,10 @@ html:not([data-theme="light"]) .crop-preview-shell {
   font-size: 13px;
   line-height: 1.35;
   overflow: hidden;
+}
+
+html[data-theme="light"] .terminal-output {
+  background: var(--panel-strong);
 }
 
 .terminal-log {

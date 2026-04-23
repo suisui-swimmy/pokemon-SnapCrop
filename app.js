@@ -1246,7 +1246,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr",
           "ショートカット: Ctrl + Enter = snap both / Esc = ready",
         ],
@@ -1297,11 +1297,24 @@
     }
 
     if (command === "snap") {
+      if (arg === "clear") {
+        const cleared = clearReferenceImages({ source: "system" });
+        if (!cleared) {
+          appendTerminalEntry(
+            [
+              "[system] クリアする参照画像はありません。",
+            ],
+            "system",
+          );
+        }
+        return true;
+      }
+
       const target = ["", "both"].includes(arg) ? "both" : arg;
       if (!["my", "enemy", "both"].includes(target)) {
         appendTerminalEntry(
           [
-            "[error] snap は my / enemy / both を指定できます。",
+            "[error] snap は my / enemy / both / clear を指定できます。",
           ],
           "error",
         );
