@@ -145,7 +145,16 @@ body {
 body.is-layout-resizing,
 body.is-layout-resizing * {
   user-select: none;
+}
+
+body.is-layout-resizing[data-layout-resize-axis="y"],
+body.is-layout-resizing[data-layout-resize-axis="y"] * {
   cursor: ns-resize !important;
+}
+
+body.is-layout-resizing[data-layout-resize-axis="x"],
+body.is-layout-resizing[data-layout-resize-axis="x"] * {
+  cursor: ew-resize !important;
 }
 
 button,
@@ -170,12 +179,23 @@ select {
 }
 
 .workspace-top {
+  --workspace-pane-default-size: clamp(176px, 15vw, 220px);
+  --workspace-pane-left-size: var(--workspace-pane-default-size);
+  --workspace-pane-right-size: var(--workspace-pane-default-size);
+  --workspace-pane-min-size: 0px;
+  --workspace-center-min-size: 280px;
+  --workspace-column-splitter-hit-size: 14px;
   display: grid;
-  grid-template-columns: clamp(176px, 15vw, 220px) minmax(0, 1fr) clamp(176px, 15vw, 220px);
+  grid-template-columns:
+    minmax(var(--workspace-pane-min-size), var(--workspace-pane-left-size))
+    var(--workspace-column-splitter-hit-size)
+    minmax(var(--workspace-center-min-size), 1fr)
+    var(--workspace-column-splitter-hit-size)
+    minmax(var(--workspace-pane-min-size), var(--workspace-pane-right-size));
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
-    "toolbar toolbar toolbar"
-    "my live enemy";
+    "toolbar toolbar toolbar toolbar toolbar"
+    "my split-left live split-right enemy";
   gap: 0;
   align-items: stretch;
   min-height: 0;
@@ -213,6 +233,39 @@ html:not([data-theme="light"]) .workspace-top {
   background: var(--splitter-line-hover);
 }
 
+.workspace-column-splitter {
+  position: relative;
+  min-width: var(--workspace-column-splitter-hit-size);
+  background: var(--panel-strong);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.workspace-column-splitter::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--splitter-line);
+  transition: background-color 120ms ease;
+}
+
+.workspace-column-splitter--left {
+  grid-area: split-left;
+}
+
+.workspace-column-splitter--right {
+  grid-area: split-right;
+}
+
+.workspace-column-splitter:hover::before,
+.workspace-column-splitter.is-active::before {
+  background: var(--splitter-line-hover);
+}
+
 .panel {
   background: transparent;
   border: 0;
@@ -220,8 +273,32 @@ html:not([data-theme="light"]) .workspace-top {
   box-shadow: var(--shadow);
 }
 
-.live-panel,
-.crop-panel,
+.crop-panel {
+  min-width: 0;
+  padding: 10px 14px 3px;
+}
+
+.crop-panel[data-collapsed="true"] {
+  padding: 0;
+}
+
+.crop-panel[data-collapsed="true"] .crop-preview-shell {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.crop-panel--my {
+  padding-right: 7px;
+}
+
+.live-panel {
+  padding: 10px 7px 3px;
+}
+
+.crop-panel--enemy {
+  padding-left: 7px;
+}
+
 .workspace-toolbar {
   padding: 10px 14px;
 }
@@ -255,8 +332,6 @@ html:not([data-theme="light"]) .workspace-top {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -1013,6 +1088,10 @@ html:not([data-theme="light"]) .crop-preview-shell {
   }
 
   .layout-splitter {
+    display: none;
+  }
+
+  .workspace-column-splitter {
     display: none;
   }
 

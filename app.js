@@ -9,6 +9,8 @@
     my: "pokemon-snapcrop.my-crop",
     enemy: "pokemon-snapcrop.enemy-crop",
     terminalHeight: "pokemon-snapcrop.terminal-height",
+    workspacePaneLeftWidth: "pokemon-snapcrop.workspace-pane-left-width",
+    workspacePaneRightWidth: "pokemon-snapcrop.workspace-pane-right-width",
     videoDevice: "pokemon-snapcrop.video-device",
     audioDevice: "pokemon-snapcrop.audio-device",
     audioVolume: "pokemon-snapcrop.audio-volume",
@@ -37,6 +39,9 @@
   const ASPECT_4_BY_3 = 4 / 3;
   const ASPECT_TOLERANCE = 0.02;
   const MOBILE_LAYOUT_MEDIA_QUERY = "(max-width: 1080px)";
+  const WORKSPACE_PANE_MIN_WIDTH = 0;
+  const WORKSPACE_CENTER_MIN_WIDTH = 280;
+  const WORKSPACE_PANE_COLLAPSE_THRESHOLD = 18;
   const TERMINAL_FOCUS_RETURN_GRACE_MS = 180;
   const TERMINAL_MIN_WORKSPACE_HEIGHT = 220;
   const TERMINAL_COMPACT_VERTICAL_PADDING = 6;
@@ -51,6 +56,7 @@
     "snap",
     "auto",
     "debug",
+    "layout",
     "status",
     "help",
     "clear",
@@ -252,6 +258,7 @@
     renderCameraDetails();
     syncFullscreenButton();
     syncAudioControls();
+    applyResponsiveWorkspacePaneLayout({ refresh: false });
     applyResponsiveTerminalLayout({ refresh: true });
     refreshDevices();
     loadAutoTemplates();
@@ -278,6 +285,11 @@
     elements.appShell = document.querySelector(".app-shell");
     elements.workspaceTop = document.querySelector(".workspace-top");
     elements.layoutSplitter = document.getElementById("layout-splitter");
+    elements.workspaceSplitterLeft = document.getElementById("workspace-splitter-left");
+    elements.workspaceSplitterRight = document.getElementById("workspace-splitter-right");
+    elements.myCropPanel = document.querySelector(".crop-panel--my");
+    elements.livePanel = document.querySelector(".live-panel");
+    elements.enemyCropPanel = document.querySelector(".crop-panel--enemy");
     elements.deviceSelect = document.getElementById("device-select");
     elements.audioSelect = document.getElementById("audio-select");
     elements.refreshDevicesButton = document.getElementById("refresh-devices");
@@ -342,6 +354,8 @@
     elements.terminalOutput.addEventListener("scroll", handleTerminalLogScroll, { passive: true });
     elements.terminalScreen.addEventListener("click", focusTerminalInput);
     elements.layoutSplitter?.addEventListener("pointerdown", startLayoutResize);
+    elements.workspaceSplitterLeft?.addEventListener("pointerdown", handleWorkspaceSplitterLeftPointerDown);
+    elements.workspaceSplitterRight?.addEventListener("pointerdown", handleWorkspaceSplitterRightPointerDown);
     elements.workspaceTop?.addEventListener("click", handleWorkspaceTopClick);
     CROP_SIDES.forEach((side) => {
       elements.cropSlots[side].overlay?.addEventListener("pointerdown", startCropInteraction);
@@ -462,6 +476,14 @@
       target: event.currentTarget,
       context: "control-complete",
     });
+  }
+
+  function handleWorkspaceSplitterLeftPointerDown(event) {
+    startWorkspacePaneResize("left", event);
+  }
+
+  function handleWorkspaceSplitterRightPointerDown(event) {
+    startWorkspacePaneResize("right", event);
   }
 
   function handleWorkspaceTopClick(event) {
@@ -1259,6 +1281,21 @@
       return true;
     }
 
+    if (command === "layout") {
+      if (arg !== "reset" || extra) {
+        appendTerminalEntry(
+          [
+            "[error] layout は reset を指定できます。",
+          ],
+          "error",
+        );
+        return true;
+      }
+
+      handleLayoutResetCommand();
+      return true;
+    }
+
     if (command === "snap") {
       const target = ["", "both"].includes(arg) ? "both" : arg;
       if (!["my", "enemy", "both"].includes(target)) {
@@ -1312,6 +1349,7 @@
       sm: "snap my",
       se: "snap enemy",
       cr: "crop reset",
+      lr: "layout reset",
     };
 
     return aliasMap[query] || query;
@@ -1735,8 +1773,75 @@
     return clamp(compactMinHeight + snappedSteps * resizeStep, compactMinHeight + resizeStep, getMaxTerminalPanelHeight());
   }
 
+  function getCurrentWorkspacePaneWidth(side) {
+    const pane = side === "left" ? elements.myCropPanel : elements.enemyCropPanel;
+    return Math.max(WORKSPACE_PANE_MIN_WIDTH, Math.round(pane?.getBoundingClientRect().width || 0));
+  }
+
+  function getWorkspacePaneSplitterWidthTotal() {
+    return (elements.workspaceSplitterLeft?.offsetWidth || 0) + (elements.workspaceSplitterRight?.offsetWidth || 0);
+  }
+
+  function getMaxWorkspacePaneWidth(side, oppositeWidth) {
+    const workspaceWidth = elements.workspaceTop?.clientWidth || 0;
+    const nextOppositeWidth = Number.isFinite(oppositeWidth)
+      ? oppositeWidth
+      : getCurrentWorkspacePaneWidth(side === "left" ? "right" : "left");
+    return Math.max(
+      Math.round(workspaceWidth - getWorkspacePaneSplitterWidthTotal() - WORKSPACE_CENTER_MIN_WIDTH - nextOppositeWidth),
+      WORKSPACE_PANE_MIN_WIDTH,
+    );
+  }
+
+  function resolveWorkspacePaneWidth(sizePx, side, oppositeWidth) {
+    const roundedSize = Math.max(0, Math.round(sizePx));
+    if (roundedSize <= WORKSPACE_PANE_COLLAPSE_THRESHOLD) {
+      return 0;
+    }
+
+    return clamp(roundedSize, WORKSPACE_PANE_MIN_WIDTH, getMaxWorkspacePaneWidth(side, oppositeWidth));
+  }
+
+  function normalizeWorkspacePaneSizes(partialSizes = {}) {
+    if (!elements.workspaceTop) {
+      return null;
+    }
+
+    let left = Number.isFinite(partialSizes.left)
+      ? partialSizes.left
+      : getCurrentWorkspacePaneWidth("left");
+    let right = Number.isFinite(partialSizes.right)
+      ? partialSizes.right
+      : getCurrentWorkspacePaneWidth("right");
+
+    left = resolveWorkspacePaneWidth(left, "left", right);
+    right = resolveWorkspacePaneWidth(right, "right", left);
+    left = resolveWorkspacePaneWidth(left, "left", right);
+
+    return { left, right };
+  }
+
   function handleWindowResize() {
+    applyResponsiveWorkspacePaneLayout({ refresh: false });
     applyResponsiveTerminalLayout({ refresh: true });
+  }
+
+  function applyResponsiveWorkspacePaneLayout(options = {}) {
+    const { refresh = true } = options;
+
+    if (usesMobileLayout()) {
+      resetWorkspacePaneLayout({ refresh });
+      return;
+    }
+
+    const left = restoreWorkspacePaneWidth(STORAGE_KEYS.workspacePaneLeftWidth);
+    const right = restoreWorkspacePaneWidth(STORAGE_KEYS.workspacePaneRightWidth);
+    if (left === null && right === null) {
+      resetWorkspacePaneLayout({ refresh });
+      return;
+    }
+
+    applyWorkspacePaneSizes({ left, right }, { refresh });
   }
 
   function applyResponsiveTerminalLayout(options = {}) {
@@ -1763,12 +1868,38 @@
       state.layoutResizeFrameId = 0;
     }
     state.layoutResize = null;
-    elements.layoutSplitter?.classList.remove("is-active");
-    document.body.classList.remove("is-layout-resizing");
+    clearLayoutResizeUiState();
     elements.appShell?.style.removeProperty("--terminal-panel-size");
     syncTerminalPanelLayoutState("normal");
     if (refresh) {
       refreshWorkspaceLayout();
+    }
+  }
+
+  function resetWorkspacePaneLayout(options = {}) {
+    const { refresh = true } = options;
+    elements.workspaceTop?.style.removeProperty("--workspace-pane-left-size");
+    elements.workspaceTop?.style.removeProperty("--workspace-pane-right-size");
+    syncWorkspacePaneCollapsedState({
+      left: Number.POSITIVE_INFINITY,
+      right: Number.POSITIVE_INFINITY,
+    });
+    if (refresh) {
+      refreshWorkspaceLayout();
+    }
+  }
+
+  function restoreWorkspacePaneWidth(storageKey) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw === null) {
+        return null;
+      }
+
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch {
+      return null;
     }
   }
 
@@ -1822,6 +1953,14 @@
     }
   }
 
+  function removeStoredValue(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      return;
+    }
+  }
+
   function hasStoredValue(key) {
     try {
       return localStorage.getItem(key) !== null;
@@ -1838,6 +1977,19 @@
     }
   }
 
+  function persistWorkspacePaneSizes(sizes) {
+    if (!sizes) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.workspacePaneLeftWidth, String(Math.round(sizes.left)));
+      localStorage.setItem(STORAGE_KEYS.workspacePaneRightWidth, String(Math.round(sizes.right)));
+    } catch {
+      return;
+    }
+  }
+
   function getMaxTerminalPanelHeight() {
     const shellHeight = elements.appShell?.clientHeight || 0;
     const splitterHeight = elements.layoutSplitter?.offsetHeight || 0;
@@ -1846,6 +1998,35 @@
 
   function getCurrentTerminalPanelHeight() {
     return Math.max(0, Math.round(elements.terminalPanel?.getBoundingClientRect().height || 0));
+  }
+
+  function applyWorkspacePaneSizes(partialSizes = {}, options = {}) {
+    const { refresh = true } = options;
+    if (!elements.workspaceTop) {
+      return null;
+    }
+
+    const normalized = normalizeWorkspacePaneSizes(partialSizes);
+    if (!normalized) {
+      return null;
+    }
+
+    elements.workspaceTop.style.setProperty("--workspace-pane-left-size", `${normalized.left}px`);
+    elements.workspaceTop.style.setProperty("--workspace-pane-right-size", `${normalized.right}px`);
+    syncWorkspacePaneCollapsedState(normalized);
+    if (refresh) {
+      refreshWorkspaceLayout();
+    }
+    return normalized;
+  }
+
+  function syncWorkspacePaneCollapsedState(sizes) {
+    if (!elements.myCropPanel || !elements.enemyCropPanel) {
+      return;
+    }
+
+    elements.myCropPanel.dataset.collapsed = sizes.left === 0 ? "true" : "false";
+    elements.enemyCropPanel.dataset.collapsed = sizes.right === 0 ? "true" : "false";
   }
 
   function applyTerminalPanelSize(sizePx, options = {}) {
@@ -1928,6 +2109,23 @@
     }
   }
 
+  function setLayoutResizeUiState(axis, activeSplitter) {
+    document.body.classList.add("is-layout-resizing");
+    document.body.dataset.layoutResizeAxis = axis;
+    elements.layoutSplitter?.classList.remove("is-active");
+    elements.workspaceSplitterLeft?.classList.remove("is-active");
+    elements.workspaceSplitterRight?.classList.remove("is-active");
+    activeSplitter?.classList.add("is-active");
+  }
+
+  function clearLayoutResizeUiState() {
+    elements.layoutSplitter?.classList.remove("is-active");
+    elements.workspaceSplitterLeft?.classList.remove("is-active");
+    elements.workspaceSplitterRight?.classList.remove("is-active");
+    document.body.classList.remove("is-layout-resizing");
+    document.body.removeAttribute("data-layout-resize-axis");
+  }
+
   function startLayoutResize(event) {
     if (
       usesMobileLayout()
@@ -1942,16 +2140,47 @@
 
     state.layoutResize = {
       pointerId: event.pointerId,
+      type: "terminal",
       pendingSize: getCurrentTerminalPanelHeight(),
+      splitter: elements.layoutSplitter,
     };
 
     if (elements.layoutSplitter.setPointerCapture) {
       elements.layoutSplitter.setPointerCapture(event.pointerId);
     }
 
-    elements.layoutSplitter.classList.add("is-active");
-    document.body.classList.add("is-layout-resizing");
+    setLayoutResizeUiState("y", elements.layoutSplitter);
     queueLayoutResize(event.clientY);
+    event.preventDefault();
+  }
+
+  function startWorkspacePaneResize(side, event) {
+    const splitter = side === "left" ? elements.workspaceSplitterLeft : elements.workspaceSplitterRight;
+    if (
+      usesMobileLayout()
+      || state.drag
+      || state.layoutResize
+      || event.button !== 0
+      || !elements.workspaceTop
+      || !splitter
+    ) {
+      return;
+    }
+
+    state.layoutResize = {
+      pointerId: event.pointerId,
+      type: "workspace-pane",
+      side,
+      pendingSize: getCurrentWorkspacePaneWidth(side),
+      splitter,
+    };
+
+    if (splitter.setPointerCapture) {
+      splitter.setPointerCapture(event.pointerId);
+    }
+
+    setLayoutResizeUiState("x", splitter);
+    queueWorkspacePaneResize(side, event.clientX);
     event.preventDefault();
   }
 
@@ -1960,7 +2189,11 @@
       return;
     }
 
-    queueLayoutResize(event.clientY);
+    if (state.layoutResize.type === "terminal") {
+      queueLayoutResize(event.clientY);
+    } else if (state.layoutResize.type === "workspace-pane") {
+      queueWorkspacePaneResize(state.layoutResize.side, event.clientX);
+    }
     event.preventDefault();
   }
 
@@ -1983,7 +2216,45 @@
         return;
       }
 
-      applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
+      if (state.layoutResize.type === "terminal") {
+        applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
+        return;
+      }
+
+      if (state.layoutResize.type === "workspace-pane") {
+        applyWorkspacePaneSizes({ [state.layoutResize.side]: state.layoutResize.pendingSize }, { refresh: true });
+      }
+    });
+  }
+
+  function queueWorkspacePaneResize(side, clientX) {
+    if (!state.layoutResize || !elements.workspaceTop) {
+      return;
+    }
+
+    const workspaceRect = elements.workspaceTop.getBoundingClientRect();
+    const oppositeSide = side === "left" ? "right" : "left";
+    const rawSize = side === "left"
+      ? clientX - workspaceRect.left
+      : workspaceRect.right - clientX;
+    const nextSize = clamp(
+      Math.round(rawSize),
+      WORKSPACE_PANE_MIN_WIDTH,
+      getMaxWorkspacePaneWidth(side, getCurrentWorkspacePaneWidth(oppositeSide)),
+    );
+    state.layoutResize.pendingSize = nextSize;
+
+    if (state.layoutResizeFrameId) {
+      return;
+    }
+
+    state.layoutResizeFrameId = window.requestAnimationFrame(() => {
+      state.layoutResizeFrameId = 0;
+      if (!state.layoutResize) {
+        return;
+      }
+
+      applyWorkspacePaneSizes({ [state.layoutResize.side]: state.layoutResize.pendingSize }, { refresh: true });
     });
   }
 
@@ -1997,21 +2268,30 @@
       state.layoutResizeFrameId = 0;
     }
 
-    const appliedSize = applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
-    if (appliedSize !== null && !usesMobileLayout()) {
-      persistTerminalPanelHeight(appliedSize);
+    if (state.layoutResize.type === "terminal") {
+      const appliedSize = applyTerminalPanelSize(state.layoutResize.pendingSize, { refresh: true });
+      if (appliedSize !== null && !usesMobileLayout()) {
+        persistTerminalPanelHeight(appliedSize);
+      }
+    } else if (state.layoutResize.type === "workspace-pane") {
+      const appliedSizes = applyWorkspacePaneSizes(
+        { [state.layoutResize.side]: state.layoutResize.pendingSize },
+        { refresh: true },
+      );
+      if (appliedSizes && !usesMobileLayout()) {
+        persistWorkspacePaneSizes(appliedSizes);
+      }
     }
 
-    if (elements.layoutSplitter?.releasePointerCapture) {
+    if (state.layoutResize.splitter?.releasePointerCapture) {
       try {
-        elements.layoutSplitter.releasePointerCapture(event.pointerId);
+        state.layoutResize.splitter.releasePointerCapture(event.pointerId);
       } catch {
         // ignore pointer capture release errors from already-finished drags
       }
     }
 
-    elements.layoutSplitter?.classList.remove("is-active");
-    document.body.classList.remove("is-layout-resizing");
+    clearLayoutResizeUiState();
     state.layoutResize = null;
     state.lastLayoutResizeEndedAt = performance.now();
   }
@@ -2032,6 +2312,21 @@
     state.terminalLogAutoFollow = true;
     state.terminalLogPendingBottomScroll = false;
     scrollTerminalToBottom();
+  }
+
+  function handleLayoutResetCommand() {
+    removeStoredValue(STORAGE_KEYS.terminalHeight);
+    removeStoredValue(STORAGE_KEYS.workspacePaneLeftWidth);
+    removeStoredValue(STORAGE_KEYS.workspacePaneRightWidth);
+    resetWorkspacePaneLayout({ refresh: false });
+    resetDesktopTerminalLayout({ refresh: false });
+    refreshWorkspaceLayout();
+    appendTerminalEntry(
+      [
+        "[system] splitter で調整したレイアウトを初期状態に戻しました。",
+      ],
+      "system",
+    );
   }
 
   function handleCropResetCommand(target) {
@@ -2156,6 +2451,7 @@
 
   function handleFullscreenChange() {
     syncFullscreenButton();
+    applyResponsiveWorkspacePaneLayout({ refresh: false });
     applyResponsiveTerminalLayout({ refresh: true });
   }
 

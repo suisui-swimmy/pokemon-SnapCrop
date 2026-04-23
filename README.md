@@ -85,6 +85,7 @@
   | `debug on` | - | 認識範囲のデバッグ表示を ON にします |
   | `debug off` | - | 認識範囲のデバッグ表示を OFF にします |
   | `debug status` | - | デバッグ表示の状態を表示します |
+  | `layout reset` | `lr` | 調整したレイアウトを初期状態に戻します |
   | `clear` | `cls` | terminal の表示ログをクリアします |
   | `crop reset` | `cr` | 左右のクロップ範囲を初期状態に戻します |
   | `crop reset my` | - | 自分側のクロップ範囲だけ初期状態に戻します |
