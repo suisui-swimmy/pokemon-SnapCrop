@@ -187,6 +187,49 @@
       },
     },
   };
+  const PICK_OVERLAY_ORDER_LABELS = ["", "１", "２", "３", "４"];
+  const PICK_OVERLAY_CONFIG = {
+    compareIntervalMs: 500,
+    sampleWidth: 60,
+    sampleHeight: 75,
+    requiredStreak: 2,
+    maxOrders: 4,
+    thresholds: {
+      scoreMin: 0.82,
+      marginMin: 0.05,
+      scoreMinStrongMargin: 0.75,
+      marginStrongMin: 0.16,
+      hudGateMeanMin: 58,
+      hudGateContrastMin: 26,
+      hudGateBrightRatioMin: 0.08,
+    },
+    hudRois: [
+      { x: 1113 / 1920, y: 73 / 1080, width: 68 / 1920, height: 84 / 1080 },
+      { x: 1509 / 1920, y: 73 / 1080, width: 68 / 1920, height: 84 / 1080 },
+    ],
+    referenceRois: [
+      { x: 84 / 299, y: 92 / 807, width: 68 / 299, height: 84 / 807 },
+      { x: 84 / 299, y: 218 / 807, width: 68 / 299, height: 84 / 807 },
+      { x: 84 / 299, y: 344 / 807, width: 68 / 299, height: 84 / 807 },
+      { x: 84 / 299, y: 470 / 807, width: 68 / 299, height: 84 / 807 },
+      { x: 84 / 299, y: 596 / 807, width: 68 / 299, height: 84 / 807 },
+      { x: 84 / 299, y: 722 / 807, width: 68 / 299, height: 84 / 807 },
+    ],
+    badgeImagePaths: {
+      1: "./assets/pick-overlay-badge-1.svg",
+      2: "./assets/pick-overlay-badge-2.svg",
+      3: "./assets/pick-overlay-badge-3.svg",
+      4: "./assets/pick-overlay-badge-4.svg",
+    },
+    badgeSlotPositions: [
+      { x: 0 / 299, y: 62 / 807 },
+      { x: 0 / 299, y: 188 / 807 },
+      { x: 0 / 299, y: 314 / 807 },
+      { x: 0 / 299, y: 440 / 807 },
+      { x: 0 / 299, y: 566 / 807 },
+      { x: 0 / 299, y: 692 / 807 },
+    ],
+  };
 
   const elements = {};
   const state = {
@@ -242,6 +285,7 @@
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
+    pickOverlayBadgeImages: {},
     autoSnap: createAutoSnapState(),
   };
 
@@ -262,6 +306,7 @@
     applyResponsiveTerminalLayout({ refresh: true });
     refreshDevices();
     loadAutoTemplates();
+    loadPickOverlayBadgeImages();
     loadPokemonCsv();
     registerServiceWorker();
     appendTerminalNotice(
@@ -325,6 +370,8 @@
       selectionTimer: document.getElementById("debug-overlay-selection-timer"),
       topTimer: document.getElementById("debug-overlay-top-timer"),
       battleHud: document.getElementById("debug-overlay-battle-hud"),
+      pickHudLeft: document.getElementById("debug-overlay-pick-hud-left"),
+      pickHudRight: document.getElementById("debug-overlay-pick-hud-right"),
     };
     elements.terminalPanel = document.querySelector(".terminal-panel");
     elements.terminalScreen = document.getElementById("terminal-screen");
@@ -857,6 +904,7 @@
       );
     }
     if (!state.streamInfo.isSixteenByNine) {
+      resetPickOverlayState("非16:9入力", { redraw: false });
       appendTerminalNotice(
         "aspect-4-3-generic",
         [
@@ -1246,8 +1294,8 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / help",
-          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr / layout reset = lr",
           "ショートカット: Ctrl + Enter = snap both / Esc = ready",
         ],
         "system",
@@ -2583,6 +2631,8 @@
     renderDebugOverlayBox(elements.autoDebugOverlays.selectionTimer, roiCrops.selectionTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.topTimer, roiCrops.waitingTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.battleHud, roiCrops.battleHud, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.pickHudLeft, roiCrops.pickHudLeft, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.pickHudRight, roiCrops.pickHudRight, displayedRect, scaleX, scaleY);
   }
 
   function shouldShowAutoDebugOverlays() {
@@ -2627,6 +2677,8 @@
       selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
       battleHud: getAutoRoiCrop("battleHud"),
+      pickHudLeft: getPickOverlayHudCrop(0),
+      pickHudRight: getPickOverlayHudCrop(1),
     };
   }
 
@@ -2715,12 +2767,78 @@
 
     elements.cropSlots[side].shell.dataset.ready = "true";
     context.drawImage(reference, 0, 0, canvas.width, canvas.height);
+    if (side === "enemy") {
+      drawEnemyPickDebugRois(context, reference);
+      drawEnemyPickOrderOverlay(context, reference);
+    }
+  }
+
+  function drawEnemyPickDebugRois(context, reference) {
+    if (!shouldShowPickOverlayReferenceDebug()) {
+      return;
+    }
+
+    context.save();
+    context.lineWidth = Math.max(1.2, reference.width / 240);
+    context.setLineDash([6, 4]);
+    context.font = `600 ${Math.max(10, Math.round(reference.width / 22))}px "Segoe UI", sans-serif`;
+    context.textBaseline = "top";
+
+    PICK_OVERLAY_CONFIG.referenceRois.forEach((roi, refIndex) => {
+      const actualRoi = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
+      const order = state.autoSnap.pickOverlay.ordersByRefIndex[refIndex];
+      context.strokeStyle = order
+        ? "rgba(80, 240, 178, 0.96)"
+        : "rgba(255, 255, 255, 0.9)";
+      context.fillStyle = "rgba(18, 18, 26, 0.84)";
+      context.strokeRect(actualRoi.x, actualRoi.y, actualRoi.width, actualRoi.height);
+      const label = order
+        ? `REF${refIndex + 1} ${getPickOverlayOrderLabel(order)}`
+        : `REF${refIndex + 1}`;
+      const labelWidth = Math.ceil(context.measureText(label).width) + 10;
+      const labelX = Math.max(0, actualRoi.x);
+      const labelY = Math.max(0, actualRoi.y - 18);
+      context.fillRect(labelX, labelY, labelWidth, 16);
+      context.fillStyle = "#ffffff";
+      context.fillText(label, labelX + 5, labelY + 3);
+    });
+
+    context.restore();
+  }
+
+  function drawEnemyPickOrderOverlay(context, reference) {
+    const ordersByRefIndex = state.autoSnap.pickOverlay?.ordersByRefIndex;
+    if (!ordersByRefIndex?.some(Boolean)) {
+      return;
+    }
+
+    const scaleX = reference.width / 299;
+    const scaleY = reference.height / 807;
+    PICK_OVERLAY_CONFIG.referenceRois.forEach((_, refIndex) => {
+      const order = ordersByRefIndex[refIndex];
+      if (!order) {
+        return;
+      }
+
+      const badgeImage = getPickOverlayBadgeImage(order);
+      const badgePosition = PICK_OVERLAY_CONFIG.badgeSlotPositions[refIndex];
+      if (!badgeImage || !badgePosition) {
+        return;
+      }
+
+      const left = Math.round(reference.width * badgePosition.x);
+      const top = Math.round(reference.height * badgePosition.y);
+      const width = Math.max(1, Math.round((badgeImage.naturalWidth || badgeImage.width || 1) * scaleX));
+      const height = Math.max(1, Math.round((badgeImage.naturalHeight || badgeImage.height || 1) * scaleY));
+      context.drawImage(badgeImage, left, top, width, height);
+    });
   }
 
   function stopCurrentStream() {
     stopPreviewLoop();
     stopAutoSnapMonitor();
     resetAutoSnapCycle("映像停止");
+    resetPickOverlayState("映像停止", { redraw: false });
     stopSelectedAudioInput();
 
     if (state.stream) {
@@ -2818,12 +2936,20 @@
       throw new Error("映像がまだ準備できていないため、撮影できません。");
     }
 
+    if (sides.includes("enemy")) {
+      resetPickOverlayState("相手参照更新", { redraw: false });
+    }
+
     sides.forEach((side) => {
       const frame = frameSource?.[side]
         ? cloneReferenceFrame(frameSource[side])
         : captureReferenceFrameFromVideo(side);
       state.references[side] = frame;
     });
+    if (sides.includes("enemy")) {
+      state.autoSnap.pickOverlay.referenceUpdatedAt = Date.now();
+      state.autoSnap.pickOverlay.lastGateReason = "battle HUD待ち";
+    }
 
     refreshCropPanels();
 
@@ -2844,6 +2970,7 @@
     CROP_SIDES.forEach((side) => {
       state.references[side] = null;
     });
+    resetPickOverlayState("参照画像クリア", { redraw: false });
     refreshCropPanels();
 
     if (!hadReferences) {
@@ -2876,6 +3003,7 @@
 
     if (action === "reset") {
       resetAutoSnapCycle("manual reset");
+      resetPickOverlayState("auto reset");
       syncAutoSnapMonitoring();
       appendTerminalEntry(
         [
@@ -2912,6 +3040,9 @@
 
     state.autoSnap.enabled = enabled;
     resetAutoSnapCycle(enabled ? "auto on" : "auto off");
+    if (!enabled) {
+      resetPickOverlayState("auto off");
+    }
 
     if (enabled) {
       if (state.mode !== "ready") {
@@ -2977,6 +3108,7 @@
     }
 
     state.debugMode = enabled;
+    refreshCropPanels();
     renderCropOverlays();
     appendTerminalEntry(
       [
@@ -3002,6 +3134,7 @@
       lines.push("[debug] auto が OFF のため、認識範囲は表示されません。");
     }
 
+    lines.push(...getPickOverlayDebugLines());
     return lines;
   }
 
@@ -3135,6 +3268,7 @@
     }
 
     auto.lastMetrics = metrics;
+    updatePickOverlayDetection(metrics, now);
     if (auto.phase === "idle" || auto.phase === "snapped") {
       const loadingSignal = getLoadingTemplateSignal(metrics);
       if (!loadingSignal.matched) {
@@ -3286,7 +3420,6 @@
     if (!state.videoReady || !state.stream || !state.crops.my || !state.crops.enemy) {
       return null;
     }
-
     const roiCrops = {
       loadingTemplate: getAutoRoiCrop("loadingTemplate"),
       selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
@@ -3482,6 +3615,510 @@
     return state.autoSnap.iconDetectorContext;
   }
 
+  function getPickOverlaySampleContext(width, height) {
+    if (!state.autoSnap.pickSampleCanvas) {
+      state.autoSnap.pickSampleCanvas = document.createElement("canvas");
+    }
+
+    if (
+      state.autoSnap.pickSampleCanvas.width !== width
+      || state.autoSnap.pickSampleCanvas.height !== height
+    ) {
+      state.autoSnap.pickSampleCanvas.width = width;
+      state.autoSnap.pickSampleCanvas.height = height;
+      state.autoSnap.pickSampleContext = state.autoSnap.pickSampleCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+    }
+
+    return state.autoSnap.pickSampleContext;
+  }
+
+  function updatePickOverlayDetection(metrics, now = Date.now()) {
+    const auto = state.autoSnap;
+    const pickOverlay = state.autoSnap.pickOverlay;
+    pickOverlay.lastGateActive = false;
+    const battleHudSignal = getBattleHudSignal(metrics);
+
+    if (!state.references.enemy) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastGateActive = false;
+      pickOverlay.lastGateReason = "敵参照画像待ち";
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "enemy ref missing");
+      pickOverlay.lastSummary = "敵参照画像待ち";
+      appendPickOverlayDebugLogIfChanged(
+        "enemy-ref-missing",
+        ["[debug] pick state: 敵参照画像がないため比較しません。"],
+      );
+      return;
+    }
+
+    if (auto.phase !== "snapped") {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastGateActive = false;
+      const phaseLabel = getAutoPhaseLabel(auto.phase);
+      pickOverlay.lastGateReason = `phase待ち (${phaseLabel})`;
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => `phase wait ${phaseLabel}`);
+      pickOverlay.lastSummary = buildPickOverlaySummary();
+      appendPickOverlayDebugLogIfChanged(
+        `gate-phase-wait:${auto.phase}`,
+        [
+          `[debug] pick state: phase=${phaseLabel} のため比較を保留します。`,
+        ],
+      );
+      return;
+    }
+
+    if (now - pickOverlay.lastCompareAt < PICK_OVERLAY_CONFIG.compareIntervalMs) {
+      pickOverlay.lastGateReason = "比較待ち";
+      pickOverlay.lastSummary = buildPickOverlaySummary();
+      return;
+    }
+
+    if (!battleHudSignal.matched) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastGateReason = "battle HUD待ち";
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "battle hud wait");
+      pickOverlay.lastSummary = buildPickOverlaySummary();
+      appendPickOverlayDebugLogIfChanged(
+        `gate-battle-hud-wait:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
+        [
+          `[debug] pick state: battle HUD待ち hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"}`,
+        ],
+      );
+      return;
+    }
+
+    const dimensions = getStreamDimensions();
+    if (!dimensions.width || !dimensions.height) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastGateActive = false;
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "video missing");
+      pickOverlay.lastSummary = "入力待ち";
+      appendPickOverlayDebugLogIfChanged(
+        "video-missing",
+        ["[debug] pick state: 入力サイズが取れないため比較しません。"],
+      );
+      return;
+    }
+
+    pickOverlay.lastGateActive = true;
+    pickOverlay.lastGateReason = "battle HUD一致 / HUD品質確認中";
+    const hudSamples = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlaySource(
+      elements.video,
+      getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
+    ));
+    if (hudSamples.some((sample) => !sample)) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "roi read failed");
+      pickOverlay.lastSummary = "ROI 読み取り失敗";
+      pickOverlay.lastGateReason = "HUD ROI 読み取り失敗";
+      appendPickOverlayDebugLogIfChanged(
+        "roi-read-failed",
+        ["[debug] pick compare: HUD ROI の読み取りに失敗しました。"],
+      );
+      return;
+    }
+
+    const hudGateStates = hudSamples.map((sample) => evaluatePickOverlayHudGate(sample));
+    const readyHudIndexes = hudGateStates
+      .map((gateState, hudIndex) => (gateState.ready ? hudIndex : -1))
+      .filter((hudIndex) => hudIndex >= 0);
+    if (!readyHudIndexes.length) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastGateReason = "HUD待ち";
+      pickOverlay.lastHudSummaries = hudGateStates.map((gateState) => gateState.summary);
+      pickOverlay.lastSummary = buildPickOverlaySummary();
+      appendPickOverlayDebugLogIfChanged(
+        `gate-hud-wait:${hudGateStates.map((gateState) => gateState.key).join("|")}`,
+        [
+          "[debug] pick compare: HUD 2枠がまだ比較向きでないため比較しません。",
+          ...hudGateStates.map((gateState, hudIndex) => `[debug] pick compare HUD${hudIndex + 1}: ${gateState.summary}`),
+        ],
+      );
+      return;
+    }
+
+    const reference = state.references.enemy;
+    const referenceSamples = PICK_OVERLAY_CONFIG.referenceRois.map((roi) => samplePickOverlaySource(
+      reference,
+      getPickOverlayNormalizedRect(roi, reference.width, reference.height),
+    ));
+
+    pickOverlay.lastCompareAt = now;
+    if (referenceSamples.some((sample) => !sample)) {
+      clearPickOverlayPendingMatches();
+      pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "ref roi read failed");
+      pickOverlay.lastSummary = "参照 ROI 読み取り失敗";
+      pickOverlay.lastGateReason = "参照 ROI 読み取り失敗";
+      appendPickOverlayDebugLogIfChanged(
+        "ref-roi-read-failed",
+        ["[debug] pick compare: 参照 ROI の読み取りに失敗しました。"],
+      );
+      return;
+    }
+
+    pickOverlay.lastGateReason = `battle HUD一致 / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
+    const { tentativeMatches, bestByHudIndex } = collectPickOverlayTentativeMatches(
+      hudSamples,
+      referenceSamples,
+      readyHudIndexes,
+    );
+    const acceptedAssignments = updatePickOverlayAssignments(tentativeMatches);
+    updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates);
+    pickOverlay.lastSummary = buildPickOverlaySummary();
+  }
+
+  function collectPickOverlayTentativeMatches(hudSamples, referenceSamples, eligibleHudIndexes = []) {
+    const allPairs = [];
+    const eligibleSet = new Set(eligibleHudIndexes);
+    const bestByHudIndex = hudSamples.map((_, hudIndex) => {
+      if (!eligibleSet.has(hudIndex)) {
+        return {
+          refIndex: -1,
+          bestScore: 0,
+          secondBestScore: 0,
+          margin: 0,
+        };
+      }
+      const scores = referenceSamples.map((referenceSample, refIndex) => {
+        const score = comparePickOverlaySamples(hudSamples[hudIndex], referenceSample);
+        allPairs.push({ hudIndex, refIndex, score });
+        return { refIndex, score };
+      }).sort((left, right) => right.score - left.score);
+
+      return {
+        refIndex: scores[0]?.refIndex ?? -1,
+        bestScore: scores[0]?.score ?? 0,
+        secondBestScore: scores[1]?.score ?? 0,
+        margin: (scores[0]?.score ?? 0) - (scores[1]?.score ?? 0),
+      };
+    });
+
+    const tentativeMatches = [];
+    const usedHudIndexes = new Set();
+    const usedRefIndexes = new Set();
+    allPairs.sort((left, right) => right.score - left.score);
+
+    allPairs.forEach((pair) => {
+      if (usedHudIndexes.has(pair.hudIndex) || usedRefIndexes.has(pair.refIndex)) {
+        return;
+      }
+
+      const best = bestByHudIndex[pair.hudIndex];
+      if (
+        pair.refIndex !== best.refIndex
+        || !passesPickOverlayScoreThreshold(
+          pair.score,
+          pair.score - best.secondBestScore,
+        )
+      ) {
+        return;
+      }
+
+      tentativeMatches.push(pair);
+      usedHudIndexes.add(pair.hudIndex);
+      usedRefIndexes.add(pair.refIndex);
+    });
+
+    return {
+      tentativeMatches,
+      bestByHudIndex,
+    };
+  }
+
+  function samplePickOverlaySource(source, crop) {
+    const context = getPickOverlaySampleContext(
+      PICK_OVERLAY_CONFIG.sampleWidth,
+      PICK_OVERLAY_CONFIG.sampleHeight,
+    );
+    if (!context) {
+      return null;
+    }
+
+    context.clearRect(0, 0, PICK_OVERLAY_CONFIG.sampleWidth, PICK_OVERLAY_CONFIG.sampleHeight);
+    context.drawImage(
+      source,
+      Math.round(crop.x),
+      Math.round(crop.y),
+      Math.max(1, Math.round(crop.width)),
+      Math.max(1, Math.round(crop.height)),
+      0,
+      0,
+      PICK_OVERLAY_CONFIG.sampleWidth,
+      PICK_OVERLAY_CONFIG.sampleHeight,
+    );
+
+    const imageData = context.getImageData(
+      0,
+      0,
+      PICK_OVERLAY_CONFIG.sampleWidth,
+      PICK_OVERLAY_CONFIG.sampleHeight,
+    ).data;
+    const values = new Float32Array(PICK_OVERLAY_CONFIG.sampleWidth * PICK_OVERLAY_CONFIG.sampleHeight);
+    let sum = 0;
+    let brightPixels = 0;
+    for (let index = 0, sampleIndex = 0; index < imageData.length; index += 4, sampleIndex += 1) {
+      const grayscale = (imageData[index] * 0.299) + (imageData[index + 1] * 0.587) + (imageData[index + 2] * 0.114);
+      values[sampleIndex] = grayscale;
+      sum += grayscale;
+      if (grayscale >= 110) {
+        brightPixels += 1;
+      }
+    }
+
+    const mean = sum / values.length;
+    let normSquared = 0;
+    for (let index = 0; index < values.length; index += 1) {
+      values[index] -= mean;
+      normSquared += values[index] * values[index];
+    }
+
+    return {
+      values,
+      mean,
+      normSquared,
+      contrast: Math.sqrt(normSquared / values.length),
+      brightRatio: brightPixels / values.length,
+    };
+  }
+
+  function evaluatePickOverlayHudGate(sample) {
+    const thresholds = PICK_OVERLAY_CONFIG.thresholds;
+    if (!sample) {
+      return {
+        ready: false,
+        key: "missing",
+        summary: "gate sample missing",
+      };
+    }
+
+    const reasons = [];
+    if (sample.mean < thresholds.hudGateMeanMin) {
+      reasons.push("dark");
+    }
+    if (sample.contrast < thresholds.hudGateContrastMin) {
+      reasons.push("flat");
+    }
+    if (sample.brightRatio < thresholds.hudGateBrightRatioMin) {
+      reasons.push("dim");
+    }
+
+    const detail = `mean=${formatAutoMetric(sample.mean)} contrast=${formatAutoMetric(sample.contrast)} bright=${formatAutoMetric(sample.brightRatio)}`;
+    return {
+      ready: reasons.length === 0,
+      key: reasons.length ? reasons.join("+") : "ready",
+      summary: reasons.length ? `gate ${reasons.join("/")} ${detail}` : `gate ready ${detail}`,
+    };
+  }
+
+  function passesPickOverlayScoreThreshold(bestScore, margin) {
+    const thresholds = PICK_OVERLAY_CONFIG.thresholds;
+    if (bestScore >= thresholds.scoreMin && margin >= thresholds.marginMin) {
+      return true;
+    }
+
+    return bestScore >= thresholds.scoreMinStrongMargin
+      && margin >= thresholds.marginStrongMin;
+  }
+
+  function comparePickOverlaySamples(leftSample, rightSample) {
+    if (!leftSample || !rightSample || !leftSample.normSquared || !rightSample.normSquared) {
+      return 0.5;
+    }
+
+    let numerator = 0;
+    for (let index = 0; index < leftSample.values.length; index += 1) {
+      numerator += leftSample.values[index] * rightSample.values[index];
+    }
+
+    const denominator = Math.sqrt(leftSample.normSquared * rightSample.normSquared);
+    if (!denominator) {
+      return 0.5;
+    }
+
+    const correlation = clamp(numerator / denominator, -1, 1);
+    return (correlation + 1) / 2;
+  }
+
+  function updatePickOverlayAssignments(tentativeMatches) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
+    let didAssignOrder = false;
+    const acceptedAssignments = new Map();
+
+    PICK_OVERLAY_CONFIG.hudRois.forEach((_, hudIndex) => {
+      const tentative = tentativeByHudIndex.get(hudIndex);
+      if (!tentative) {
+        pickOverlay.pendingMatchesByHudIndex[hudIndex] = null;
+        return;
+      }
+
+      if (pickOverlay.ordersByRefIndex[tentative.refIndex]) {
+        pickOverlay.pendingMatchesByHudIndex[hudIndex] = null;
+        return;
+      }
+
+      const pending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
+      if (pending?.refIndex === tentative.refIndex) {
+        pickOverlay.pendingMatchesByHudIndex[hudIndex] = {
+          refIndex: tentative.refIndex,
+          streak: pending.streak + 1,
+        };
+      } else {
+        pickOverlay.pendingMatchesByHudIndex[hudIndex] = {
+          refIndex: tentative.refIndex,
+          streak: 1,
+        };
+      }
+
+      const nextPending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
+      if (nextPending.streak >= PICK_OVERLAY_CONFIG.requiredStreak) {
+        const assignedOrder = assignPickOverlayOrder(tentative.refIndex);
+        if (assignedOrder) {
+          acceptedAssignments.set(hudIndex, assignedOrder);
+          didAssignOrder = true;
+        }
+        pickOverlay.pendingMatchesByHudIndex[hudIndex] = null;
+      }
+    });
+
+    if (didAssignOrder && state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+    }
+
+    return acceptedAssignments;
+  }
+
+  function assignPickOverlayOrder(refIndex) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    if (pickOverlay.ordersByRefIndex[refIndex] || pickOverlay.nextOrder > PICK_OVERLAY_CONFIG.maxOrders) {
+      return 0;
+    }
+
+    pickOverlay.ordersByRefIndex[refIndex] = pickOverlay.nextOrder;
+    pickOverlay.nextOrder += 1;
+    return pickOverlay.ordersByRefIndex[refIndex];
+  }
+
+  function clearPickOverlayPendingMatches() {
+    state.autoSnap.pickOverlay.pendingMatchesByHudIndex = PICK_OVERLAY_CONFIG.hudRois.map(() => null);
+  }
+
+  function buildPickOverlaySummary() {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const confirmedEntries = pickOverlay.ordersByRefIndex
+      .map((order, refIndex) => (order ? `slot${refIndex + 1}=${getPickOverlayOrderLabel(order)}` : ""))
+      .filter(Boolean);
+    const pendingEntries = pickOverlay.pendingMatchesByHudIndex
+      .map((pending, hudIndex) => (pending ? `HUD${hudIndex + 1}->slot${pending.refIndex + 1}(${pending.streak})` : ""))
+      .filter(Boolean);
+
+    if (!confirmedEntries.length && !pendingEntries.length) {
+      return "確定なし";
+    }
+
+    if (!confirmedEntries.length) {
+      return `pending ${pendingEntries.join(", ")}`;
+    }
+
+    if (!pendingEntries.length) {
+      return confirmedEntries.join(", ");
+    }
+
+    return `${confirmedEntries.join(", ")} / pending ${pendingEntries.join(", ")}`;
+  }
+
+  function getPickOverlayDebugLines() {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const nextLabel = pickOverlay.nextOrder > PICK_OVERLAY_CONFIG.maxOrders ? "done" : String(pickOverlay.nextOrder);
+    const lines = [
+      `[debug] pick state: gate=${pickOverlay.lastGateActive ? "active" : "idle"} next=${nextLabel}`,
+      `[debug] pick state refs: ${pickOverlay.lastSummary || "確定なし"}`,
+    ];
+    if (pickOverlay.lastGateReason) {
+      lines.push(`[debug] pick state gate: ${pickOverlay.lastGateReason}`);
+    }
+    pickOverlay.lastHudSummaries.forEach((summary, hudIndex) => {
+      lines.push(`[debug] pick compare HUD${hudIndex + 1}: ${summary}`);
+    });
+    return lines;
+  }
+
+  function updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates = []) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
+    const summaryKeyParts = [];
+
+    bestByHudIndex.forEach((best, hudIndex) => {
+      const gateState = hudGateStates[hudIndex];
+      if (gateState && !gateState.ready) {
+        pickOverlay.lastHudSummaries[hudIndex] = gateState.summary;
+        summaryKeyParts.push(`hud${hudIndex + 1}:gate:${gateState.key}`);
+        return;
+      }
+
+      const bestSlotLabel = best.refIndex >= 0 ? `slot${best.refIndex + 1}` : "none";
+      const margin = best.margin || 0;
+      const passesScoreGate = passesPickOverlayScoreThreshold(best.bestScore, margin);
+      const assignedOrder = pickOverlay.ordersByRefIndex[best.refIndex] || 0;
+      const pending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
+      let status = "contested";
+
+      if (best.refIndex < 0) {
+        status = "no_candidate";
+      } else if (!passesScoreGate && best.bestScore < PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin) {
+        status = "low_score";
+      } else if (!passesScoreGate && margin < PICK_OVERLAY_CONFIG.thresholds.marginMin) {
+        status = "low_margin";
+      } else if (!passesScoreGate) {
+        status = "low_score_strong_margin";
+      } else if (acceptedAssignments.has(hudIndex)) {
+        status = "accepted";
+      } else if (assignedOrder) {
+        status = "already_assigned";
+      } else if (pending) {
+        status = "pending";
+      } else if (!tentativeByHudIndex.has(hudIndex)) {
+        status = "contested";
+      }
+
+      const statusDetail = status === "accepted"
+        ? `accepted ${bestSlotLabel}=${getPickOverlayOrderLabel(acceptedAssignments.get(hudIndex))}`
+        : status === "already_assigned"
+          ? `fixed ${bestSlotLabel}=${getPickOverlayOrderLabel(assignedOrder)}`
+          : status === "pending"
+            ? `pending ${bestSlotLabel} streak=${pending.streak}/${PICK_OVERLAY_CONFIG.requiredStreak}`
+            : status === "low_score"
+              ? `rejected ${bestSlotLabel} score<${PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin}`
+            : status === "low_margin"
+                ? `rejected ${bestSlotLabel} margin<${PICK_OVERLAY_CONFIG.thresholds.marginMin}`
+                : status === "low_score_strong_margin"
+                  ? `rejected ${bestSlotLabel} need score>=${PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin} or margin>=${PICK_OVERLAY_CONFIG.thresholds.marginStrongMin}`
+                : status === "contested"
+                  ? `rejected ${bestSlotLabel} contested`
+                  : "rejected no candidate";
+      const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)}`;
+      pickOverlay.lastHudSummaries[hudIndex] = summary;
+      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${pending?.streak || 0}:${assignedOrder || 0}`);
+    });
+
+    appendPickOverlayDebugLogIfChanged(
+      summaryKeyParts.join("|"),
+      bestByHudIndex.map((_, hudIndex) => `[debug] pick compare HUD${hudIndex + 1}: ${pickOverlay.lastHudSummaries[hudIndex]}`),
+    );
+  }
+
+  function appendPickOverlayDebugLogIfChanged(key, lines) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    if (!state.debugMode || pickOverlay.lastLogKey === key) {
+      return;
+    }
+
+    pickOverlay.lastLogKey = key;
+    appendTerminalDebug(lines);
+  }
+
   function getLoadingTemplateSignal(metrics) {
     return metrics.loadingTemplate;
   }
@@ -3562,6 +4199,32 @@
     loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "読み込み中 画像の読み込みに失敗しました。");
     loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出タイマー画像の読み込みに失敗しました。");
     loadAutoTemplate("waitingTimer", AUTO_TEMPLATE_PATHS.waitingTimer, "auto-waiting-template-load-failed", "待機タイマー画像の読み込みに失敗しました。");
+  }
+
+  function loadPickOverlayBadgeImages() {
+    Object.entries(PICK_OVERLAY_CONFIG.badgeImagePaths).forEach(([orderKey, path]) => {
+      const order = Number(orderKey);
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        state.pickOverlayBadgeImages[order] = image;
+        if (state.references.enemy && state.mode !== "edit") {
+          drawCropPanel("enemy");
+        }
+      };
+      image.onerror = () => {
+        appendTerminalNotice(
+          `pick-overlay-badge-${order}-load-failed`,
+          [`[error] 相手選手番号バッジ ${order} の読み込みに失敗しました。`],
+          "error",
+        );
+      };
+      image.src = path;
+    });
+  }
+
+  function getPickOverlayBadgeImage(order) {
+    return state.pickOverlayBadgeImages[order] || null;
   }
 
   function loadAutoTemplate(key, path, noticeKey, message) {
@@ -4003,6 +4666,21 @@
     };
   }
 
+  function createPickOverlayState(reason = "") {
+    return {
+      ordersByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => 0),
+      nextOrder: 1,
+      pendingMatchesByHudIndex: PICK_OVERLAY_CONFIG.hudRois.map(() => null),
+      referenceUpdatedAt: 0,
+      lastCompareAt: 0,
+      lastGateActive: false,
+      lastGateReason: reason || "待機中",
+      lastSummary: reason ? `${reason} / 確定なし` : "確定なし",
+      lastHudSummaries: PICK_OVERLAY_CONFIG.hudRois.map(() => reason || "未評価"),
+      lastLogKey: "",
+    };
+  }
+
   function createAutoSnapState() {
     return {
       enabled: AUTO_SNAP_CONFIG.enabledByDefault,
@@ -4029,12 +4707,62 @@
       detectorContext: null,
       iconDetectorCanvas: null,
       iconDetectorContext: null,
+      pickSampleCanvas: null,
+      pickSampleContext: null,
+      pickOverlay: createPickOverlayState(),
       templates: {
         loading: createPendingAutoTemplate(),
         selectionTimer: createPendingAutoTemplate(),
         waitingTimer: createPendingAutoTemplate(),
       },
     };
+  }
+
+  function resetPickOverlayState(reason = "", options = {}) {
+    const { redraw = true } = options;
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const hadVisibleOverlay = pickOverlay.ordersByRefIndex?.some(Boolean);
+    const hadPendingMatches = pickOverlay.pendingMatchesByHudIndex?.some(Boolean);
+    state.autoSnap.pickOverlay = createPickOverlayState(reason || "リセット");
+    if (redraw && (hadVisibleOverlay || hadPendingMatches) && state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+    }
+  }
+
+  function getPickOverlayNormalizedRect(roi, width, height) {
+    return clampAutoRoiCrop(
+      {
+        x: width * roi.x,
+        y: height * roi.y,
+        width: width * roi.width,
+        height: height * roi.height,
+      },
+      width,
+      height,
+    );
+  }
+
+  function getPickOverlayOrderLabel(order) {
+    return PICK_OVERLAY_ORDER_LABELS[order] || String(order || "");
+  }
+
+  function getPickOverlayHudCrop(index) {
+    const dimensions = getStreamDimensions();
+    const roi = PICK_OVERLAY_CONFIG.hudRois[index];
+    if (!dimensions.width || !dimensions.height || !roi) {
+      return null;
+    }
+
+    return getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height);
+  }
+
+  function shouldShowPickOverlayReferenceDebug() {
+    return Boolean(
+      state.debugMode
+      && state.autoSnap.enabled
+      && state.mode === "ready"
+      && state.references.enemy,
+    );
   }
 
   function captureReferenceFrameFromVideo(side) {
