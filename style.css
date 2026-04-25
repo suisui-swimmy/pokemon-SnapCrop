@@ -73,28 +73,28 @@ html {
 
 html[data-theme="light"] {
   color-scheme: light;
-  --bg: #bae8e8;
+  --bg: #fffced;
   --panel: #ffffff;
-  --panel-strong: #e3f6f5;
+  --panel-strong: #fff9db;
   --surface: #ffffff;
-  --surface-strong: #e3f6f5;
+  --surface-strong: #fff9db;
   --border: #c9d8e4;
   --border-strong: #9db7c7;
   --text: #272343;
   --muted: #5f6784;
   --icon-secondary: #6a7890;
-  --accent: #ffd803;
-  --accent-rgb: 255, 216, 3;
+  --accent: #56bcc2;
+  --accent-rgb: 86, 188, 194;
   --accent-soft: rgba(var(--accent-rgb), 0.22);
   --accent-soft-strong: rgba(var(--accent-rgb), 0.34);
   --accent-soft-subtle: rgba(var(--accent-rgb), 0.18);
   --success-strong: #157a56;
   --error-strong: #b83f61;
-  --surface-subtle: #e3f6f5;
+  --surface-subtle: #fff9db;
   --surface-subtle-strong: #fffffe;
   --surface-overlay: rgba(255, 255, 255, 0.92);
   --surface-overlay-strong: rgba(255, 255, 255, 0.94);
-  --terminal-surface: #eef7f6;
+  --terminal-surface: #fffef6;
   --focus-ring: rgba(var(--accent-rgb), 0.5);
   --splitter-line: rgba(39, 35, 67, 0.14);
   --splitter-line-hover: rgba(39, 35, 67, 0.24);
@@ -110,16 +110,17 @@ html[data-theme="light"] {
   --suggestion-border: rgba(157, 183, 199, 0.84);
   --suggestion-text: #24304f;
   --suggestion-selected-text: #0f172f;
-  --suggestion-selected-name-text: #ffd803;
+  --suggestion-selected-name-text: #2f7f86;
   --suggestion-type-text: #6b7da6;
-  --suggestion-match-text: #ffd803;
+  --suggestion-match-text: #2f7f86;
   --blink-hidden: rgba(39, 35, 67, 0.12);
   --my-accent-soft: rgba(var(--my-accent-rgb), 0.18);
   --my-accent-soft-strong: rgba(var(--my-accent-rgb), 0.12);
   --my-accent-border: rgba(var(--my-accent-rgb), 0.92);
   --my-handle-border: #ffffff;
   --loading-accent-bg: rgba(114, 117, 126, 0.16);
-  --committed-accent-bg: rgba(255, 216, 3, 0.16);
+  --committed-accent-border: rgba(var(--accent-rgb), 0.92);
+  --committed-accent-bg: rgba(var(--accent-rgb), 0.16);
   --battle-accent-bg: rgba(120, 210, 255, 0.12);
 }
 
@@ -898,6 +899,18 @@ html[data-theme="light"] .terminal-panel {
 
 html[data-theme="light"] .terminal-output {
   background: var(--panel-strong);
+  color: #111111;
+}
+
+html[data-theme="light"] .terminal-prompt,
+html[data-theme="light"] .terminal-input-wrap input,
+html[data-theme="light"] .terminal-entry--command {
+  color: #111111;
+  caret-color: #111111;
+}
+
+html[data-theme="light"] .terminal-entry--system {
+  color: #333333;
 }
 
 .terminal-log {
