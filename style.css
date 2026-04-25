@@ -899,18 +899,18 @@ html[data-theme="light"] .terminal-panel {
 
 html[data-theme="light"] .terminal-output {
   background: var(--panel-strong);
-  color: #111111;
+  color: #272343;
 }
 
 html[data-theme="light"] .terminal-prompt,
 html[data-theme="light"] .terminal-input-wrap input,
 html[data-theme="light"] .terminal-entry--command {
-  color: #111111;
-  caret-color: #111111;
+  color: #272343;
+  caret-color: #272343;
 }
 
 html[data-theme="light"] .terminal-entry--system {
-  color: #333333;
+  color: #4b4a67;
 }
 
 .terminal-log {
