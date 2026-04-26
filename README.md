@@ -42,7 +42,8 @@
 - 自動モードでも、撮影範囲を変更したり、手動で撮影したりすることができます。
   - `edit` コマンドで、撮影範囲の位置や大きさを調整できます
   - `ready` コマンドで、撮影範囲の調整を終えて、撮影待機状態に入ります
-  - `snap` コマンド、もしくは`空 Enter` / `Ctrl + Enter`で撮影できます 
+  - `snap` コマンドで撮影できます
+  - `空 Enter` / `Ctrl + Enter` は Auto OFF 中のみ `snap both` として使えます
 
   #### **注意**
     - AUTOモードは、アスペクト比 16:9 の映像入力にのみ対応しています
@@ -55,7 +56,7 @@
   | :---: | :---: | :---: |
   | `edit` | 撮影範囲の位置や大きさを調整できます | `e` |
   | `ready` | 撮影範囲の調整を終えて、撮影待機状態に入ります | `r` / `Esc` |
-  | `snap both` | 左右両方を撮影します | `空 Enter` / `Ctrl + Enter` / `sb` |
+  | `snap both` | 左右両方を撮影します | `空 Enter` / `Ctrl + Enter` / `sb` (`空 Enter` / `Ctrl + Enter` は Auto OFF 時) |
   | `snap my` | 自分側だけ更新します | `sm` |
   | `snap enemy` | 相手側だけ更新します | `se` |
 
@@ -63,7 +64,8 @@
   1. ページを開き、映像入力ソースを選択
   2. `edit` コマンドで、撮影範囲の位置や大きさを調整
   3. `ready` コマンドで、撮影範囲の調整を完了
-  4. 任意のタイミングに `snap` / `空 Enter` / `Ctrl + Enter`で撮影
+  4. 任意のタイミングに `snap` / `空 Enter` / `Ctrl + Enter` で撮影
+    - Auto ON 中は、`空 Enter` / `Ctrl + Enter` の誤爆防止のため手動snapを抑止します
 
 ## 分からないことがあったら
 専用の[サポートチャット](https://chatgpt.com/g/g-69e6262f0edc8191b991191368c625c6-snapcrop-sahototiyatuto)でAIに質問できます。
@@ -76,7 +78,7 @@
   | `edit` | `e` | クロップ範囲の調整モードに入ります |
   | `ready` | `r` / `Esc` | クロップ調整を終えて待機状態に戻ります |
   | `snap` | - | `snap both` と同じです。左右両方を更新します |
-  | `snap both` | `s` / 空 Enter (`ready` 中) / `Ctrl + Enter` | 左右両方のパーティ画像を更新します |
+  | `snap both` | `s` / 空 Enter (`ready` 中・Auto OFF 時) / `Ctrl + Enter` (`Auto OFF` 時) | 左右両方のパーティ画像を更新します |
   | `snap my` | `sm` | 自分側のパーティ画像だけ更新します |
   | `snap enemy` | `se` | 相手側のパーティ画像だけ更新します |
   | `snap clear` | - | 撮影済みのパーティ画像をクリアします |

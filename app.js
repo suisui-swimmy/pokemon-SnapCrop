@@ -940,8 +940,7 @@
     void runWithForcedTerminalAutoscroll(() => {
       if (!submission.query) {
         if (state.mode === "ready") {
-          appendTerminalEntry(["> snap both"], "command");
-          return handleSnapCommand("both");
+          return runManualSnapShortcut("both");
         }
         return null;
       }
@@ -996,6 +995,30 @@
     state.isComposing = false;
     state.suppressSuggestions = false;
     refreshTerminalSuggestions();
+  }
+
+  function shouldSuppressManualSnapShortcut() {
+    return state.autoSnap.enabled;
+  }
+
+  function notifyManualSnapShortcutSuppressed() {
+    appendTerminalNotice(
+      "auto-manual-snap-shortcut-disabled",
+      [
+        "[auto] Auto中は空 Enter / Ctrl + Enter の手動snapを止めています。",
+      ],
+      "system",
+    );
+  }
+
+  function runManualSnapShortcut(target) {
+    if (shouldSuppressManualSnapShortcut()) {
+      notifyManualSnapShortcutSuppressed();
+      return null;
+    }
+
+    appendTerminalEntry([`> snap ${target}`], "command");
+    return handleSnapCommand(target);
   }
 
   function handleTerminalInputKeydown(event) {
@@ -1264,10 +1287,7 @@
   function handleGlobalKeydown(event) {
     if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Enter") {
       event.preventDefault();
-      void runWithForcedTerminalAutoscroll(() => {
-        appendTerminalEntry(["> snap both"], "command");
-        return handleSnapCommand("both");
-      });
+      void runWithForcedTerminalAutoscroll(() => runManualSnapShortcut("both"));
       return;
     }
 
@@ -1296,7 +1316,7 @@
         [
           "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr / layout reset = lr",
-          "ショートカット: Ctrl + Enter = snap both / Esc = ready",
+          "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
         "system",
       );
