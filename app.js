@@ -20,6 +20,26 @@
     dark: "dark",
     light: "light",
   };
+  const POKEMON_TYPE_COLORS = {
+    あく: "#624D4E",
+    いわ: "#AFA981",
+    エスパー: "#EF4179",
+    かくとう: "#FF8000",
+    くさ: "#3FA129",
+    ゴースト: "#704170",
+    こおり: "#3DCEF3",
+    じめん: "#915121",
+    でんき: "#FAC000",
+    どく: "#9141CB",
+    ドラゴン: "#5060E1",
+    ノーマル: "#9FA19F",
+    はがね: "#60A1B8",
+    ひこう: "#81B9EF",
+    フェアリー: "#EF70EF",
+    ほのお: "#E62829",
+    みず: "#2980EF",
+    むし: "#91A119",
+  };
   const CROP_SIDES = ["my", "enemy"];
   const REQUIRED_HEADERS = [
     "ポケモン名",
@@ -1195,9 +1215,9 @@
       name.className = "terminal-suggestion__name";
       appendHighlightedSuggestionName(name, suggestion.name, query);
 
-      const types = document.createElement("span");
+      const types = document.createElement("div");
       types.className = "terminal-suggestion__types";
-      types.textContent = suggestion.types.length ? suggestion.types.join("/") : "-";
+      appendSuggestionTypeChips(types, suggestion.types);
 
       row.append(name, types);
       fragment.append(row);
@@ -1228,6 +1248,25 @@
     if (end < name.length) {
       container.append(document.createTextNode(name.slice(end)));
     }
+  }
+
+  function appendSuggestionTypeChips(container, types) {
+    container.textContent = "";
+    if (!Array.isArray(types) || types.length === 0) {
+      const placeholder = document.createElement("span");
+      placeholder.className = "terminal-suggestion__type-chip terminal-suggestion__type-chip--empty";
+      placeholder.textContent = "-";
+      container.append(placeholder);
+      return;
+    }
+
+    types.forEach((type) => {
+      const chip = document.createElement("span");
+      chip.className = "terminal-suggestion__type-chip";
+      chip.textContent = type;
+      chip.style.setProperty("--type-chip-bg", POKEMON_TYPE_COLORS[type] || "#5F6784");
+      container.append(chip);
+    });
   }
 
   function findSuggestionHighlightRange(name, query) {

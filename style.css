@@ -73,54 +73,57 @@ html {
 
 html[data-theme="light"] {
   color-scheme: light;
-  --bg: #fffced;
-  --panel: #ffffff;
-  --panel-strong: #fff9db;
+  --bg: #fffffe;
+  --panel: #fffffe;
+  --panel-strong: #f6fbfb;
   --surface: #ffffff;
-  --surface-strong: #fff9db;
-  --border: #c9d8e4;
-  --border-strong: #9db7c7;
+  --surface-strong: #e3f6f5;
+  --border: #bae8e8;
+  --border-strong: rgba(39, 35, 67, 0.28);
   --text: #272343;
-  --muted: #5f6784;
-  --icon-secondary: #6a7890;
-  --accent: #56bcc2;
-  --accent-rgb: 86, 188, 194;
-  --accent-soft: rgba(var(--accent-rgb), 0.22);
-  --accent-soft-strong: rgba(var(--accent-rgb), 0.34);
+  --muted: #4f5875;
+  --icon-secondary: #66718d;
+  --accent: #ffd803;
+  --accent-rgb: 255, 216, 3;
+  --accent-soft: rgba(var(--accent-rgb), 0.28);
+  --accent-soft-strong: rgba(var(--accent-rgb), 0.42);
   --accent-soft-subtle: rgba(var(--accent-rgb), 0.18);
-  --success-strong: #157a56;
-  --error-strong: #b83f61;
-  --surface-subtle: #fff9db;
-  --surface-subtle-strong: #fffffe;
+  --success: #1f7a5a;
+  --warning: #9a6500;
+  --error: #b24868;
+  --success-strong: #145d45;
+  --error-strong: #8d2e4f;
+  --surface-subtle: #e3f6f5;
+  --surface-subtle-strong: #f6fbfb;
   --surface-overlay: rgba(255, 255, 255, 0.92);
   --surface-overlay-strong: rgba(255, 255, 255, 0.94);
-  --terminal-surface: #fffef6;
-  --focus-ring: rgba(var(--accent-rgb), 0.5);
+  --terminal-surface: #f9fcfc;
+  --focus-ring: rgba(39, 35, 67, 0.22);
   --splitter-line: rgba(39, 35, 67, 0.14);
   --splitter-line-hover: rgba(39, 35, 67, 0.24);
-  --success-border: rgba(44, 182, 125, 0.42);
-  --warning-border: rgba(242, 198, 109, 0.5);
-  --error-border: rgba(255, 122, 144, 0.42);
-  --button-border: rgba(39, 35, 67, 0.16);
+  --success-border: rgba(31, 122, 90, 0.34);
+  --warning-border: rgba(154, 101, 0, 0.36);
+  --error-border: rgba(178, 72, 104, 0.34);
+  --button-border: rgba(39, 35, 67, 0.2);
   --overlay-handle-border: rgba(255, 255, 255, 0.96);
   --debug-border: rgba(39, 35, 67, 0.48);
   --debug-bg: rgba(39, 35, 67, 0.05);
   --debug-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
-  --ghost-text: rgba(95, 103, 132, 0.5);
-  --suggestion-border: rgba(157, 183, 199, 0.84);
-  --suggestion-text: #24304f;
+  --ghost-text: rgba(79, 88, 117, 0.48);
+  --suggestion-border: rgba(39, 35, 67, 0.22);
+  --suggestion-text: #2d334a;
   --suggestion-selected-text: #0f172f;
-  --suggestion-selected-name-text: #2f7f86;
-  --suggestion-type-text: #6b7da6;
-  --suggestion-match-text: #2f7f86;
+  --suggestion-selected-name-text: #272343;
+  --suggestion-type-text: #64708f;
+  --suggestion-match-text: #272343;
   --blink-hidden: rgba(39, 35, 67, 0.12);
   --my-accent-soft: rgba(var(--my-accent-rgb), 0.18);
   --my-accent-soft-strong: rgba(var(--my-accent-rgb), 0.12);
   --my-accent-border: rgba(var(--my-accent-rgb), 0.92);
   --my-handle-border: #ffffff;
   --loading-accent-bg: rgba(114, 117, 126, 0.16);
-  --committed-accent-border: rgba(var(--accent-rgb), 0.92);
-  --committed-accent-bg: rgba(var(--accent-rgb), 0.16);
+  --committed-accent-border: rgba(255, 216, 3, 0.94);
+  --committed-accent-bg: rgba(255, 216, 3, 0.22);
   --battle-accent-bg: rgba(120, 210, 255, 0.12);
 }
 
@@ -1073,10 +1076,13 @@ html[data-theme="light"] .terminal-entry--system {
   gap: 12px;
   align-items: baseline;
   min-width: 0;
+  padding: 2px 6px;
+  border-radius: 2px;
   color: var(--suggestion-text);
 }
 
 .terminal-suggestion.is-selected {
+  background: var(--accent-soft-strong);
   color: var(--suggestion-selected-text);
 }
 
@@ -1092,8 +1098,37 @@ html[data-theme="light"] .terminal-entry--system {
 }
 
 .terminal-suggestion__types {
-  color: var(--suggestion-type-text);
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.terminal-suggestion__type-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--type-chip-bg, #5F6784);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.25;
   white-space: nowrap;
+}
+
+.terminal-suggestion__type-chip--empty {
+  background: transparent;
+  color: var(--suggestion-type-text);
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.terminal-suggestion.is-selected .terminal-suggestion__types,
+.terminal-suggestion.is-selected .terminal-suggestion__match {
+  color: var(--suggestion-selected-name-text);
 }
 
 .terminal-suggestion__match {
