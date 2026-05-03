@@ -212,17 +212,32 @@
     compareIntervalMs: 500,
     sampleWidth: 60,
     sampleHeight: 75,
-    requiredStreak: 2,
+    requiredStrongStreak: 2,
+    requiredWeakStreak: 3,
+    gateGraceMs: 1500,
     maxOrders: 4,
     thresholds: {
-      scoreMin: 0.82,
+      scoreMin: 0.80,
       marginMin: 0.05,
-      scoreMinStrongMargin: 0.75,
-      marginStrongMin: 0.16,
+      scoreMinStrongMargin: 0.74,
+      marginStrongMin: 0.13,
+      scoreWeakMin: 0.70,
+      marginWeakMin: 0.11,
       hudGateMeanMin: 58,
       hudGateContrastMin: 26,
       hudGateBrightRatioMin: 0.08,
     },
+    hudSearchOffsets: [
+      { x: 0, y: 0 },
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: 0, y: -6 },
+      { x: 0, y: 6 },
+      { x: -6, y: -4 },
+      { x: 6, y: -4 },
+      { x: -6, y: 4 },
+      { x: 6, y: 4 },
+    ],
     hudRois: [
       { x: 1113 / 1920, y: 73 / 1080, width: 68 / 1920, height: 84 / 1080 },
       { x: 1509 / 1920, y: 73 / 1080, width: 68 / 1920, height: 84 / 1080 },
@@ -240,6 +255,12 @@
       2: "./assets/pick-overlay-badge-2.svg",
       3: "./assets/pick-overlay-badge-3.svg",
       4: "./assets/pick-overlay-badge-4.svg",
+    },
+    flashFrameImagePath: "./assets/pick-overlay-flash-frame.svg",
+    flashFrameDurationMs: 1000,
+    flashFrameBaseSize: {
+      width: 299,
+      height: 114,
     },
     badgeSlotPositions: [
       { x: 0 / 299, y: 62 / 807 },
@@ -306,6 +327,8 @@
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
     pickOverlayBadgeImages: {},
+    pickOverlayFlashFrameImage: null,
+    pickOverlayEffectFrameId: 0,
     autoSnap: createAutoSnapState(),
   };
 
@@ -2829,6 +2852,7 @@
     if (side === "enemy") {
       drawEnemyPickDebugRois(context, reference);
       drawEnemyPickOrderOverlay(context, reference);
+      drawEnemyPickFlashFrameOverlay(context, reference);
     }
   }
 
@@ -2891,6 +2915,53 @@
       const height = Math.max(1, Math.round((badgeImage.naturalHeight || badgeImage.height || 1) * scaleY));
       context.drawImage(badgeImage, left, top, width, height);
     });
+  }
+
+  function drawEnemyPickFlashFrameOverlay(context, reference) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const flashImage = state.pickOverlayFlashFrameImage;
+    if (!flashImage || !pickOverlay.flashFramesByRefIndex?.some(Boolean)) {
+      return;
+    }
+
+    const now = Date.now();
+    const durationMs = PICK_OVERLAY_CONFIG.flashFrameDurationMs;
+    const scaleX = reference.width / PICK_OVERLAY_CONFIG.flashFrameBaseSize.width;
+    const scaleY = reference.height / 807;
+    let hasActiveFrame = false;
+
+    pickOverlay.flashFramesByRefIndex.forEach((flashFrame, refIndex) => {
+      if (!flashFrame) {
+        return;
+      }
+
+      const elapsedMs = now - flashFrame.startedAt;
+      if (elapsedMs >= durationMs) {
+        pickOverlay.flashFramesByRefIndex[refIndex] = null;
+        return;
+      }
+
+      const framePosition = PICK_OVERLAY_CONFIG.badgeSlotPositions[refIndex];
+      if (!framePosition) {
+        return;
+      }
+
+      const alpha = clamp(1 - (elapsedMs / durationMs), 0, 1);
+      const left = Math.round(reference.width * framePosition.x);
+      const top = Math.round(reference.height * framePosition.y);
+      const width = Math.max(1, Math.round(PICK_OVERLAY_CONFIG.flashFrameBaseSize.width * scaleX));
+      const height = Math.max(1, Math.round(PICK_OVERLAY_CONFIG.flashFrameBaseSize.height * scaleY));
+
+      context.save();
+      context.globalAlpha = alpha;
+      context.drawImage(flashImage, left, top, width, height);
+      context.restore();
+      hasActiveFrame = true;
+    });
+
+    if (hasActiveFrame) {
+      schedulePickOverlayEffectFrame();
+    }
   }
 
   function stopCurrentStream() {
@@ -3735,14 +3806,17 @@
     }
 
     if (!battleHudSignal.matched) {
-      clearPickOverlayPendingMatches();
+      const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = "battle HUD待ち";
+      if (keptPending) {
+        pickOverlay.lastGateReason = "battle HUD待ち / gate grace";
+      }
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "battle hud wait");
       pickOverlay.lastSummary = buildPickOverlaySummary();
       appendPickOverlayDebugLogIfChanged(
-        `gate-battle-hud-wait:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
+        `gate-battle-hud-wait:${keptPending ? 1 : 0}:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
         [
-          `[debug] pick state: battle HUD待ち hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"}`,
+          `[debug] pick state: battle HUD待ち${keptPending ? " / gate grace" : ""} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"}`,
         ],
       );
       return;
@@ -3763,11 +3837,12 @@
 
     pickOverlay.lastGateActive = true;
     pickOverlay.lastGateReason = "battle HUD一致 / HUD品質確認中";
-    const hudSamples = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlaySource(
+    const hudSampleSets = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlayHudCandidates(
       elements.video,
       getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
+      dimensions,
     ));
-    if (hudSamples.some((sample) => !sample)) {
+    if (hudSampleSets.some((candidates) => !candidates.length)) {
       clearPickOverlayPendingMatches();
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "roi read failed");
       pickOverlay.lastSummary = "ROI 読み取り失敗";
@@ -3779,19 +3854,22 @@
       return;
     }
 
-    const hudGateStates = hudSamples.map((sample) => evaluatePickOverlayHudGate(sample));
+    const hudGateStates = hudSampleSets.map((candidates) => evaluatePickOverlayHudCandidateGate(candidates));
     const readyHudIndexes = hudGateStates
       .map((gateState, hudIndex) => (gateState.ready ? hudIndex : -1))
       .filter((hudIndex) => hudIndex >= 0);
     if (!readyHudIndexes.length) {
-      clearPickOverlayPendingMatches();
+      const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = "HUD待ち";
+      if (keptPending) {
+        pickOverlay.lastGateReason = "HUD待ち / gate grace";
+      }
       pickOverlay.lastHudSummaries = hudGateStates.map((gateState) => gateState.summary);
       pickOverlay.lastSummary = buildPickOverlaySummary();
       appendPickOverlayDebugLogIfChanged(
-        `gate-hud-wait:${hudGateStates.map((gateState) => gateState.key).join("|")}`,
+        `gate-hud-wait:${keptPending ? 1 : 0}:${hudGateStates.map((gateState) => gateState.key).join("|")}`,
         [
-          "[debug] pick compare: HUD 2枠がまだ比較向きでないため比較しません。",
+          `[debug] pick compare: HUD 2枠がまだ比較向きでないため比較しません。${keptPending ? " gate grace で pending を保持します。" : ""}`,
           ...hudGateStates.map((gateState, hudIndex) => `[debug] pick compare HUD${hudIndex + 1}: ${gateState.summary}`),
         ],
       );
@@ -3819,7 +3897,7 @@
 
     pickOverlay.lastGateReason = `battle HUD一致 / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
     const { tentativeMatches, bestByHudIndex } = collectPickOverlayTentativeMatches(
-      hudSamples,
+      hudSampleSets,
       referenceSamples,
       readyHudIndexes,
     );
@@ -3828,50 +3906,96 @@
     pickOverlay.lastSummary = buildPickOverlaySummary();
   }
 
-  function collectPickOverlayTentativeMatches(hudSamples, referenceSamples, eligibleHudIndexes = []) {
-    const allPairs = [];
+  function collectPickOverlayTentativeMatches(hudSampleSets, referenceSamples, eligibleHudIndexes = []) {
     const eligibleSet = new Set(eligibleHudIndexes);
-    const bestByHudIndex = hudSamples.map((_, hudIndex) => {
-      if (!eligibleSet.has(hudIndex)) {
+    const bestByHudIndex = hudSampleSets.map((candidates, hudIndex) => {
+      if (!eligibleSet.has(hudIndex) || !candidates.length) {
         return {
           refIndex: -1,
           bestScore: 0,
           secondBestScore: 0,
           margin: 0,
+          tier: "",
+          offsetX: 0,
+          offsetY: 0,
+          grayScore: 0,
+          edgeScore: 0,
         };
       }
-      const scores = referenceSamples.map((referenceSample, refIndex) => {
-        const score = comparePickOverlaySamples(hudSamples[hudIndex], referenceSample);
-        allPairs.push({ hudIndex, refIndex, score });
-        return { refIndex, score };
-      }).sort((left, right) => right.score - left.score);
 
-      return {
-        refIndex: scores[0]?.refIndex ?? -1,
-        bestScore: scores[0]?.score ?? 0,
-        secondBestScore: scores[1]?.score ?? 0,
-        margin: (scores[0]?.score ?? 0) - (scores[1]?.score ?? 0),
-      };
+      return candidates.reduce((bestCandidate, candidate) => {
+        const scores = referenceSamples.map((referenceSample, refIndex) => {
+          const scoreResult = comparePickOverlaySamples(candidate.sample, referenceSample);
+          return {
+            refIndex,
+            score: scoreResult.score,
+            grayScore: scoreResult.grayScore,
+            edgeScore: scoreResult.edgeScore,
+          };
+        }).sort((left, right) => right.score - left.score);
+        const bestScore = scores[0]?.score ?? 0;
+        const secondBestScore = scores[1]?.score ?? 0;
+        const margin = bestScore - secondBestScore;
+        const nextCandidate = {
+          refIndex: scores[0]?.refIndex ?? -1,
+          bestScore,
+          secondBestScore,
+          margin,
+          tier: getPickOverlayMatchTier(bestScore, margin),
+          offsetX: candidate.offsetX,
+          offsetY: candidate.offsetY,
+          grayScore: scores[0]?.grayScore ?? 0,
+          edgeScore: scores[0]?.edgeScore ?? 0,
+        };
+
+        return isBetterPickOverlayCandidate(nextCandidate, bestCandidate)
+          ? nextCandidate
+          : bestCandidate;
+      }, {
+        refIndex: -1,
+        bestScore: 0,
+        secondBestScore: 0,
+        margin: 0,
+        tier: "",
+        offsetX: 0,
+        offsetY: 0,
+        grayScore: 0,
+        edgeScore: 0,
+      });
     });
 
+    const weakRefCounts = bestByHudIndex.reduce((counts, best) => {
+      if (best.tier === "weak" && best.refIndex >= 0) {
+        counts.set(best.refIndex, (counts.get(best.refIndex) || 0) + 1);
+      }
+      return counts;
+    }, new Map());
     const tentativeMatches = [];
     const usedHudIndexes = new Set();
     const usedRefIndexes = new Set();
-    allPairs.sort((left, right) => right.score - left.score);
+    const pairs = bestByHudIndex
+      .map((best, hudIndex) => ({ ...best, hudIndex }))
+      .filter((pair) => pair.refIndex >= 0 && pair.tier)
+      .sort((left, right) => {
+        const tierDiff = getPickOverlayTierPriority(right.tier) - getPickOverlayTierPriority(left.tier);
+        if (tierDiff) {
+          return tierDiff;
+        }
+        if (right.bestScore !== left.bestScore) {
+          return right.bestScore - left.bestScore;
+        }
+        if (right.margin !== left.margin) {
+          return right.margin - left.margin;
+        }
+        return left.hudIndex - right.hudIndex;
+      });
 
-    allPairs.forEach((pair) => {
+    pairs.forEach((pair) => {
       if (usedHudIndexes.has(pair.hudIndex) || usedRefIndexes.has(pair.refIndex)) {
         return;
       }
 
-      const best = bestByHudIndex[pair.hudIndex];
-      if (
-        pair.refIndex !== best.refIndex
-        || !passesPickOverlayScoreThreshold(
-          pair.score,
-          pair.score - best.secondBestScore,
-        )
-      ) {
+      if (pair.tier === "weak" && weakRefCounts.get(pair.refIndex) > 1) {
         return;
       }
 
@@ -3884,6 +4008,35 @@
       tentativeMatches,
       bestByHudIndex,
     };
+  }
+
+  function samplePickOverlayHudCandidates(source, crop, dimensions) {
+    const scaleX = dimensions.width / 1920;
+    const scaleY = dimensions.height / 1080;
+    return PICK_OVERLAY_CONFIG.hudSearchOffsets
+      .map((offset) => {
+        const offsetCrop = clampAutoRoiCrop(
+          {
+            x: crop.x + (offset.x * scaleX),
+            y: crop.y + (offset.y * scaleY),
+            width: crop.width,
+            height: crop.height,
+          },
+          dimensions.width,
+          dimensions.height,
+        );
+        const sample = samplePickOverlaySource(source, offsetCrop);
+        if (!sample) {
+          return null;
+        }
+
+        return {
+          sample,
+          offsetX: offset.x,
+          offsetY: offset.y,
+        };
+      })
+      .filter(Boolean);
   }
 
   function samplePickOverlaySource(source, crop) {
@@ -3914,7 +4067,10 @@
       PICK_OVERLAY_CONFIG.sampleWidth,
       PICK_OVERLAY_CONFIG.sampleHeight,
     ).data;
-    const values = new Float32Array(PICK_OVERLAY_CONFIG.sampleWidth * PICK_OVERLAY_CONFIG.sampleHeight);
+    const sampleWidth = PICK_OVERLAY_CONFIG.sampleWidth;
+    const sampleHeight = PICK_OVERLAY_CONFIG.sampleHeight;
+    const sampleSize = sampleWidth * sampleHeight;
+    const values = new Float32Array(sampleSize);
     let sum = 0;
     let brightPixels = 0;
     for (let index = 0, sampleIndex = 0; index < imageData.length; index += 4, sampleIndex += 1) {
@@ -3927,16 +4083,34 @@
     }
 
     const mean = sum / values.length;
+    const edgeValues = new Float32Array(sampleSize);
+    let edgeSum = 0;
+    for (let y = 1; y < sampleHeight - 1; y += 1) {
+      for (let x = 1; x < sampleWidth - 1; x += 1) {
+        const sampleIndex = (y * sampleWidth) + x;
+        const gx = values[sampleIndex + 1] - values[sampleIndex - 1];
+        const gy = values[sampleIndex + sampleWidth] - values[sampleIndex - sampleWidth];
+        const edge = Math.sqrt((gx * gx) + (gy * gy));
+        edgeValues[sampleIndex] = edge;
+        edgeSum += edge;
+      }
+    }
+    const edgeMean = edgeSum / edgeValues.length;
     let normSquared = 0;
+    let edgeNormSquared = 0;
     for (let index = 0; index < values.length; index += 1) {
       values[index] -= mean;
+      edgeValues[index] -= edgeMean;
       normSquared += values[index] * values[index];
+      edgeNormSquared += edgeValues[index] * edgeValues[index];
     }
 
     return {
       values,
+      edgeValues,
       mean,
       normSquared,
+      edgeNormSquared,
       contrast: Math.sqrt(normSquared / values.length),
       brightRatio: brightPixels / values.length,
     };
@@ -3949,6 +4123,7 @@
         ready: false,
         key: "missing",
         summary: "gate sample missing",
+        reasonCount: 1,
       };
     }
 
@@ -3968,30 +4143,130 @@
       ready: reasons.length === 0,
       key: reasons.length ? reasons.join("+") : "ready",
       summary: reasons.length ? `gate ${reasons.join("/")} ${detail}` : `gate ready ${detail}`,
+      reasonCount: reasons.length,
+      contrast: sample.contrast,
+      brightRatio: sample.brightRatio,
     };
   }
 
-  function passesPickOverlayScoreThreshold(bestScore, margin) {
+  function evaluatePickOverlayHudCandidateGate(candidates) {
+    return candidates.reduce((bestGate, candidate) => {
+      const gateState = evaluatePickOverlayHudGate(candidate.sample);
+      const nextGate = {
+        ...gateState,
+        offsetX: candidate.offsetX,
+        offsetY: candidate.offsetY,
+        summary: `${gateState.summary} offset=${formatPickOverlayOffset(candidate)}`,
+      };
+      if (!bestGate) {
+        return nextGate;
+      }
+      if (nextGate.ready !== bestGate.ready) {
+        return nextGate.ready ? nextGate : bestGate;
+      }
+      if (nextGate.reasonCount !== bestGate.reasonCount) {
+        return nextGate.reasonCount < bestGate.reasonCount ? nextGate : bestGate;
+      }
+      if (nextGate.contrast !== bestGate.contrast) {
+        return nextGate.contrast > bestGate.contrast ? nextGate : bestGate;
+      }
+      return nextGate.brightRatio > bestGate.brightRatio ? nextGate : bestGate;
+    }, null) || {
+      ready: false,
+      key: "missing",
+      summary: "gate sample missing",
+      reasonCount: 1,
+    };
+  }
+
+  function getPickOverlayMatchTier(bestScore, margin) {
     const thresholds = PICK_OVERLAY_CONFIG.thresholds;
     if (bestScore >= thresholds.scoreMin && margin >= thresholds.marginMin) {
-      return true;
+      return "strong";
     }
 
-    return bestScore >= thresholds.scoreMinStrongMargin
-      && margin >= thresholds.marginStrongMin;
+    if (bestScore >= thresholds.scoreMinStrongMargin && margin >= thresholds.marginStrongMin) {
+      return "strong";
+    }
+
+    if (bestScore >= thresholds.scoreWeakMin && margin >= thresholds.marginWeakMin) {
+      return "weak";
+    }
+
+    return "";
+  }
+
+  function getPickOverlayTierPriority(tier) {
+    return tier === "strong" ? 2 : tier === "weak" ? 1 : 0;
+  }
+
+  function getStrongerPickOverlayTier(leftTier, rightTier) {
+    return getPickOverlayTierPriority(rightTier) > getPickOverlayTierPriority(leftTier)
+      ? rightTier
+      : leftTier;
+  }
+
+  function getPickOverlayRequiredStreak(tier) {
+    return tier === "weak"
+      ? PICK_OVERLAY_CONFIG.requiredWeakStreak
+      : PICK_OVERLAY_CONFIG.requiredStrongStreak;
+  }
+
+  function isBetterPickOverlayCandidate(nextCandidate, currentCandidate) {
+    const tierDiff = getPickOverlayTierPriority(nextCandidate.tier) - getPickOverlayTierPriority(currentCandidate?.tier);
+    if (tierDiff) {
+      return tierDiff > 0;
+    }
+    if (!currentCandidate || nextCandidate.bestScore !== currentCandidate.bestScore) {
+      return !currentCandidate || nextCandidate.bestScore > currentCandidate.bestScore;
+    }
+    if (nextCandidate.margin !== currentCandidate.margin) {
+      return nextCandidate.margin > currentCandidate.margin;
+    }
+    const nextOffsetDistance = Math.abs(nextCandidate.offsetX) + Math.abs(nextCandidate.offsetY);
+    const currentOffsetDistance = Math.abs(currentCandidate.offsetX) + Math.abs(currentCandidate.offsetY);
+    return nextOffsetDistance < currentOffsetDistance;
   }
 
   function comparePickOverlaySamples(leftSample, rightSample) {
     if (!leftSample || !rightSample || !leftSample.normSquared || !rightSample.normSquared) {
+      return {
+        score: 0.5,
+        grayScore: 0.5,
+        edgeScore: 0.5,
+      };
+    }
+
+    const grayScore = comparePickOverlayVectors(
+      leftSample.values,
+      leftSample.normSquared,
+      rightSample.values,
+      rightSample.normSquared,
+    );
+    const edgeScore = comparePickOverlayVectors(
+      leftSample.edgeValues,
+      leftSample.edgeNormSquared,
+      rightSample.edgeValues,
+      rightSample.edgeNormSquared,
+    );
+    return {
+      score: clamp((grayScore * 0.75) + (edgeScore * 0.25), 0, 1),
+      grayScore,
+      edgeScore,
+    };
+  }
+
+  function comparePickOverlayVectors(leftValues, leftNormSquared, rightValues, rightNormSquared) {
+    if (!leftValues || !rightValues || !leftNormSquared || !rightNormSquared) {
       return 0.5;
     }
 
     let numerator = 0;
-    for (let index = 0; index < leftSample.values.length; index += 1) {
-      numerator += leftSample.values[index] * rightSample.values[index];
+    for (let index = 0; index < leftValues.length; index += 1) {
+      numerator += leftValues[index] * rightValues[index];
     }
 
-    const denominator = Math.sqrt(leftSample.normSquared * rightSample.normSquared);
+    const denominator = Math.sqrt(leftNormSquared * rightNormSquared);
     if (!denominator) {
       return 0.5;
     }
@@ -4005,6 +4280,7 @@
     const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
     let didAssignOrder = false;
     const acceptedAssignments = new Map();
+    const readyAssignments = [];
 
     PICK_OVERLAY_CONFIG.hudRois.forEach((_, hudIndex) => {
       const tentative = tentativeByHudIndex.get(hudIndex);
@@ -4021,26 +4297,67 @@
       const pending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
       if (pending?.refIndex === tentative.refIndex) {
         pickOverlay.pendingMatchesByHudIndex[hudIndex] = {
+          ...pending,
           refIndex: tentative.refIndex,
+          tier: getStrongerPickOverlayTier(pending.tier, tentative.tier),
           streak: pending.streak + 1,
+          bestScore: tentative.bestScore,
+          margin: tentative.margin,
+          secondBestScore: tentative.secondBestScore,
+          offsetX: tentative.offsetX,
+          offsetY: tentative.offsetY,
         };
       } else {
+        pickOverlay.pendingSequence += 1;
         pickOverlay.pendingMatchesByHudIndex[hudIndex] = {
           refIndex: tentative.refIndex,
+          tier: tentative.tier,
           streak: 1,
+          firstSeenAt: Date.now(),
+          firstSeenSequence: pickOverlay.pendingSequence,
+          bestScore: tentative.bestScore,
+          margin: tentative.margin,
+          secondBestScore: tentative.secondBestScore,
+          offsetX: tentative.offsetX,
+          offsetY: tentative.offsetY,
         };
       }
 
       const nextPending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
-      if (nextPending.streak >= PICK_OVERLAY_CONFIG.requiredStreak) {
-        const assignedOrder = assignPickOverlayOrder(tentative.refIndex);
-        if (assignedOrder) {
-          acceptedAssignments.set(hudIndex, assignedOrder);
-          didAssignOrder = true;
-        }
-        pickOverlay.pendingMatchesByHudIndex[hudIndex] = null;
+      if (nextPending.streak >= getPickOverlayRequiredStreak(nextPending.tier)) {
+        readyAssignments.push({
+          hudIndex,
+          refIndex: nextPending.refIndex,
+          tier: nextPending.tier,
+          firstSeenSequence: nextPending.firstSeenSequence,
+        });
       }
     });
+
+    readyAssignments
+      .sort((left, right) => {
+        if (left.firstSeenSequence !== right.firstSeenSequence) {
+          return left.firstSeenSequence - right.firstSeenSequence;
+        }
+        return left.hudIndex - right.hudIndex;
+      })
+      .forEach((assignment) => {
+        if (pickOverlay.ordersByRefIndex[assignment.refIndex]) {
+          pickOverlay.pendingMatchesByHudIndex[assignment.hudIndex] = null;
+          return;
+        }
+
+        const assignedOrder = assignPickOverlayOrder(assignment.refIndex);
+        if (assignedOrder) {
+          triggerPickOverlayFlashFrame(assignment.refIndex);
+          acceptedAssignments.set(assignment.hudIndex, {
+            order: assignedOrder,
+            tier: assignment.tier,
+          });
+          didAssignOrder = true;
+        }
+        pickOverlay.pendingMatchesByHudIndex[assignment.hudIndex] = null;
+      });
 
     if (didAssignOrder && state.references.enemy && state.mode !== "edit") {
       drawCropPanel("enemy");
@@ -4064,13 +4381,55 @@
     state.autoSnap.pickOverlay.pendingMatchesByHudIndex = PICK_OVERLAY_CONFIG.hudRois.map(() => null);
   }
 
+  function triggerPickOverlayFlashFrame(refIndex) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    if (!pickOverlay.flashFramesByRefIndex || !PICK_OVERLAY_CONFIG.badgeSlotPositions[refIndex]) {
+      return;
+    }
+
+    pickOverlay.flashFramesByRefIndex[refIndex] = {
+      startedAt: Date.now(),
+    };
+    if (state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+      schedulePickOverlayEffectFrame();
+    }
+  }
+
+  function schedulePickOverlayEffectFrame() {
+    if (state.pickOverlayEffectFrameId || !state.references.enemy || state.mode === "edit") {
+      return;
+    }
+
+    state.pickOverlayEffectFrameId = window.requestAnimationFrame(() => {
+      state.pickOverlayEffectFrameId = 0;
+      const hasActiveFrame = state.autoSnap.pickOverlay.flashFramesByRefIndex?.some(Boolean);
+      if (hasActiveFrame && state.references.enemy && state.mode !== "edit") {
+        drawCropPanel("enemy");
+      }
+    });
+  }
+
+  function keepPickOverlayPendingThroughGate(now) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const hasPending = pickOverlay.pendingMatchesByHudIndex.some(Boolean);
+    if (hasPending && now - pickOverlay.lastCompareAt <= PICK_OVERLAY_CONFIG.gateGraceMs) {
+      return true;
+    }
+
+    clearPickOverlayPendingMatches();
+    return false;
+  }
+
   function buildPickOverlaySummary() {
     const pickOverlay = state.autoSnap.pickOverlay;
     const confirmedEntries = pickOverlay.ordersByRefIndex
       .map((order, refIndex) => (order ? `slot${refIndex + 1}=${getPickOverlayOrderLabel(order)}` : ""))
       .filter(Boolean);
     const pendingEntries = pickOverlay.pendingMatchesByHudIndex
-      .map((pending, hudIndex) => (pending ? `HUD${hudIndex + 1}->slot${pending.refIndex + 1}(${pending.streak})` : ""))
+      .map((pending, hudIndex) => (pending
+        ? `HUD${hudIndex + 1}->slot${pending.refIndex + 1}(${pending.tier} ${pending.streak}/${getPickOverlayRequiredStreak(pending.tier)})`
+        : ""))
       .filter(Boolean);
 
     if (!confirmedEntries.length && !pendingEntries.length) {
@@ -4119,20 +4478,21 @@
 
       const bestSlotLabel = best.refIndex >= 0 ? `slot${best.refIndex + 1}` : "none";
       const margin = best.margin || 0;
-      const passesScoreGate = passesPickOverlayScoreThreshold(best.bestScore, margin);
+      const matchTier = best.tier || getPickOverlayMatchTier(best.bestScore, margin);
       const assignedOrder = pickOverlay.ordersByRefIndex[best.refIndex] || 0;
+      const acceptedAssignment = acceptedAssignments.get(hudIndex);
       const pending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
       let status = "contested";
 
       if (best.refIndex < 0) {
         status = "no_candidate";
-      } else if (!passesScoreGate && best.bestScore < PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin) {
+      } else if (!matchTier && best.bestScore < PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin) {
         status = "low_score";
-      } else if (!passesScoreGate && margin < PICK_OVERLAY_CONFIG.thresholds.marginMin) {
+      } else if (!matchTier && margin < PICK_OVERLAY_CONFIG.thresholds.marginWeakMin) {
         status = "low_margin";
-      } else if (!passesScoreGate) {
-        status = "low_score_strong_margin";
-      } else if (acceptedAssignments.has(hudIndex)) {
+      } else if (!matchTier) {
+        status = "low_score_weak_margin";
+      } else if (acceptedAssignment) {
         status = "accepted";
       } else if (assignedOrder) {
         status = "already_assigned";
@@ -4143,23 +4503,23 @@
       }
 
       const statusDetail = status === "accepted"
-        ? `accepted ${bestSlotLabel}=${getPickOverlayOrderLabel(acceptedAssignments.get(hudIndex))}`
+        ? `accepted ${acceptedAssignment.tier} ${bestSlotLabel}=${getPickOverlayOrderLabel(acceptedAssignment.order)}`
         : status === "already_assigned"
           ? `fixed ${bestSlotLabel}=${getPickOverlayOrderLabel(assignedOrder)}`
           : status === "pending"
-            ? `pending ${bestSlotLabel} streak=${pending.streak}/${PICK_OVERLAY_CONFIG.requiredStreak}`
+            ? `pending ${pending.tier} ${bestSlotLabel} streak=${pending.streak}/${getPickOverlayRequiredStreak(pending.tier)}`
             : status === "low_score"
-              ? `rejected ${bestSlotLabel} score<${PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin}`
+              ? `rejected ${bestSlotLabel} score<${PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin}`
             : status === "low_margin"
-                ? `rejected ${bestSlotLabel} margin<${PICK_OVERLAY_CONFIG.thresholds.marginMin}`
-                : status === "low_score_strong_margin"
-                  ? `rejected ${bestSlotLabel} need score>=${PICK_OVERLAY_CONFIG.thresholds.scoreMinStrongMargin} or margin>=${PICK_OVERLAY_CONFIG.thresholds.marginStrongMin}`
+                ? `rejected ${bestSlotLabel} margin<${PICK_OVERLAY_CONFIG.thresholds.marginWeakMin}`
+                : status === "low_score_weak_margin"
+                  ? `rejected ${bestSlotLabel} need weak score>=${PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin} margin>=${PICK_OVERLAY_CONFIG.thresholds.marginWeakMin}`
                 : status === "contested"
                   ? `rejected ${bestSlotLabel} contested`
                   : "rejected no candidate";
-      const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)}`;
+      const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)} offset=${formatPickOverlayOffset(best)}`;
       pickOverlay.lastHudSummaries[hudIndex] = summary;
-      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${pending?.streak || 0}:${assignedOrder || 0}`);
+      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${matchTier || "none"}:${pending?.streak || 0}:${assignedOrder || 0}:${best.offsetX || 0}:${best.offsetY || 0}`);
     });
 
     appendPickOverlayDebugLogIfChanged(
@@ -4280,6 +4640,23 @@
       };
       image.src = path;
     });
+
+    const flashFrameImage = new Image();
+    flashFrameImage.decoding = "async";
+    flashFrameImage.onload = () => {
+      state.pickOverlayFlashFrameImage = flashFrameImage;
+      if (state.references.enemy && state.mode !== "edit") {
+        drawCropPanel("enemy");
+      }
+    };
+    flashFrameImage.onerror = () => {
+      appendTerminalNotice(
+        "pick-overlay-flash-frame-load-failed",
+        ["[error] 相手選出ハイライト画像の読み込みに失敗しました。"],
+        "error",
+      );
+    };
+    flashFrameImage.src = PICK_OVERLAY_CONFIG.flashFrameImagePath;
   }
 
   function getPickOverlayBadgeImage(order) {
@@ -4573,6 +4950,12 @@
     return Number(value || 0).toFixed(3);
   }
 
+  function formatPickOverlayOffset(candidate) {
+    const offsetX = Math.round(candidate?.offsetX || 0);
+    const offsetY = Math.round(candidate?.offsetY || 0);
+    return `${offsetX},${offsetY}`;
+  }
+
   function getAutoStatusLines() {
     const auto = state.autoSnap;
     const lines = [
@@ -4730,6 +5113,8 @@
       ordersByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => 0),
       nextOrder: 1,
       pendingMatchesByHudIndex: PICK_OVERLAY_CONFIG.hudRois.map(() => null),
+      flashFramesByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => null),
+      pendingSequence: 0,
       referenceUpdatedAt: 0,
       lastCompareAt: 0,
       lastGateActive: false,
@@ -4782,8 +5167,9 @@
     const pickOverlay = state.autoSnap.pickOverlay;
     const hadVisibleOverlay = pickOverlay.ordersByRefIndex?.some(Boolean);
     const hadPendingMatches = pickOverlay.pendingMatchesByHudIndex?.some(Boolean);
+    const hadFlashFrames = pickOverlay.flashFramesByRefIndex?.some(Boolean);
     state.autoSnap.pickOverlay = createPickOverlayState(reason || "リセット");
-    if (redraw && (hadVisibleOverlay || hadPendingMatches) && state.references.enemy && state.mode !== "edit") {
+    if (redraw && (hadVisibleOverlay || hadPendingMatches || hadFlashFrames) && state.references.enemy && state.mode !== "edit") {
       drawCropPanel("enemy");
     }
   }
