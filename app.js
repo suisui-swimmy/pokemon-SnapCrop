@@ -3768,7 +3768,7 @@
     const auto = state.autoSnap;
     const pickOverlay = state.autoSnap.pickOverlay;
     pickOverlay.lastGateActive = false;
-    const battleHudSignal = getBattleHudSignal(metrics);
+    const battleHudSignal = getPickOverlayBattleHudSignal(metrics);
 
     if (!state.references.enemy) {
       clearPickOverlayPendingMatches();
@@ -3816,7 +3816,7 @@
       appendPickOverlayDebugLogIfChanged(
         `gate-battle-hud-wait:${keptPending ? 1 : 0}:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
         [
-          `[debug] pick state: battle HUD待ち${keptPending ? " / gate grace" : ""} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"}`,
+          `[debug] pick state: battle HUD待ち${keptPending ? " / gate grace" : ""} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes ignored" : "no"}`,
         ],
       );
       return;
@@ -3836,7 +3836,9 @@
     }
 
     pickOverlay.lastGateActive = true;
-    pickOverlay.lastGateReason = "battle HUD一致 / HUD品質確認中";
+    pickOverlay.lastGateReason = battleHudSignal.enemyListStillVisible
+      ? "battle HUD一致 / enemy gate ignored / HUD品質確認中"
+      : "battle HUD一致 / HUD品質確認中";
     const hudSampleSets = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlayHudCandidates(
       elements.video,
       getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
@@ -3895,7 +3897,7 @@
       return;
     }
 
-    pickOverlay.lastGateReason = `battle HUD一致 / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
+    pickOverlay.lastGateReason = `${battleHudSignal.enemyListStillVisible ? "battle HUD一致 / enemy gate ignored" : "battle HUD一致"} / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
     const { tentativeMatches, bestByHudIndex } = collectPickOverlayTentativeMatches(
       hudSampleSets,
       referenceSamples,
@@ -4896,6 +4898,16 @@
       matched: hudAccent >= threshold.hudAccentMin
         && metrics.battleHud.bright >= threshold.hudBrightMin
         && !enemyListStillVisible,
+    };
+  }
+
+  function getPickOverlayBattleHudSignal(metrics) {
+    const threshold = AUTO_SNAP_CONFIG.thresholds.battleHud;
+    const battleHudSignal = getBattleHudSignal(metrics);
+    return {
+      ...battleHudSignal,
+      matched: battleHudSignal.hudAccent >= threshold.hudAccentMin
+        && battleHudSignal.hudBright >= threshold.hudBrightMin,
     };
   }
 
