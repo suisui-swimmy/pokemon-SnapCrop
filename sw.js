@@ -1,4 +1,4 @@
-const CACHE_NAME = "pokemon-snapcrop-v1.1.1";
+const CACHE_NAME = "pokemon-snapcrop-v1.2.0";
 const APP_SHELL = [
   "./",
   "./index.html",
