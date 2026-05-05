@@ -210,7 +210,7 @@
   };
   const PICK_OVERLAY_ORDER_LABELS = ["", "１", "２", "３", "４"];
   const PICK_OVERLAY_CONFIG = {
-    compareIntervalMs: 500,
+    compareIntervalMs: 250,
     sampleWidth: 60,
     sampleHeight: 75,
     requiredStrongStreak: 2,
@@ -230,10 +230,18 @@
     },
     hudSearchOffsets: [
       { x: 0, y: 0 },
+      { x: -3, y: 0 },
+      { x: 3, y: 0 },
       { x: -6, y: 0 },
       { x: 6, y: 0 },
+      { x: 0, y: -3 },
+      { x: 0, y: 3 },
       { x: 0, y: -6 },
       { x: 0, y: 6 },
+      { x: -3, y: -2 },
+      { x: 3, y: -2 },
+      { x: -3, y: 2 },
+      { x: 3, y: 2 },
       { x: -6, y: -4 },
       { x: 6, y: -4 },
       { x: -6, y: 4 },
@@ -4034,10 +4042,27 @@
           offsetY: 0,
           grayScore: 0,
           edgeScore: 0,
+          colorScore: 0,
         };
       }
 
-      return candidates.reduce((bestCandidate, candidate) => {
+      const readyCandidates = candidates.filter((candidate) => candidate.gateState?.ready);
+      if (!readyCandidates.length) {
+        return {
+          refIndex: -1,
+          bestScore: 0,
+          secondBestScore: 0,
+          margin: 0,
+          tier: "",
+          offsetX: 0,
+          offsetY: 0,
+          grayScore: 0,
+          edgeScore: 0,
+          colorScore: 0,
+        };
+      }
+
+      return readyCandidates.reduce((bestCandidate, candidate) => {
         const scores = referenceSamples.map((referenceSample, refIndex) => {
           const scoreResult = comparePickOverlaySamples(candidate.sample, referenceSample);
           return {
@@ -4045,6 +4070,7 @@
             score: scoreResult.score,
             grayScore: scoreResult.grayScore,
             edgeScore: scoreResult.edgeScore,
+            colorScore: scoreResult.colorScore,
           };
         }).sort((left, right) => right.score - left.score);
         const bestScore = scores[0]?.score ?? 0;
@@ -4060,6 +4086,7 @@
           offsetY: candidate.offsetY,
           grayScore: scores[0]?.grayScore ?? 0,
           edgeScore: scores[0]?.edgeScore ?? 0,
+          colorScore: scores[0]?.colorScore ?? 0,
         };
 
         return isBetterPickOverlayCandidate(nextCandidate, bestCandidate)
@@ -4075,6 +4102,7 @@
         offsetY: 0,
         grayScore: 0,
         edgeScore: 0,
+        colorScore: 0,
       });
     });
 
@@ -4144,8 +4172,10 @@
           return null;
         }
 
+        const gateState = evaluatePickOverlayHudGate(sample);
         return {
           sample,
+          gateState,
           offsetX: offset.x,
           offsetY: offset.y,
         };
@@ -4185,18 +4215,33 @@
     const sampleHeight = PICK_OVERLAY_CONFIG.sampleHeight;
     const sampleSize = sampleWidth * sampleHeight;
     const values = new Float32Array(sampleSize);
+    const colorValues = new Float32Array(sampleSize * 2);
     let sum = 0;
+    let colorRedGreenSum = 0;
+    let colorBlueGreenSum = 0;
     let brightPixels = 0;
     for (let index = 0, sampleIndex = 0; index < imageData.length; index += 4, sampleIndex += 1) {
-      const grayscale = (imageData[index] * 0.299) + (imageData[index + 1] * 0.587) + (imageData[index + 2] * 0.114);
+      const r = imageData[index];
+      const g = imageData[index + 1];
+      const b = imageData[index + 2];
+      const grayscale = (r * 0.299) + (g * 0.587) + (b * 0.114);
+      const colorIndex = sampleIndex * 2;
+      const redGreen = r - g;
+      const blueGreen = b - g;
       values[sampleIndex] = grayscale;
+      colorValues[colorIndex] = redGreen;
+      colorValues[colorIndex + 1] = blueGreen;
       sum += grayscale;
+      colorRedGreenSum += redGreen;
+      colorBlueGreenSum += blueGreen;
       if (grayscale >= 110) {
         brightPixels += 1;
       }
     }
 
     const mean = sum / values.length;
+    const colorRedGreenMean = colorRedGreenSum / values.length;
+    const colorBlueGreenMean = colorBlueGreenSum / values.length;
     const edgeValues = new Float32Array(sampleSize);
     let edgeSum = 0;
     for (let y = 1; y < sampleHeight - 1; y += 1) {
@@ -4212,19 +4257,27 @@
     const edgeMean = edgeSum / edgeValues.length;
     let normSquared = 0;
     let edgeNormSquared = 0;
+    let colorNormSquared = 0;
     for (let index = 0; index < values.length; index += 1) {
+      const colorIndex = index * 2;
       values[index] -= mean;
       edgeValues[index] -= edgeMean;
+      colorValues[colorIndex] -= colorRedGreenMean;
+      colorValues[colorIndex + 1] -= colorBlueGreenMean;
       normSquared += values[index] * values[index];
       edgeNormSquared += edgeValues[index] * edgeValues[index];
+      colorNormSquared += (colorValues[colorIndex] * colorValues[colorIndex])
+        + (colorValues[colorIndex + 1] * colorValues[colorIndex + 1]);
     }
 
     return {
       values,
       edgeValues,
+      colorValues,
       mean,
       normSquared,
       edgeNormSquared,
+      colorNormSquared,
       contrast: Math.sqrt(normSquared / values.length),
       brightRatio: brightPixels / values.length,
     };
@@ -4265,7 +4318,7 @@
 
   function evaluatePickOverlayHudCandidateGate(candidates) {
     return candidates.reduce((bestGate, candidate) => {
-      const gateState = evaluatePickOverlayHudGate(candidate.sample);
+      const gateState = candidate.gateState || evaluatePickOverlayHudGate(candidate.sample);
       const nextGate = {
         ...gateState,
         offsetX: candidate.offsetX,
@@ -4348,6 +4401,7 @@
         score: 0.5,
         grayScore: 0.5,
         edgeScore: 0.5,
+        colorScore: 0.5,
       };
     }
 
@@ -4363,10 +4417,18 @@
       rightSample.edgeValues,
       rightSample.edgeNormSquared,
     );
+    const colorScore = comparePickOverlayVectors(
+      leftSample.colorValues,
+      leftSample.colorNormSquared,
+      rightSample.colorValues,
+      rightSample.colorNormSquared,
+    );
+    const baseScore = (grayScore * 0.75) + (edgeScore * 0.25);
     return {
-      score: clamp((grayScore * 0.75) + (edgeScore * 0.25), 0, 1),
+      score: clamp(baseScore + ((colorScore - 0.5) * 0.12), 0, 1),
       grayScore,
       edgeScore,
+      colorScore,
     };
   }
 
@@ -4654,9 +4716,9 @@
                 : status === "contested"
                   ? `rejected ${bestSlotLabel} contested`
                   : "rejected no candidate";
-      const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)} offset=${formatPickOverlayOffset(best)}`;
+      const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)} color=${formatAutoMetric(best.colorScore)} offset=${formatPickOverlayOffset(best)}`;
       pickOverlay.lastHudSummaries[hudIndex] = summary;
-      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${matchTier || "none"}:${pending?.streak || 0}:${assignedOrder || 0}:${best.offsetX || 0}:${best.offsetY || 0}`);
+      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${matchTier || "none"}:${pending?.streak || 0}:${assignedOrder || 0}:${best.offsetX || 0}:${best.offsetY || 0}:${Math.round((best.colorScore || 0) * 100)}`);
     });
 
     appendPickOverlayDebugLogIfChanged(
