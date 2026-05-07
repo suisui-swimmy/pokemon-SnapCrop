@@ -88,6 +88,8 @@
   | `auto reset` | - | 自動検出の状態をリセットし、次の選出画面から再監視します |
   | `faint status` | - | 相手側の瀕死表示状態を表示します |
   | `faint reset` | - | 相手側クロップの瀕死表示をリセットします |
+  | `pick status` | `p` / `ps` | 相手側の選出バッジ状態を表示します |
+  | `pick set <order> <slot>` | `p <order> <slot>` | 相手側の選出バッジを指定枠へ訂正します |
   | `debug on` | - | 認識範囲のデバッグ表示を ON にします |
   | `debug off` | - | 認識範囲のデバッグ表示を OFF にします |
   | `debug status` | - | デバッグ表示の状態を表示します |

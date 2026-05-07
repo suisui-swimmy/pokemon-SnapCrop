@@ -77,6 +77,7 @@
     "auto",
     "debug",
     "faint",
+    "pick",
     "layout",
     "status",
     "help",
@@ -266,6 +267,7 @@
       4: "./assets/pick-overlay-badge-4.svg",
     },
     flashFrameImagePath: "./assets/pick-overlay-flash-frame.svg",
+    correctionFrameImagePath: "./assets/pick-overlay-correction-frame.svg",
     faintFrameImagePath: "./assets/pick-overlay-faint-frame.svg",
     flashFrameDurationMs: 1000,
     flashFrameBaseSize: {
@@ -375,6 +377,7 @@
     terminalForceAutoscrollDepth: 0,
     pickOverlayBadgeImages: {},
     pickOverlayFlashFrameImage: null,
+    pickOverlayCorrectionFrameImage: null,
     pickOverlayFaintFrameImage: null,
     pickOverlayEffectFrameId: 0,
     autoSnap: createAutoSnapState(),
@@ -1409,7 +1412,7 @@
 
   function handleTerminalCommand(query) {
     const normalizedQuery = normalizeTerminalAlias(query.toLowerCase().trim());
-    const [command = "", arg = "", extra = ""] = normalizedQuery.split(/\s+/).filter(Boolean);
+    const [command = "", arg = "", extra = "", detail = "", ...rest] = normalizedQuery.split(/\s+/).filter(Boolean);
 
     if (command === "edit") {
       setMode("edit");
@@ -1424,8 +1427,8 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
-          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / crop reset = cr / layout reset = lr",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
         "system",
@@ -1461,6 +1464,11 @@
 
     if (command === "faint") {
       handleFaintCommand(arg);
+      return true;
+    }
+
+    if (command === "pick") {
+      handlePickCommand(arg, extra, detail, rest);
       return true;
     }
 
@@ -1538,12 +1546,24 @@
   }
 
   function normalizeTerminalAlias(query) {
+    const tokens = String(query || "").trim().split(/\s+/).filter(Boolean);
+    if (tokens[0] === "p") {
+      if (tokens.length === 1) {
+        return "pick status";
+      }
+      if (tokens.length === 3) {
+        return `pick set ${tokens[1]} ${tokens[2]}`;
+      }
+      return `pick ${tokens.slice(1).join(" ")}`;
+    }
+
     const aliasMap = {
       e: "edit",
       r: "ready",
       s: "snap both",
       sm: "snap my",
       se: "snap enemy",
+      ps: "pick status",
       cr: "crop reset",
       lr: "layout reset",
     };
@@ -2908,6 +2928,7 @@
       drawEnemyPickOrderOverlay(context, reference);
       drawEnemyFaintOverlay(context, reference);
       drawEnemyPickFlashFrameOverlay(context, reference);
+      drawEnemyPickCorrectionFrameOverlay(context, reference);
     }
   }
 
@@ -3040,6 +3061,53 @@
       context.save();
       context.globalAlpha = alpha;
       context.drawImage(flashImage, left, top, width, height);
+      context.restore();
+      hasActiveFrame = true;
+    });
+
+    if (hasActiveFrame) {
+      schedulePickOverlayEffectFrame();
+    }
+  }
+
+  function drawEnemyPickCorrectionFrameOverlay(context, reference) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const correctionImage = state.pickOverlayCorrectionFrameImage;
+    if (!correctionImage || !pickOverlay.correctionFramesByRefIndex?.some(Boolean)) {
+      return;
+    }
+
+    const now = Date.now();
+    const durationMs = PICK_OVERLAY_CONFIG.flashFrameDurationMs;
+    const scaleX = reference.width / PICK_OVERLAY_CONFIG.flashFrameBaseSize.width;
+    const scaleY = reference.height / 807;
+    let hasActiveFrame = false;
+
+    pickOverlay.correctionFramesByRefIndex.forEach((correctionFrame, refIndex) => {
+      if (!correctionFrame) {
+        return;
+      }
+
+      const elapsedMs = now - correctionFrame.startedAt;
+      if (elapsedMs >= durationMs) {
+        pickOverlay.correctionFramesByRefIndex[refIndex] = null;
+        return;
+      }
+
+      const framePosition = PICK_OVERLAY_CONFIG.badgeSlotPositions[refIndex];
+      if (!framePosition) {
+        return;
+      }
+
+      const alpha = clamp(1 - (elapsedMs / durationMs), 0, 1);
+      const left = Math.round(reference.width * framePosition.x);
+      const top = Math.round(reference.height * framePosition.y);
+      const width = Math.max(1, Math.round(PICK_OVERLAY_CONFIG.flashFrameBaseSize.width * scaleX));
+      const height = Math.max(1, Math.round(PICK_OVERLAY_CONFIG.flashFrameBaseSize.height * scaleY));
+
+      context.save();
+      context.globalAlpha = alpha;
+      context.drawImage(correctionImage, left, top, width, height);
       context.restore();
       hasActiveFrame = true;
     });
@@ -3338,6 +3406,178 @@
       ],
       "error",
     );
+  }
+
+  function handlePickCommand(actionArg, orderArg, slotArg, rest = []) {
+    const action = actionArg || "status";
+
+    if (action === "status") {
+      if (orderArg || slotArg || rest.length) {
+        appendTerminalEntry(
+          [
+            "[error] pick status に追加の指定はできません。",
+          ],
+          "error",
+        );
+        return;
+      }
+
+      appendTerminalEntry(getPickStatusLines(), "system");
+      return;
+    }
+
+    if (action === "set") {
+      if (!orderArg || !slotArg || rest.length) {
+        appendTerminalEntry(
+          [
+            "[error] pick set は <order> <slot> を指定してください。例: pick set 2 5",
+          ],
+          "error",
+        );
+        return;
+      }
+
+      const order = parsePickOrder(orderArg);
+      const slot = parsePickSlot(slotArg);
+      if (!order || !slot) {
+        appendTerminalEntry(
+          [
+            "[error] pick set は order=1-4 / slot=1-6 を指定してください。",
+          ],
+          "error",
+        );
+        return;
+      }
+
+      const result = setPickOverlayOrderSlot(order, slot - 1);
+      appendTerminalEntry(result.lines, "system");
+      return;
+    }
+
+    appendTerminalEntry(
+      [
+        "[error] pick は status / set <order> <slot> を指定できます。",
+      ],
+      "error",
+    );
+  }
+
+  function parsePickOrder(value) {
+    const order = Number(value);
+    return Number.isInteger(order) && order >= 1 && order <= PICK_OVERLAY_CONFIG.maxOrders
+      ? order
+      : 0;
+  }
+
+  function parsePickSlot(value) {
+    const slot = Number(value);
+    return Number.isInteger(slot) && slot >= 1 && slot <= PICK_OVERLAY_CONFIG.referenceRois.length
+      ? slot
+      : 0;
+  }
+
+  function setPickOverlayOrderSlot(order, refIndex) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const orders = pickOverlay.ordersByRefIndex;
+    const sourceRefIndex = findPickOverlayRefIndexByOrder(order);
+    const destinationOrder = orders[refIndex] || 0;
+
+    if (sourceRefIndex === refIndex && destinationOrder === order) {
+      return {
+        lines: [
+          `[system] pick: ${getPickOverlayOrderLabel(order)} はすでに ${getPickSlotLabel(refIndex)} です。`,
+        ],
+      };
+    }
+
+    const changedRefIndexes = new Set([refIndex]);
+    let displacedRefIndex = -1;
+    if (sourceRefIndex >= 0) {
+      changedRefIndexes.add(sourceRefIndex);
+      orders[sourceRefIndex] = destinationOrder === order ? 0 : destinationOrder;
+    } else if (destinationOrder) {
+      displacedRefIndex = findFirstEmptyPickOverlayRefIndex(refIndex);
+      if (displacedRefIndex >= 0) {
+        changedRefIndexes.add(displacedRefIndex);
+        orders[displacedRefIndex] = destinationOrder;
+      }
+    }
+
+    orders[refIndex] = order;
+    syncPickOverlayNextOrder();
+    clearPickOverlayPendingMatches();
+    moveFaintStateForPickCorrection(sourceRefIndex, refIndex);
+    clearFaintSlotCacheForRefIndexes(changedRefIndexes);
+    changedRefIndexes.forEach((changedRefIndex) => {
+      triggerPickOverlayCorrectionFrame(changedRefIndex);
+    });
+    pickOverlay.lastSummary = buildPickOverlaySummary();
+
+    if (state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+    }
+
+    const lines = [
+      `[system] pick: ${getPickOverlayOrderLabel(order)} を ${getPickSlotLabel(refIndex)} に設定しました。`,
+    ];
+    if (sourceRefIndex >= 0 && destinationOrder && destinationOrder !== order) {
+      lines.push(`[system] pick: ${getPickSlotLabel(sourceRefIndex)} と入れ替えました。`);
+    } else if (sourceRefIndex >= 0) {
+      lines.push(`[system] pick: 元の ${getPickSlotLabel(sourceRefIndex)} は空きにしました。`);
+    } else if (displacedRefIndex >= 0) {
+      lines.push(`[system] pick: 既存の ${getPickOverlayOrderLabel(destinationOrder)} は ${getPickSlotLabel(displacedRefIndex)} に移動しました。`);
+    }
+
+    return { lines };
+  }
+
+  function findPickOverlayRefIndexByOrder(order) {
+    return state.autoSnap.pickOverlay.ordersByRefIndex.findIndex((currentOrder) => currentOrder === order);
+  }
+
+  function findFirstEmptyPickOverlayRefIndex(excludedRefIndex = -1) {
+    return state.autoSnap.pickOverlay.ordersByRefIndex.findIndex((order, refIndex) => (
+      refIndex !== excludedRefIndex && !order
+    ));
+  }
+
+  function syncPickOverlayNextOrder() {
+    const assignedOrders = new Set(state.autoSnap.pickOverlay.ordersByRefIndex.filter(Boolean));
+    let nextOrder = 1;
+    while (assignedOrders.has(nextOrder) && nextOrder <= PICK_OVERLAY_CONFIG.maxOrders) {
+      nextOrder += 1;
+    }
+    state.autoSnap.pickOverlay.nextOrder = nextOrder;
+  }
+
+  function moveFaintStateForPickCorrection(sourceRefIndex, destinationRefIndex) {
+    const faintedByRefIndex = state.autoSnap.pickOverlay.faintedByRefIndex;
+    if (
+      sourceRefIndex < 0
+      || sourceRefIndex === destinationRefIndex
+      || !faintedByRefIndex[sourceRefIndex]
+      || faintedByRefIndex[destinationRefIndex]
+    ) {
+      return;
+    }
+
+    faintedByRefIndex[destinationRefIndex] = true;
+    faintedByRefIndex[sourceRefIndex] = false;
+  }
+
+  function clearFaintSlotCacheForRefIndexes(refIndexes) {
+    const targetRefIndexes = new Set([...refIndexes].filter((refIndex) => refIndex >= 0));
+    if (!targetRefIndexes.size) {
+      return;
+    }
+
+    const pickOverlay = state.autoSnap.pickOverlay;
+    pickOverlay.faintSlotCacheByHudIndex = pickOverlay.faintSlotCacheByHudIndex.map((cached) => (
+      cached && targetRefIndexes.has(cached.refIndex) ? null : cached
+    ));
+    pickOverlay.pendingFaintsByHudIndex = pickOverlay.pendingFaintsByHudIndex.map((pending) => (
+      pending && targetRefIndexes.has(pending.refIndex) ? null : pending
+    ));
   }
 
   function setDebugMode(enabled) {
@@ -4572,6 +4812,21 @@
     }
   }
 
+  function triggerPickOverlayCorrectionFrame(refIndex) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    if (!pickOverlay.correctionFramesByRefIndex || !PICK_OVERLAY_CONFIG.badgeSlotPositions[refIndex]) {
+      return;
+    }
+
+    pickOverlay.correctionFramesByRefIndex[refIndex] = {
+      startedAt: Date.now(),
+    };
+    if (state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+      schedulePickOverlayEffectFrame();
+    }
+  }
+
   function schedulePickOverlayEffectFrame() {
     if (state.pickOverlayEffectFrameId || !state.references.enemy || state.mode === "edit") {
       return;
@@ -4580,7 +4835,8 @@
     state.pickOverlayEffectFrameId = window.requestAnimationFrame(() => {
       state.pickOverlayEffectFrameId = 0;
       const hasActiveFrame = state.autoSnap.pickOverlay.flashFramesByRefIndex?.some(Boolean);
-      if (hasActiveFrame && state.references.enemy && state.mode !== "edit") {
+      const hasActiveCorrectionFrame = state.autoSnap.pickOverlay.correctionFramesByRefIndex?.some(Boolean);
+      if ((hasActiveFrame || hasActiveCorrectionFrame) && state.references.enemy && state.mode !== "edit") {
         drawCropPanel("enemy");
       }
     });
@@ -4595,6 +4851,37 @@
 
     clearPickOverlayPendingMatches();
     return false;
+  }
+
+  function getPickStatusLines() {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const lines = [
+      `[system] pick: ${getPickAssignmentStatusSummary()}`,
+      `[system] pick pending: ${getPickPendingStatusSummary()}`,
+      `[system] faint: ${getFaintStatusSummary()}`,
+    ];
+
+    pickOverlay.lastHudSummaries.forEach((summary, hudIndex) => {
+      lines.push(`[system] pick live HUD${hudIndex + 1}: ${summary || "未評価"}`);
+    });
+
+    return lines;
+  }
+
+  function getPickAssignmentStatusSummary() {
+    const entries = state.autoSnap.pickOverlay.ordersByRefIndex
+      .map((order, refIndex) => (order ? `${getPickSlotLabel(refIndex)}=${getPickOverlayOrderLabel(order)}` : ""))
+      .filter(Boolean);
+    return entries.length ? entries.join(", ") : "なし";
+  }
+
+  function getPickPendingStatusSummary() {
+    const entries = state.autoSnap.pickOverlay.pendingMatchesByHudIndex
+      .map((pending, hudIndex) => (pending
+        ? `HUD${hudIndex + 1}->${getPickSlotLabel(pending.refIndex)}(${pending.tier} ${pending.streak}/${getPickOverlayRequiredStreak(pending.tier)})`
+        : ""))
+      .filter(Boolean);
+    return entries.length ? entries.join(", ") : "なし";
   }
 
   function buildPickOverlaySummary() {
@@ -4632,6 +4919,10 @@
 
   function getFaintSlotLabel(refIndex) {
     return `${refIndex + 1}枠目`;
+  }
+
+  function getPickSlotLabel(refIndex) {
+    return `slot${refIndex + 1}`;
   }
 
   function getFaintStatusLines() {
@@ -5159,6 +5450,23 @@
     };
     flashFrameImage.src = PICK_OVERLAY_CONFIG.flashFrameImagePath;
 
+    const correctionFrameImage = new Image();
+    correctionFrameImage.decoding = "async";
+    correctionFrameImage.onload = () => {
+      state.pickOverlayCorrectionFrameImage = correctionFrameImage;
+      if (state.references.enemy && state.mode !== "edit") {
+        drawCropPanel("enemy");
+      }
+    };
+    correctionFrameImage.onerror = () => {
+      appendTerminalNotice(
+        "pick-overlay-correction-frame-load-failed",
+        ["[error] 相手選出訂正ハイライト画像の読み込みに失敗しました。"],
+        "error",
+      );
+    };
+    correctionFrameImage.src = PICK_OVERLAY_CONFIG.correctionFrameImagePath;
+
     const faintFrameImage = new Image();
     faintFrameImage.decoding = "async";
     faintFrameImage.onload = () => {
@@ -5645,6 +5953,7 @@
       pendingMatchesByHudIndex: PICK_OVERLAY_CONFIG.hudRois.map(() => null),
       pendingFaintsByHudIndex: FAINT_DETECTION_CONFIG.hudRois.map(() => null),
       flashFramesByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => null),
+      correctionFramesByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => null),
       pendingSequence: 0,
       referenceUpdatedAt: 0,
       lastCompareAt: 0,
@@ -5705,8 +6014,9 @@
     const hadPendingMatches = pickOverlay.pendingMatchesByHudIndex?.some(Boolean);
     const hadPendingFaints = pickOverlay.pendingFaintsByHudIndex?.some(Boolean);
     const hadFlashFrames = pickOverlay.flashFramesByRefIndex?.some(Boolean);
+    const hadCorrectionFrames = pickOverlay.correctionFramesByRefIndex?.some(Boolean);
     state.autoSnap.pickOverlay = createPickOverlayState(reason || "リセット");
-    if (redraw && (hadVisibleOverlay || hadFaintOverlay || hadFaintCache || hadPendingMatches || hadPendingFaints || hadFlashFrames) && state.references.enemy && state.mode !== "edit") {
+    if (redraw && (hadVisibleOverlay || hadFaintOverlay || hadFaintCache || hadPendingMatches || hadPendingFaints || hadFlashFrames || hadCorrectionFrames) && state.references.enemy && state.mode !== "edit") {
       drawCropPanel("enemy");
     }
   }
