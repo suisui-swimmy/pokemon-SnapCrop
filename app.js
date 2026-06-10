@@ -160,8 +160,8 @@
         darkBackgroundMin: 0.35,
       },
       battleHud: {
-        hudAccentMin: 0.48,
-        hudBrightMin: 0.16,
+        hudAccentMin: 0.56,
+        hudBrightMin: 0.19,
       },
     },
     rois: {
