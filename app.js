@@ -1,5 +1,6 @@
 (() => {
   const CSV_PATH = "./data/pokemon-reference.csv";
+  const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
     loading: "./assets/auto/loading-indicator.png",
     selectionTimer: "./assets/auto/selection-timer-icon.png",
@@ -79,6 +80,7 @@
     "faint",
     "pick",
     "layout",
+    "dex",
     "status",
     "help",
     "clear",
@@ -375,6 +377,7 @@
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
+    lastPokemonResult: null,
     pickOverlayBadgeImages: {},
     pickOverlayFlashFrameImage: null,
     pickOverlayCorrectionFrameImage: null,
@@ -1064,12 +1067,8 @@
         return null;
       }
 
-      appendTerminalEntry(
-        [
-          `タイプ: ${pokemon.types.join("/")} | 特性: ${pokemon.abilities.join("/")} | 種族値: H-${pokemon.stats.H} A-${pokemon.stats.A} B-${pokemon.stats.B} C-${pokemon.stats.C} D-${pokemon.stats.D} S-${pokemon.stats.S}`,
-        ],
-        "success",
-      );
+      state.lastPokemonResult = pokemon;
+      appendPokemonResultEntry(pokemon);
       return null;
     });
   }
@@ -1411,7 +1410,14 @@
   }
 
   function handleTerminalCommand(query) {
-    const normalizedQuery = normalizeTerminalAlias(query.toLowerCase().trim());
+    const trimmedQuery = String(query || "").trim();
+    const [rawCommand = "", ...rawArgs] = trimmedQuery.split(/\s+/).filter(Boolean);
+    if (rawCommand.toLowerCase() === "dex") {
+      handleDexCommand(rawArgs.join(" "));
+      return true;
+    }
+
+    const normalizedQuery = normalizeTerminalAlias(trimmedQuery.toLowerCase());
     const [command = "", arg = "", extra = "", detail = "", ...rest] = normalizedQuery.split(/\s+/).filter(Boolean);
 
     if (command === "edit") {
@@ -1427,7 +1433,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / dex [ポケモン名] / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
@@ -1543,6 +1549,80 @@
     }
 
     return false;
+  }
+
+  function handleDexCommand(query) {
+    if (!state.csvReady) {
+      appendTerminalError("[error] CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。");
+      return;
+    }
+
+    const pokemon = query ? findPokemonByTerminalQuery(query) : state.lastPokemonResult;
+    if (!pokemon) {
+      appendTerminalEntry(
+        [
+          query
+            ? "[error] ポケ徹を開くポケモンが見つかりません。"
+            : "[error] 直前のポケモン検索結果がありません。先にポケモン名を検索してください。",
+        ],
+        "error",
+      );
+      return;
+    }
+
+    const url = getPokemonYakkunUrl(pokemon);
+    if (!url) {
+      appendTerminalEntry(
+        [
+          `[error] ${pokemon.name} のポケ徹リンクがありません。`,
+        ],
+        "error",
+      );
+      return;
+    }
+
+    state.lastPokemonResult = pokemon;
+    const openedWindow = window.open(url, "_blank");
+    if (openedWindow) {
+      openedWindow.opener = null;
+      appendTerminalEntry(
+        [
+          `[system] ポケ徹を開きます: ${pokemon.name}${getYakkunFallbackLabel(pokemon)}`,
+        ],
+        "system",
+      );
+      return;
+    }
+
+    appendTerminalEntry(
+      [
+        `[error] ポップアップがブロックされました: ${url}`,
+      ],
+      "error",
+    );
+  }
+
+  function findPokemonByTerminalQuery(query) {
+    const trimmed = String(query || "").trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (state.pokemonMap.has(trimmed)) {
+      return state.pokemonMap.get(trimmed);
+    }
+
+    const exactPokemon = findExactPokemonMatch(trimmed);
+    if (exactPokemon && state.pokemonMap.has(exactPokemon.name)) {
+      return state.pokemonMap.get(exactPokemon.name);
+    }
+
+    const [suggestion] = getPokemonSuggestions(trimmed);
+    if (suggestion && state.pokemonMap.has(suggestion.name)) {
+      return state.pokemonMap.get(suggestion.name);
+    }
+
+    return null;
   }
 
   function normalizeTerminalAlias(query) {
@@ -6445,10 +6525,37 @@
   }
 
   function appendTerminalEntry(lines, tone = "system") {
-    const shouldFollow = shouldForceTerminalAutoscroll() || state.terminalLogAutoFollow;
     const entry = document.createElement("div");
     entry.className = `terminal-entry terminal-entry--${tone}`;
     entry.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines);
+    appendTerminalElement(entry);
+  }
+
+  function appendPokemonResultEntry(pokemon) {
+    const entry = document.createElement("div");
+    entry.className = "terminal-entry terminal-entry--success";
+    entry.append(document.createTextNode(getPokemonResultLine(pokemon)));
+
+    const url = getPokemonYakkunUrl(pokemon);
+    if (url) {
+      const link = document.createElement("a");
+      link.className = "terminal-entry__link";
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "開く";
+
+      entry.append(document.createElement("br"));
+      entry.append(document.createTextNode("ポケ徹: "));
+      entry.append(link);
+      entry.append(document.createTextNode(`${getYakkunFallbackLabel(pokemon)} / dexで開く`));
+    }
+
+    appendTerminalElement(entry);
+  }
+
+  function appendTerminalElement(entry) {
+    const shouldFollow = shouldForceTerminalAutoscroll() || state.terminalLogAutoFollow;
     elements.terminalOutput.append(entry);
     if (shouldFollow) {
       scrollTerminalToBottom();
@@ -6704,11 +6811,15 @@
     const ability1 = cleanCell(record["とくせい1"]);
     const ability2 = cleanCell(record["とくせい2"]);
     const ability3 = cleanCell(record["とくせい3"]);
+    const yakkunId = cleanCell(record["ポケ徹ID"]);
+    const yakkunLinkKind = cleanCell(record["ポケ徹リンク種別"]);
 
     return {
       name,
       types: [type1, type2].filter(Boolean),
       abilities: [ability1, ability2, ability3].filter(Boolean),
+      yakkunId,
+      yakkunLinkKind,
       stats: {
         H: cleanCell(record.H),
         A: cleanCell(record.A),
@@ -6718,6 +6829,22 @@
         S: cleanCell(record.S),
       },
     };
+  }
+
+  function getPokemonResultLine(pokemon) {
+    return `タイプ: ${pokemon.types.join("/")} | 特性: ${pokemon.abilities.join("/")} | 種族値: H-${pokemon.stats.H} A-${pokemon.stats.A} B-${pokemon.stats.B} C-${pokemon.stats.C} D-${pokemon.stats.D} S-${pokemon.stats.S}`;
+  }
+
+  function getPokemonYakkunUrl(pokemon) {
+    if (!pokemon?.yakkunId) {
+      return "";
+    }
+
+    return `${YAKKUN_POKEMON_BASE_URL}${encodeURIComponent(pokemon.yakkunId)}`;
+  }
+
+  function getYakkunFallbackLabel(pokemon) {
+    return pokemon?.yakkunLinkKind === "species" ? "（種族ページ）" : "";
   }
 
   function buildPokemonSearchEntry(pokemon) {

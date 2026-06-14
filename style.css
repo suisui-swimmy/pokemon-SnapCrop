@@ -1055,6 +1055,17 @@ html[data-theme="light"] .terminal-entry--system {
   color: var(--success-strong);
 }
 
+.terminal-entry__link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.terminal-entry__link:hover,
+.terminal-entry__link:focus-visible {
+  color: var(--text);
+}
+
 .terminal-suggestions {
   display: flex;
   flex-direction: column;

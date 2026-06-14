@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
+
+# Logs / temporary files
+*.log
+*.tmp
+*.temp
+
+# Local browser test profile
+.chrome-test/
+
+# Local/private workspace files
+others/
