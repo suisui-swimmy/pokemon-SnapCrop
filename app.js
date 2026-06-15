@@ -80,7 +80,6 @@
     "faint",
     "pick",
     "layout",
-    "dex",
     "status",
     "help",
     "clear",
@@ -377,7 +376,6 @@
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
-    lastPokemonResult: null,
     pickOverlayBadgeImages: {},
     pickOverlayFlashFrameImage: null,
     pickOverlayCorrectionFrameImage: null,
@@ -1067,7 +1065,6 @@
         return null;
       }
 
-      state.lastPokemonResult = pokemon;
       appendPokemonResultEntry(pokemon);
       return null;
     });
@@ -1123,6 +1120,11 @@
       if (hasVisibleTerminalSuggestions()) {
         event.preventDefault();
         moveTerminalSuggestionSelection(event.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (!event.shiftKey && focusLatestPokemonResultLink()) {
+        event.preventDefault();
       }
       return;
     }
@@ -1242,6 +1244,21 @@
     state.selectedSuggestionIndex = -1;
     state.ghostSuggestion = null;
     renderTerminalSuggestions();
+  }
+
+  function focusLatestPokemonResultLink() {
+    if (!elements.terminalOutput || elements.terminalInput?.value.trim()) {
+      return false;
+    }
+
+    const links = elements.terminalOutput.querySelectorAll(".terminal-entry--success .terminal-entry__link");
+    const latestLink = links[links.length - 1];
+    if (!latestLink) {
+      return false;
+    }
+
+    latestLink.focus({ preventScroll: true });
+    return true;
   }
 
   function refreshTerminalSuggestions() {
@@ -1411,12 +1428,6 @@
 
   function handleTerminalCommand(query) {
     const trimmedQuery = String(query || "").trim();
-    const [rawCommand = "", ...rawArgs] = trimmedQuery.split(/\s+/).filter(Boolean);
-    if (rawCommand.toLowerCase() === "dex") {
-      handleDexCommand(rawArgs.join(" "));
-      return true;
-    }
-
     const normalizedQuery = normalizeTerminalAlias(trimmedQuery.toLowerCase());
     const [command = "", arg = "", extra = "", detail = "", ...rest] = normalizedQuery.split(/\s+/).filter(Boolean);
 
@@ -1433,7 +1444,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / dex [ポケモン名] / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
@@ -1549,80 +1560,6 @@
     }
 
     return false;
-  }
-
-  function handleDexCommand(query) {
-    if (!state.csvReady) {
-      appendTerminalError("[error] CSV がまだ読み込めていません。ローカルサーバー経由で開き直してください。");
-      return;
-    }
-
-    const pokemon = query ? findPokemonByTerminalQuery(query) : state.lastPokemonResult;
-    if (!pokemon) {
-      appendTerminalEntry(
-        [
-          query
-            ? "[error] ポケ徹を開くポケモンが見つかりません。"
-            : "[error] 直前のポケモン検索結果がありません。先にポケモン名を検索してください。",
-        ],
-        "error",
-      );
-      return;
-    }
-
-    const url = getPokemonYakkunUrl(pokemon);
-    if (!url) {
-      appendTerminalEntry(
-        [
-          `[error] ${pokemon.name} のポケ徹リンクがありません。`,
-        ],
-        "error",
-      );
-      return;
-    }
-
-    state.lastPokemonResult = pokemon;
-    const openedWindow = window.open(url, "_blank");
-    if (openedWindow) {
-      openedWindow.opener = null;
-      appendTerminalEntry(
-        [
-          `[system] ポケ徹を開きます: ${pokemon.name}${getYakkunFallbackLabel(pokemon)}`,
-        ],
-        "system",
-      );
-      return;
-    }
-
-    appendTerminalEntry(
-      [
-        `[error] ポップアップがブロックされました: ${url}`,
-      ],
-      "error",
-    );
-  }
-
-  function findPokemonByTerminalQuery(query) {
-    const trimmed = String(query || "").trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (state.pokemonMap.has(trimmed)) {
-      return state.pokemonMap.get(trimmed);
-    }
-
-    const exactPokemon = findExactPokemonMatch(trimmed);
-    if (exactPokemon && state.pokemonMap.has(exactPokemon.name)) {
-      return state.pokemonMap.get(exactPokemon.name);
-    }
-
-    const [suggestion] = getPokemonSuggestions(trimmed);
-    if (suggestion && state.pokemonMap.has(suggestion.name)) {
-      return state.pokemonMap.get(suggestion.name);
-    }
-
-    return null;
   }
 
   function normalizeTerminalAlias(query) {
@@ -6543,12 +6480,16 @@
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.textContent = "開く";
+      link.textContent = "ポケモン徹底攻略で開く";
+      link.addEventListener("click", (event) => {
+        if (openPokemonYakkunWindow(url)) {
+          event.preventDefault();
+        }
+      });
 
       entry.append(document.createElement("br"));
-      entry.append(document.createTextNode("ポケ徹: "));
       entry.append(link);
-      entry.append(document.createTextNode(`${getYakkunFallbackLabel(pokemon)} / dexで開く`));
+      entry.append(document.createTextNode(`${getYakkunFallbackLabel(pokemon)} ( Tab → Enter )`));
     }
 
     appendTerminalElement(entry);
@@ -6845,6 +6786,36 @@
 
   function getYakkunFallbackLabel(pokemon) {
     return pokemon?.yakkunLinkKind === "species" ? "（種族ページ）" : "";
+  }
+
+  function openPokemonYakkunWindow(url) {
+    const features = [
+      "popup=yes",
+      "width=1120",
+      "height=820",
+      "left=120",
+      "top=80",
+      "menubar=no",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "scrollbars=yes",
+      "resizable=yes",
+    ].join(",");
+    const popup = window.open("about:blank", "_blank", features);
+    if (!popup) {
+      return false;
+    }
+
+    try {
+      popup.opener = null;
+      popup.location.href = url;
+      popup.focus();
+    } catch (_error) {
+      return false;
+    }
+
+    return true;
   }
 
   function buildPokemonSearchEntry(pokemon) {
