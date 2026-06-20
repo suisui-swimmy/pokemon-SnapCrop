@@ -150,7 +150,6 @@
         darkBackgroundMin: 0.35,
       },
       locked: {
-        badgeWhiteMin: 0.06,
         barBrightMin: 0.22,
         barBlueMin: 0.28,
       },
@@ -184,17 +183,11 @@
         width: 0.281,
         height: 0.685,
       },
-      leftBadgeStrip: {
-        x: 0.01,
-        y: 0.111,
-        width: 0.052,
-        height: 0.593,
-      },
       bottomDoneBar: {
-        x: 0.01,
-        y: 0.824,
-        width: 0.313,
-        height: 0.162,
+        x: 110 / 1920,
+        y: 911 / 1080,
+        width: 467 / 1920,
+        height: 70 / 1080,
       },
       waitingTimerIcon: {
         x: 0.41094,
@@ -460,7 +453,6 @@
       my: document.getElementById("debug-overlay-my"),
       enemy: document.getElementById("debug-overlay-enemy"),
       loading: document.getElementById("debug-overlay-loading"),
-      leftBadge: document.getElementById("debug-overlay-left-badge"),
       doneBar: document.getElementById("debug-overlay-done-bar"),
       selectionTimer: document.getElementById("debug-overlay-selection-timer"),
       topTimer: document.getElementById("debug-overlay-top-timer"),
@@ -2799,7 +2791,6 @@
     renderDebugOverlayBox(elements.autoDebugOverlays.my, state.crops.my, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.enemy, state.crops.enemy, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.loading, roiCrops.loadingTemplate, displayedRect, scaleX, scaleY);
-    renderDebugOverlayBox(elements.autoDebugOverlays.leftBadge, roiCrops.leftBadgeStrip, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.doneBar, roiCrops.bottomDoneBar, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.selectionTimer, roiCrops.selectionTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.topTimer, roiCrops.waitingTimerIcon, displayedRect, scaleX, scaleY);
@@ -2845,7 +2836,6 @@
   function getAutoDebugOverlayCrops() {
     return {
       loadingTemplate: getAutoRoiCrop("loadingTemplate"),
-      leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
       bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
       selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
@@ -3851,7 +3841,7 @@
       const timerIconSignal = getWaitingTimerIconSignal(metrics);
       if (lockedSignal.matched) {
         auto.lockedFrames += 1;
-        auto.lastReason = `locked ${auto.lockedFrames}/${AUTO_SNAP_CONFIG.stableFrames.locked} badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+        auto.lastReason = `locked ${auto.lockedFrames}/${AUTO_SNAP_CONFIG.stableFrames.locked} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
         if (auto.lockedFrames >= AUTO_SNAP_CONFIG.stableFrames.locked) {
           auto.phase = "selection_locked";
           auto.lockedFrames = 0;
@@ -3859,7 +3849,7 @@
           auto.waitingIconSeenAt = 0;
           auto.lockedBaseline = buildLockedBaseline(metrics);
           auto.fallbackBuffer = null;
-          auto.lastReason = `選出完了をラッチ badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+          auto.lastReason = `選出完了をラッチ bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
           appendTerminalDebug(
             [
               `[debug] 選出完了を検出しました。 ${auto.lastReason}`,
@@ -3885,7 +3875,7 @@
 
       const selectionSignal = getSelectionTimerSignal(metrics);
       auto.lastReason = selectionSignal.matched
-        ? `待機タイマー優先 / ラッチ補助 badgeWhite=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)} icon=${formatAutoMetric(timerIconSignal.coverageScore)}/${formatAutoMetric(timerIconSignal.spillScore)}`
+        ? `待機タイマー優先 / ラッチ補助 bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)} icon=${formatAutoMetric(timerIconSignal.coverageScore)}/${formatAutoMetric(timerIconSignal.spillScore)}`
         : `選出タイマー待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
       return;
     }
@@ -3925,7 +3915,6 @@
       loadingTemplate: getAutoRoiCrop("loadingTemplate"),
       selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       selectionRight: getAutoRoiCrop("selectionRight"),
-      leftBadgeStrip: getAutoRoiCrop("leftBadgeStrip"),
       bottomDoneBar: getAutoRoiCrop("bottomDoneBar"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
       battleHud: getAutoRoiCrop("battleHud"),
@@ -3939,7 +3928,6 @@
       loadingTemplate: matchAutoTemplate(roiCrops.loadingTemplate, "loading"),
       selectionTimerIcon: matchAutoTemplate(roiCrops.selectionTimerIcon, "selectionTimer"),
       selectionRight: sampleVideoRegionMetrics(roiCrops.selectionRight),
-      leftBadgeStrip: sampleVideoRegionMetrics(roiCrops.leftBadgeStrip),
       bottomDoneBar: sampleVideoRegionMetrics(roiCrops.bottomDoneBar),
       waitingTimerIcon: matchAutoTemplate(roiCrops.waitingTimerIcon, "waitingTimer"),
       battleHud: sampleVideoRegionMetrics(roiCrops.battleHud),
@@ -5356,15 +5344,12 @@
   }
 
   function getSelectionLockedSignal(metrics) {
-    const badge = metrics.leftBadgeStrip;
     const bar = metrics.bottomDoneBar;
     const threshold = AUTO_SNAP_CONFIG.thresholds.locked;
     return {
-      badgeWhite: badge.white,
       barBright: bar.bright,
       barBlue: bar.blue,
-      matched: badge.white >= threshold.badgeWhiteMin
-        && bar.bright >= threshold.barBrightMin
+      matched: bar.bright >= threshold.barBrightMin
         && bar.blue >= threshold.barBlueMin,
     };
   }
@@ -5372,7 +5357,6 @@
   function buildLockedBaseline(metrics) {
     return {
       selectionRight: { ...metrics.selectionRight },
-      leftBadgeStrip: { ...metrics.leftBadgeStrip },
       bottomDoneBar: { ...metrics.bottomDoneBar },
     };
   }
@@ -5898,7 +5882,7 @@
           : "[debug] selection icon: テンプレート読み込み待ち",
       );
       lines.push(
-        `[debug] locked badge=${formatAutoMetric(lockedSignal.badgeWhite)} bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
+        `[debug] locked bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`,
       );
       lines.push(
         waitingTimerSignal.templateReady
