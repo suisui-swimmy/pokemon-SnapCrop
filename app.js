@@ -287,6 +287,7 @@
     refineCandidateLimit: 48,
     searchScales: [0.84, 0.92, 1, 1.08, 1.16],
     searchOffsets: [-8, -4, 0, 4, 8],
+    colorWeight: 0.16,
     scoreMin: 0.74,
     marginMin: 0.025,
     referenceRois: [
@@ -4868,6 +4869,8 @@
     const sampleSize = sampleWidth * sampleHeight;
     const values = new Float32Array(sampleSize);
     const edgeValues = new Float32Array(sampleSize);
+    const redChromaValues = new Float32Array(sampleSize);
+    const blueChromaValues = new Float32Array(sampleSize);
     const mask = useAlphaMask ? new Uint8Array(sampleSize) : null;
     let activeCount = 0;
 
@@ -4876,7 +4879,10 @@
       const g = imageData[index + 1];
       const b = imageData[index + 2];
       const alpha = imageData[index + 3];
-      values[sampleIndex] = (r * 0.299) + (g * 0.587) + (b * 0.114);
+      const gray = (r * 0.299) + (g * 0.587) + (b * 0.114);
+      values[sampleIndex] = gray;
+      redChromaValues[sampleIndex] = r - gray;
+      blueChromaValues[sampleIndex] = b - gray;
       if (!useAlphaMask || alpha >= alphaThreshold) {
         if (mask) {
           mask[sampleIndex] = 1;
@@ -4901,17 +4907,22 @@
     return {
       values,
       edgeValues,
+      redChromaValues,
+      blueChromaValues,
       mask,
       activeCount,
     };
   }
 
-  function comparePokemonIconSamples(referenceSample, iconSample) {
+  function comparePokemonIconSamples(referenceSample, iconSample, options = {}) {
+    const { useColor = true } = options;
     if (!referenceSample || !iconSample?.mask || !iconSample.activeCount) {
       return {
         score: 0,
+        shapeScore: 0,
         grayScore: 0,
         edgeScore: 0,
+        colorScore: 0,
       };
     }
 
@@ -4927,12 +4938,38 @@
       iconSample.mask,
       iconSample.activeCount,
     );
+    const shapeScore = clamp((grayScore * 0.78) + (edgeScore * 0.22), 0, 1);
+    const colorScore = useColor
+      ? comparePokemonIconColorSamples(referenceSample, iconSample)
+      : 0.5;
+    const score = useColor
+      ? clamp((shapeScore * (1 - POKEMON_ICON_RECOGNITION_CONFIG.colorWeight)) + (colorScore * POKEMON_ICON_RECOGNITION_CONFIG.colorWeight), 0, 1)
+      : shapeScore;
 
     return {
-      score: clamp((grayScore * 0.78) + (edgeScore * 0.22), 0, 1),
+      score,
+      shapeScore,
       grayScore,
       edgeScore,
+      colorScore,
     };
+  }
+
+  function comparePokemonIconColorSamples(referenceSample, iconSample) {
+    const redChromaScore = comparePokemonIconMaskedVectors(
+      referenceSample.redChromaValues,
+      iconSample.redChromaValues,
+      iconSample.mask,
+      iconSample.activeCount,
+    );
+    const blueChromaScore = comparePokemonIconMaskedVectors(
+      referenceSample.blueChromaValues,
+      iconSample.blueChromaValues,
+      iconSample.mask,
+      iconSample.activeCount,
+    );
+
+    return clamp((redChromaScore + blueChromaScore) / 2, 0, 1);
   }
 
   function comparePokemonIconMaskedVectors(leftValues, rightValues, mask, activeCount) {
@@ -5097,6 +5134,7 @@
       [
         `[debug] icon recog: start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length}`,
         `[debug] icon recog: roi=114x114 sample=${POKEMON_ICON_RECOGNITION_CONFIG.sampleWidth}x${POKEMON_ICON_RECOGNITION_CONFIG.sampleHeight} refineTop=${POKEMON_ICON_RECOGNITION_CONFIG.refineCandidateLimit} transforms=${getPokemonIconTransformCount()}`,
+        `[debug] icon recog: colorWeight=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.colorWeight)} color=refine_only`,
         `[debug] icon recog: threshold score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`,
       ],
     );
@@ -5163,7 +5201,7 @@
 
     const coarseRanked = candidates
       .map((candidate) => {
-        const scores = comparePokemonIconSamples(referenceSample, candidate.sample);
+        const scores = comparePokemonIconSamples(referenceSample, candidate.sample, { useColor: false });
         return {
           ...candidate,
           ...scores,
@@ -5192,6 +5230,8 @@
         bestId: best.id,
         bestSource: best.source,
         bestScore: best.score,
+        bestShapeScore: best.shapeScore,
+        bestColorScore: best.colorScore,
         secondBestScore: secondScore,
         margin,
         bestScale: best.bestScale,
@@ -5206,6 +5246,8 @@
       bestId: best.id,
       bestSource: best.source,
       bestScore: best.score,
+      bestShapeScore: best.shapeScore,
+      bestColorScore: best.colorScore,
       secondBestScore: secondScore,
       margin,
       bestScale: best.bestScale,
@@ -5219,20 +5261,16 @@
       return candidate;
     }
 
-    let best = candidate;
+    let best = null;
     POKEMON_ICON_RECOGNITION_CONFIG.searchScales.forEach((scale) => {
       POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetY) => {
         POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetX) => {
-          if (scale === 1 && offsetX === 0 && offsetY === 0) {
-            return;
-          }
-
           const sample = samplePokemonIconCandidateImage(candidate.image, { scale, offsetX, offsetY });
           if (!sample) {
             return;
           }
 
-          const scores = comparePokemonIconSamples(referenceSample, sample);
+          const scores = comparePokemonIconSamples(referenceSample, sample, { useColor: true });
           const refined = {
             ...candidate,
             ...scores,
@@ -5240,13 +5278,13 @@
             bestOffsetX: offsetX,
             bestOffsetY: offsetY,
           };
-          if (comparePokemonIconRecognitionResults(refined, best) < 0) {
+          if (!best || comparePokemonIconRecognitionResults(refined, best) < 0) {
             best = refined;
           }
         });
       });
     });
-    return best;
+    return best || candidate;
   }
 
   function comparePokemonIconRecognitionResults(left, right) {
@@ -5289,7 +5327,7 @@
 
     const bestLabel = result.bestId || "unknown";
     const sourceLabel = result.bestSource || "unknown";
-    const metrics = `score=${formatPokemonIconScore(result.bestScore)} margin=${formatPokemonIconScore(result.margin)} second=${formatPokemonIconScore(result.secondBestScore)}`;
+    const metrics = `score=${formatPokemonIconScore(result.bestScore)} shape=${formatPokemonIconScore(result.bestShapeScore)} color=${formatPokemonIconScore(result.bestColorScore)} margin=${formatPokemonIconScore(result.margin)} second=${formatPokemonIconScore(result.secondBestScore)}`;
     const transform = `scale=${formatPokemonIconScore(result.bestScale || 1)} offset=${Math.round(result.bestOffsetX || 0)},${Math.round(result.bestOffsetY || 0)}`;
     if (result.matched) {
       return `accepted ${result.pokemonName} best=${bestLabel} source=${sourceLabel} ${metrics} ${transform}`;
