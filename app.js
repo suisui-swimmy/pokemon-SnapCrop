@@ -279,13 +279,24 @@
     ],
   };
   const POKEMON_ICON_RECOGNITION_CONFIG = {
-    sampleWidth: 60,
-    sampleHeight: 75,
+    sampleWidth: 64,
+    sampleHeight: 64,
     imageLoadConcurrency: 24,
     alphaThreshold: 24,
     minimumActiveRatio: 0.08,
+    refineCandidateLimit: 48,
+    searchScales: [0.84, 0.92, 1, 1.08, 1.16],
+    searchOffsets: [-8, -4, 0, 4, 8],
     scoreMin: 0.74,
     marginMin: 0.025,
+    referenceRois: [
+      { x: 57 / 299, y: 62 / 807, width: 114 / 299, height: 114 / 807 },
+      { x: 57 / 299, y: 188 / 807, width: 114 / 299, height: 114 / 807 },
+      { x: 57 / 299, y: 314 / 807, width: 114 / 299, height: 114 / 807 },
+      { x: 57 / 299, y: 440 / 807, width: 114 / 299, height: 114 / 807 },
+      { x: 57 / 299, y: 566 / 807, width: 114 / 299, height: 114 / 807 },
+      { x: 57 / 299, y: 692 / 807, width: 114 / 299, height: 114 / 807 },
+    ],
     sourceTieEpsilon: 0.004,
     sourcePriority: {
       champions: 0,
@@ -4802,7 +4813,7 @@
 
   function samplePokemonIconSource(source, crop = null, options = {}) {
     const { useAlphaMask = false } = options;
-    const { sampleWidth, sampleHeight, alphaThreshold, minimumActiveRatio } = POKEMON_ICON_RECOGNITION_CONFIG;
+    const { sampleWidth, sampleHeight } = POKEMON_ICON_RECOGNITION_CONFIG;
     const context = getPokemonIconSampleContext();
     if (!context) {
       return null;
@@ -4823,6 +4834,34 @@
       );
     } else {
       context.drawImage(source, 0, 0, sampleWidth, sampleHeight);
+    }
+
+    return readPokemonIconSampleFromContext(useAlphaMask);
+  }
+
+  function samplePokemonIconCandidateImage(image, transform = {}) {
+    const { scale = 1, offsetX = 0, offsetY = 0 } = transform;
+    const { sampleWidth, sampleHeight } = POKEMON_ICON_RECOGNITION_CONFIG;
+    const context = getPokemonIconSampleContext();
+    if (!context) {
+      return null;
+    }
+
+    const drawWidth = sampleWidth * scale;
+    const drawHeight = sampleHeight * scale;
+    const drawX = ((sampleWidth - drawWidth) / 2) + offsetX;
+    const drawY = ((sampleHeight - drawHeight) / 2) + offsetY;
+    context.clearRect(0, 0, sampleWidth, sampleHeight);
+    context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+    return readPokemonIconSampleFromContext(true);
+  }
+
+  function readPokemonIconSampleFromContext(useAlphaMask) {
+    const { sampleWidth, sampleHeight, alphaThreshold, minimumActiveRatio } = POKEMON_ICON_RECOGNITION_CONFIG;
+    const context = getPokemonIconSampleContext();
+    if (!context) {
+      return null;
     }
 
     const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
@@ -5013,8 +5052,8 @@
       const image = new Image();
       image.decoding = "async";
       image.onload = () => {
-        const sample = samplePokemonIconSource(image, null, { useAlphaMask: true });
-        resolve(sample ? { ...entry, sample } : null);
+        const sample = samplePokemonIconCandidateImage(image);
+        resolve(sample ? { ...entry, image, sample } : null);
       };
       image.onerror = () => {
         resolve(null);
@@ -5051,12 +5090,13 @@
     state.pokemonIconRecognition.requestId = requestId;
     state.pokemonIconRecognition.status = "loading";
     state.pokemonIconRecognition.reason = "";
-    state.pokemonIconRecognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length}`;
+    state.pokemonIconRecognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`;
     state.pokemonIconRecognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "待機中");
     appendPokemonIconDebugLogIfChanged(
       `schedule-start:${requestId}:${reference.width}x${reference.height}:${state.pokemonIconReferenceEntries.length}`,
       [
         `[debug] icon recog: start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length}`,
+        `[debug] icon recog: roi=114x114 sample=${POKEMON_ICON_RECOGNITION_CONFIG.sampleWidth}x${POKEMON_ICON_RECOGNITION_CONFIG.sampleHeight} refineTop=${POKEMON_ICON_RECOGNITION_CONFIG.refineCandidateLimit} transforms=${getPokemonIconTransformCount()}`,
         `[debug] icon recog: threshold score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`,
       ],
     );
@@ -5088,7 +5128,8 @@
     }
 
     const slotSummaries = [];
-    recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((roi, refIndex) => {
+    recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((fallbackRoi, refIndex) => {
+      const roi = POKEMON_ICON_RECOGNITION_CONFIG.referenceRois[refIndex] || fallbackRoi;
       const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
       const sample = samplePokemonIconSource(reference, crop);
       if (!sample) {
@@ -5120,14 +5161,21 @@
       return null;
     }
 
-    const ranked = candidates
+    const coarseRanked = candidates
       .map((candidate) => {
         const scores = comparePokemonIconSamples(referenceSample, candidate.sample);
         return {
           ...candidate,
           ...scores,
+          bestScale: 1,
+          bestOffsetX: 0,
+          bestOffsetY: 0,
         };
       })
+      .sort(comparePokemonIconRecognitionResults);
+    const ranked = coarseRanked
+      .slice(0, POKEMON_ICON_RECOGNITION_CONFIG.refineCandidateLimit)
+      .map((candidate) => refinePokemonIconCandidate(referenceSample, candidate))
       .sort(comparePokemonIconRecognitionResults);
     const best = ranked[0] || null;
     if (!best) {
@@ -5146,6 +5194,9 @@
         bestScore: best.score,
         secondBestScore: secondScore,
         margin,
+        bestScale: best.bestScale,
+        bestOffsetX: best.bestOffsetX,
+        bestOffsetY: best.bestOffsetY,
       };
     }
 
@@ -5157,7 +5208,45 @@
       bestScore: best.score,
       secondBestScore: secondScore,
       margin,
+      bestScale: best.bestScale,
+      bestOffsetX: best.bestOffsetX,
+      bestOffsetY: best.bestOffsetY,
     };
+  }
+
+  function refinePokemonIconCandidate(referenceSample, candidate) {
+    if (!candidate.image) {
+      return candidate;
+    }
+
+    let best = candidate;
+    POKEMON_ICON_RECOGNITION_CONFIG.searchScales.forEach((scale) => {
+      POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetY) => {
+        POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetX) => {
+          if (scale === 1 && offsetX === 0 && offsetY === 0) {
+            return;
+          }
+
+          const sample = samplePokemonIconCandidateImage(candidate.image, { scale, offsetX, offsetY });
+          if (!sample) {
+            return;
+          }
+
+          const scores = comparePokemonIconSamples(referenceSample, sample);
+          const refined = {
+            ...candidate,
+            ...scores,
+            bestScale: scale,
+            bestOffsetX: offsetX,
+            bestOffsetY: offsetY,
+          };
+          if (comparePokemonIconRecognitionResults(refined, best) < 0) {
+            best = refined;
+          }
+        });
+      });
+    });
+    return best;
   }
 
   function comparePokemonIconRecognitionResults(left, right) {
@@ -5187,6 +5276,12 @@
     return Number.isFinite(numeric) ? numeric.toFixed(3) : "0.000";
   }
 
+  function getPokemonIconTransformCount() {
+    return POKEMON_ICON_RECOGNITION_CONFIG.searchScales.length
+      * POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.length
+      * POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.length;
+  }
+
   function formatPokemonIconRecognitionSlotSummary(result) {
     if (!result) {
       return "rejected no_candidate";
@@ -5195,11 +5290,12 @@
     const bestLabel = result.bestId || "unknown";
     const sourceLabel = result.bestSource || "unknown";
     const metrics = `score=${formatPokemonIconScore(result.bestScore)} margin=${formatPokemonIconScore(result.margin)} second=${formatPokemonIconScore(result.secondBestScore)}`;
+    const transform = `scale=${formatPokemonIconScore(result.bestScale || 1)} offset=${Math.round(result.bestOffsetX || 0)},${Math.round(result.bestOffsetY || 0)}`;
     if (result.matched) {
-      return `accepted ${result.pokemonName} best=${bestLabel} source=${sourceLabel} ${metrics}`;
+      return `accepted ${result.pokemonName} best=${bestLabel} source=${sourceLabel} ${metrics} ${transform}`;
     }
 
-    return `rejected best=${bestLabel} source=${sourceLabel} ${metrics} need score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`;
+    return `rejected best=${bestLabel} source=${sourceLabel} ${metrics} ${transform} need score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`;
   }
 
   function resetPokemonIconRecognitionState(reason = "") {
