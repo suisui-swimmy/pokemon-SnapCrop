@@ -595,12 +595,20 @@
       state.pokemonIconReferenceEntries = entries;
       state.pokemonIconReferenceReady = true;
       state.pokemonIconReferenceLoadFailed = false;
+      state.pokemonIconRecognition.lastSummary = `manifest ready entries=${entries.length}`;
+      appendPokemonIconDebugLogIfChanged(
+        `manifest-ready:${entries.length}`,
+        [`[debug] icon recog: manifest ready entries=${entries.length}`],
+      );
       if (state.references.enemy) {
         scheduleEnemyReferencePokemonRecognition();
       }
     } catch (error) {
       state.pokemonIconReferenceReady = false;
       state.pokemonIconReferenceLoadFailed = true;
+      state.pokemonIconRecognition.status = "unavailable";
+      state.pokemonIconRecognition.reason = "manifest load failed";
+      state.pokemonIconRecognition.lastSummary = `manifest load failed: ${error.message}`;
       appendTerminalNotice(
         "pokemon-icon-reference-load-failed",
         [
@@ -3677,8 +3685,8 @@
     appendTerminalEntry(
       [
         enabled
-          ? "[debug] デバッグ表示を ON にしました。自動 snap の認識範囲を表示可能にしました。"
-          : "[debug] デバッグ表示を OFF にしました。認識範囲を非表示にしました。",
+          ? "[debug] デバッグ表示を ON にしました。認識範囲と名前推定ログを表示可能にしました。"
+          : "[debug] デバッグ表示を OFF にしました。認識範囲と名前推定ログを非表示にしました。",
       ],
       "system",
     );
@@ -3699,6 +3707,7 @@
     }
 
     lines.push(...getPickOverlayDebugLines());
+    lines.push(...getPokemonIconRecognitionDebugLines());
     return lines;
   }
 
@@ -4929,23 +4938,47 @@
 
   async function ensurePokemonIconCandidatesLoaded() {
     if (state.pokemonIconCandidates.length) {
+      appendPokemonIconDebugLogIfChanged(
+        `candidates-cache:${state.pokemonIconCandidates.length}`,
+        [`[debug] icon recog: candidates cache count=${state.pokemonIconCandidates.length}`],
+      );
       return state.pokemonIconCandidates;
     }
     if (state.pokemonIconCandidatesPromise) {
       return state.pokemonIconCandidatesPromise;
     }
     if (!state.pokemonIconReferenceReady || !state.pokemonIconReferenceEntries.length) {
+      state.pokemonIconRecognition.status = "unavailable";
+      state.pokemonIconRecognition.reason = "manifest not ready";
+      state.pokemonIconRecognition.lastSummary = "candidate load skipped: manifest not ready";
+      appendPokemonIconDebugLogIfChanged(
+        "candidates-skip:manifest-not-ready",
+        ["[debug] icon recog: candidate load skipped manifest_not_ready"],
+      );
       return [];
     }
 
     state.pokemonIconCandidatesLoadFailed = false;
+    state.pokemonIconRecognition.lastSummary = `candidates loading entries=${state.pokemonIconReferenceEntries.length}`;
+    appendPokemonIconDebugLogIfChanged(
+      `candidates-loading:${state.pokemonIconReferenceEntries.length}`,
+      [`[debug] icon recog: candidates loading entries=${state.pokemonIconReferenceEntries.length}`],
+    );
     state.pokemonIconCandidatesPromise = loadPokemonIconCandidates(state.pokemonIconReferenceEntries)
       .then((candidates) => {
         state.pokemonIconCandidates = candidates;
+        state.pokemonIconRecognition.lastSummary = `candidates ready loaded=${candidates.length}/${state.pokemonIconReferenceEntries.length}`;
+        appendPokemonIconDebugLogIfChanged(
+          `candidates-ready:${candidates.length}:${state.pokemonIconReferenceEntries.length}`,
+          [`[debug] icon recog: candidates ready loaded=${candidates.length}/${state.pokemonIconReferenceEntries.length}`],
+        );
         return candidates;
       })
       .catch((error) => {
         state.pokemonIconCandidatesLoadFailed = true;
+        state.pokemonIconRecognition.status = "unavailable";
+        state.pokemonIconRecognition.reason = "candidate load failed";
+        state.pokemonIconRecognition.lastSummary = `candidate load failed: ${error.message}`;
         appendTerminalDebug([`[debug] icon candidates load failed: ${error.message}`]);
         return [];
       })
@@ -4992,13 +5025,41 @@
 
   function scheduleEnemyReferencePokemonRecognition() {
     const reference = state.references.enemy;
-    if (!reference || !state.pokemonIconReferenceReady) {
+    if (!reference) {
+      state.pokemonIconRecognition.status = "idle";
+      state.pokemonIconRecognition.reason = "enemy reference missing";
+      state.pokemonIconRecognition.lastSummary = "skip: enemy reference missing";
+      appendPokemonIconDebugLogIfChanged(
+        "schedule-skip:no-reference",
+        ["[debug] icon recog: skip enemy_reference_missing"],
+      );
+      return;
+    }
+
+    if (!state.pokemonIconReferenceReady) {
+      state.pokemonIconRecognition.status = "waiting_manifest";
+      state.pokemonIconRecognition.reason = "manifest not ready";
+      state.pokemonIconRecognition.lastSummary = "wait: manifest not ready";
+      appendPokemonIconDebugLogIfChanged(
+        "schedule-wait:manifest-not-ready",
+        ["[debug] icon recog: wait manifest_not_ready"],
+      );
       return;
     }
 
     const requestId = state.pokemonIconRecognition.requestId + 1;
     state.pokemonIconRecognition.requestId = requestId;
     state.pokemonIconRecognition.status = "loading";
+    state.pokemonIconRecognition.reason = "";
+    state.pokemonIconRecognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length}`;
+    state.pokemonIconRecognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "待機中");
+    appendPokemonIconDebugLogIfChanged(
+      `schedule-start:${requestId}:${reference.width}x${reference.height}:${state.pokemonIconReferenceEntries.length}`,
+      [
+        `[debug] icon recog: start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length}`,
+        `[debug] icon recog: threshold score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`,
+      ],
+    );
     void recognizeEnemyReferencePokemonSlots(reference, requestId);
   }
 
@@ -5006,20 +5067,51 @@
     const candidates = await ensurePokemonIconCandidatesLoaded();
     const recognition = state.pokemonIconRecognition;
     if (recognition.requestId !== requestId || state.references.enemy !== reference) {
+      recognition.lastSummary = `stale request=${requestId} current=${recognition.requestId}`;
+      appendPokemonIconDebugLogIfChanged(
+        `stale:${requestId}:${recognition.requestId}`,
+        [`[debug] icon recog: stale request=${requestId} current=${recognition.requestId}`],
+      );
       return;
     }
 
     if (!candidates.length) {
       recognition.status = "unavailable";
+      recognition.reason = state.pokemonIconCandidatesLoadFailed ? "candidate load failed" : "candidate empty";
+      recognition.lastSummary = "failed: candidates empty";
+      recognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "候補なし");
+      appendPokemonIconDebugLogIfChanged(
+        `done-empty:${requestId}`,
+        ["[debug] icon recog: failed candidates_empty"],
+      );
       return;
     }
 
-    recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((roi) => {
+    const slotSummaries = [];
+    recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((roi, refIndex) => {
       const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
       const sample = samplePokemonIconSource(reference, crop);
-      return recognizePokemonIconSlot(sample, candidates);
+      if (!sample) {
+        slotSummaries[refIndex] = "rejected no_sample";
+        return null;
+      }
+
+      const result = recognizePokemonIconSlot(sample, candidates);
+      slotSummaries[refIndex] = formatPokemonIconRecognitionSlotSummary(result);
+      return result;
     });
     recognition.status = "ready";
+    recognition.reason = "";
+    recognition.lastSlotSummaries = slotSummaries;
+    const matchedCount = recognition.resultsByRefIndex.filter((result) => result?.matched).length;
+    recognition.lastSummary = `done matched=${matchedCount}/${PICK_OVERLAY_CONFIG.referenceRois.length} candidates=${candidates.length}`;
+    appendPokemonIconDebugLogIfChanged(
+      `done:${requestId}:${matchedCount}:${slotSummaries.join("|")}`,
+      [
+        `[debug] icon recog: ${recognition.lastSummary}`,
+        ...slotSummaries.map((summary, index) => `[debug] icon recog ${getPickSlotLabel(index)}: ${summary}`),
+      ],
+    );
     flushPickOverlayPokemonResults();
   }
 
@@ -5090,6 +5182,26 @@
     return POKEMON_ICON_RECOGNITION_CONFIG.sourcePriority[source] ?? 99;
   }
 
+  function formatPokemonIconScore(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(3) : "0.000";
+  }
+
+  function formatPokemonIconRecognitionSlotSummary(result) {
+    if (!result) {
+      return "rejected no_candidate";
+    }
+
+    const bestLabel = result.bestId || "unknown";
+    const sourceLabel = result.bestSource || "unknown";
+    const metrics = `score=${formatPokemonIconScore(result.bestScore)} margin=${formatPokemonIconScore(result.margin)} second=${formatPokemonIconScore(result.secondBestScore)}`;
+    if (result.matched) {
+      return `accepted ${result.pokemonName} best=${bestLabel} source=${sourceLabel} ${metrics}`;
+    }
+
+    return `rejected best=${bestLabel} source=${sourceLabel} ${metrics} need score>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.scoreMin)} margin>=${formatPokemonIconScore(POKEMON_ICON_RECOGNITION_CONFIG.marginMin)}`;
+  }
+
   function resetPokemonIconRecognitionState(reason = "") {
     state.pokemonIconRecognition = createPokemonIconRecognitionState(reason);
   }
@@ -5104,6 +5216,12 @@
   function flushPickOverlayPokemonResults() {
     const recognition = state.pokemonIconRecognition;
     if (!state.csvReady || !recognition?.resultsByRefIndex?.length) {
+      if (!state.csvReady) {
+        appendPokemonIconDebugLogIfChanged(
+          "pick-emit-wait:csv",
+          ["[debug] icon result: wait csv_not_ready"],
+        );
+      }
       return;
     }
 
@@ -5114,18 +5232,29 @@
 
       const result = recognition.resultsByRefIndex[refIndex];
       if (!result?.matched || !result.pokemonName) {
+        appendPokemonIconDebugLogIfChanged(
+          `pick-emit-unresolved:${refIndex}:${order}:${result?.bestId || "none"}:${formatPokemonIconScore(result?.bestScore)}`,
+          [`[debug] icon result: ${getPickOverlayOrderLabel(order)} ${getPickSlotLabel(refIndex)} unresolved ${formatPokemonIconRecognitionSlotSummary(result)}`],
+        );
         return;
       }
 
       const pokemon = state.pokemonMap.get(result.pokemonName);
       if (!pokemon) {
-        appendTerminalDebug([`[debug] pick pokemon reference missing: ${result.pokemonName}`]);
+        appendPokemonIconDebugLogIfChanged(
+          `pick-emit-missing-reference:${refIndex}:${result.pokemonName}`,
+          [`[debug] pick pokemon reference missing: ${result.pokemonName}`],
+        );
         return;
       }
 
       recognition.notifiedByRefIndex[refIndex] = true;
       appendTerminalEntry([`[pick] ${getPickOverlayOrderLabel(order)}: ${pokemon.name}`], "system");
       appendPokemonResultEntry(pokemon);
+      appendPokemonIconDebugLogIfChanged(
+        `pick-emit:${refIndex}:${order}:${pokemon.name}`,
+        [`[debug] icon result: emitted ${getPickOverlayOrderLabel(order)} ${getPickSlotLabel(refIndex)} ${pokemon.name}`],
+      );
     });
   }
 
@@ -5388,6 +5517,35 @@
     });
     pickOverlay.lastFaintSummaries.forEach((summary, hudIndex) => {
       lines.push(`[debug] faint compare HUD${hudIndex + 1}: ${summary}`);
+    });
+    return lines;
+  }
+
+  function getPokemonIconRecognitionDebugLines() {
+    const recognition = state.pokemonIconRecognition;
+    const manifestState = state.pokemonIconReferenceLoadFailed
+      ? "failed"
+      : state.pokemonIconReferenceReady
+        ? "ready"
+        : "loading";
+    const candidateState = state.pokemonIconCandidatesLoadFailed
+      ? "failed"
+      : state.pokemonIconCandidatesPromise
+        ? "loading"
+        : state.pokemonIconCandidates.length
+          ? "ready"
+          : "idle";
+    const lines = [
+      `[debug] icon recog: status=${recognition.status} manifest=${manifestState} entries=${state.pokemonIconReferenceEntries.length} candidates=${candidateState}:${state.pokemonIconCandidates.length}`,
+      `[debug] icon recog summary: ${recognition.lastSummary || recognition.reason || "未評価"}`,
+    ];
+
+    if (recognition.reason) {
+      lines.push(`[debug] icon recog reason: ${recognition.reason}`);
+    }
+
+    recognition.lastSlotSummaries.forEach((summary, refIndex) => {
+      lines.push(`[debug] icon recog ${getPickSlotLabel(refIndex)}: ${summary || "未評価"}`);
     });
     return lines;
   }
@@ -5766,6 +5924,16 @@
     }
 
     pickOverlay.lastLogKey = key;
+    appendTerminalDebug(lines);
+  }
+
+  function appendPokemonIconDebugLogIfChanged(key, lines) {
+    const recognition = state.pokemonIconRecognition;
+    if (!state.debugMode || recognition.lastLogKey === key) {
+      return;
+    }
+
+    recognition.lastLogKey = key;
     appendTerminalDebug(lines);
   }
 
@@ -6410,6 +6578,9 @@
       requestId: 0,
       resultsByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => null),
       notifiedByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => false),
+      lastSummary: reason || "未評価",
+      lastSlotSummaries: PICK_OVERLAY_CONFIG.referenceRois.map(() => reason || "未評価"),
+      lastLogKey: "",
     };
   }
 

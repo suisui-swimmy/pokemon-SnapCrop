@@ -91,9 +91,9 @@
   | `faint reset` | - | 相手側クロップの瀕死表示をリセットします |
   | `pick status` | `p` / `ps` | 相手側の選出バッジ状態を表示します |
   | `pick set <order> <slot>` | `p <order> <slot>` | 相手側の選出バッジを指定枠へ訂正します |
-  | `debug on` | - | 認識範囲のデバッグ表示を ON にします |
-  | `debug off` | - | 認識範囲のデバッグ表示を OFF にします |
-  | `debug status` | - | デバッグ表示の状態を表示します |
+  | `debug on` | - | 認識範囲のデバッグ表示と名前推定ログを ON にします |
+  | `debug off` | - | 認識範囲のデバッグ表示と名前推定ログを OFF にします |
+  | `debug status` | - | 認識範囲と名前推定のデバッグ状態を表示します |
   | `layout reset` | `lr` | 調整したレイアウトを初期状態に戻します |
   | `clear` | `cls` | terminal の表示ログをクリアします |
   | `crop reset` | `cr` | 左右のクロップ範囲を初期状態に戻します |
