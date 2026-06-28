@@ -4336,7 +4336,7 @@
       if (pickGateMode === "battle") {
         updateFaintDetection([], [], now);
       } else {
-        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+        updateFaintDetection([], [], now);
       }
       pickOverlay.lastGateReason = "比較待ち";
       pickOverlay.lastSummary = buildPickOverlaySummary();
@@ -4344,7 +4344,7 @@
     }
 
     if (!pickGateMode) {
-      pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      updateFaintDetection([], [], now);
       const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = battleHudSignal.enemyListStillVisible
         ? "battle HUD待ち / 相手一覧表示中"
@@ -4389,7 +4389,7 @@
       if (pickGateMode === "battle") {
         updateFaintDetection([], [], now);
       } else {
-        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+        updateFaintDetection([], [], now);
       }
       clearPickOverlayPendingMatches();
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "roi read failed");
@@ -4410,7 +4410,7 @@
       if (pickGateMode === "battle") {
         updateFaintDetection([], hudGateStates, now);
       } else {
-        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+        updateFaintDetection([], hudGateStates, now);
       }
       const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = pickGateMode === "hud-only" ? "HUD-only待ち" : "HUD待ち";
@@ -4440,7 +4440,7 @@
       if (pickGateMode === "battle") {
         updateFaintDetection([], hudGateStates, now);
       } else {
-        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+        updateFaintDetection([], hudGateStates, now);
       }
       clearPickOverlayPendingMatches();
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "ref roi read failed");
@@ -4467,7 +4467,7 @@
     if (pickGateMode === "battle") {
       updateFaintDetection(bestByHudIndex, hudGateStates, now);
     } else {
-      pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      updateFaintDetection([], hudGateStates, now);
     }
     pickOverlay.lastSummary = buildPickOverlaySummary();
   }
@@ -5881,13 +5881,6 @@
       summaryKeyParts.join("|"),
       bestByHudIndex.map((_, hudIndex) => `[debug] pick compare HUD${hudIndex + 1}: ${pickOverlay.lastHudSummaries[hudIndex]}`),
     );
-  }
-
-  function pauseFaintDetectionForBattleHudGate(reason = "battle HUD待ち") {
-    const pickOverlay = state.autoSnap.pickOverlay;
-    pickOverlay.pendingFaintsByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => null);
-    pickOverlay.lastFaintSummaries = FAINT_DETECTION_CONFIG.hudRois.map(() => reason);
-    pickOverlay.lastFaintLogKey = `pause:${reason}`;
   }
 
   function updateFaintDetection(bestByHudIndex = [], hudGateStates = [], now = Date.now()) {
