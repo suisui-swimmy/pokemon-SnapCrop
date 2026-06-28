@@ -210,6 +210,7 @@
     sampleWidth: 60,
     sampleHeight: 75,
     requiredStrongStreak: 2,
+    requiredHudOnlyStreak: 4,
     requiredWeakStreak: 3,
     gateGraceMs: 1500,
     maxOrders: 4,
@@ -220,6 +221,8 @@
       marginStrongMin: 0.13,
       scoreWeakMin: 0.70,
       marginWeakMin: 0.11,
+      hudOnlyScoreMin: 0.92,
+      hudOnlyMarginMin: 0.16,
       hudGateMeanMin: 58,
       hudGateContrastMin: 26,
       hudGateBrightRatioMin: 0.08,
@@ -1525,8 +1528,8 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
-          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / crop reset = cr / layout reset = lr",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / pick clear = p clear <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
         "system",
@@ -1648,6 +1651,9 @@
     if (tokens[0] === "p") {
       if (tokens.length === 1) {
         return "pick status";
+      }
+      if (tokens[1] === "clear") {
+        return `pick clear ${tokens.slice(2).join(" ")}`.trim();
       }
       if (tokens.length === 3) {
         return `pick set ${tokens[1]} ${tokens[2]}`;
@@ -3554,9 +3560,36 @@
       return;
     }
 
+    if (action === "clear") {
+      if (!orderArg || slotArg || rest.length) {
+        appendTerminalEntry(
+          [
+            "[error] pick clear は <slot> を指定してください。例: pick clear 5",
+          ],
+          "error",
+        );
+        return;
+      }
+
+      const slot = parsePickSlot(orderArg);
+      if (!slot) {
+        appendTerminalEntry(
+          [
+            "[error] pick clear は slot=1-6 を指定してください。",
+          ],
+          "error",
+        );
+        return;
+      }
+
+      const result = clearPickOverlaySlot(slot - 1);
+      appendTerminalEntry(result.lines, "system");
+      return;
+    }
+
     appendTerminalEntry(
       [
-        "[error] pick は status / set <order> <slot> を指定できます。",
+        "[error] pick は status / set <order> <slot> / clear <slot> を指定できます。",
       ],
       "error",
     );
@@ -3628,6 +3661,49 @@
       lines.push(`[system] pick: 既存の ${getPickOverlayOrderLabel(destinationOrder)} は ${getPickSlotLabel(displacedRefIndex)} に移動しました。`);
     }
 
+    return { lines };
+  }
+
+  function clearPickOverlaySlot(refIndex) {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    const orders = pickOverlay.ordersByRefIndex;
+    const removedOrder = orders[refIndex] || 0;
+    const hadFainted = Boolean(pickOverlay.faintedByRefIndex?.[refIndex]);
+    const hadPendingMatch = pickOverlay.pendingMatchesByHudIndex?.some((pending) => pending?.refIndex === refIndex);
+
+    if (!removedOrder && !hadFainted && !hadPendingMatch) {
+      return {
+        lines: [
+          `[system] pick: ${getPickSlotLabel(refIndex)} に消すバッジはありません。`,
+        ],
+      };
+    }
+
+    orders[refIndex] = 0;
+    if (pickOverlay.faintedByRefIndex?.[refIndex]) {
+      pickOverlay.faintedByRefIndex[refIndex] = false;
+    }
+    pickOverlay.pendingMatchesByHudIndex = pickOverlay.pendingMatchesByHudIndex.map((pending) => (
+      pending?.refIndex === refIndex ? null : pending
+    ));
+    resetPokemonIconResultNotificationForRefIndex(refIndex);
+    syncPickOverlayNextOrder();
+    clearFaintSlotCacheForRefIndexes(new Set([refIndex]));
+    triggerPickOverlayCorrectionFrame(refIndex);
+    pickOverlay.lastSummary = buildPickOverlaySummary();
+
+    if (state.references.enemy && state.mode !== "edit") {
+      drawCropPanel("enemy");
+    }
+
+    const lines = [
+      removedOrder
+        ? `[system] pick: ${getPickSlotLabel(refIndex)} の ${getPickOverlayOrderLabel(removedOrder)} を消しました。`
+        : `[system] pick: ${getPickSlotLabel(refIndex)} の保留状態を消しました。`,
+    ];
+    if (hadFainted) {
+      lines.push(`[system] pick: ${getPickSlotLabel(refIndex)} の瀕死表示も解除しました。`);
+    }
     return { lines };
   }
 
@@ -4252,26 +4328,36 @@
       return;
     }
 
+    const pickGateMode = battleHudSignal.matched
+      ? "battle"
+      : (battleHudSignal.hudOnlyAllowed ? "hud-only" : "");
+
     if (now - pickOverlay.lastCompareAt < PICK_OVERLAY_CONFIG.compareIntervalMs) {
-      updateFaintDetection([], [], now);
+      if (pickGateMode === "battle") {
+        updateFaintDetection([], [], now);
+      } else {
+        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      }
       pickOverlay.lastGateReason = "比較待ち";
       pickOverlay.lastSummary = buildPickOverlaySummary();
       return;
     }
 
-    if (!battleHudSignal.matched) {
-      updateFaintDetection([], [], now);
+    if (!pickGateMode) {
+      pauseFaintDetectionForBattleHudGate("battle HUD待ち");
       const keptPending = keepPickOverlayPendingThroughGate(now);
-      pickOverlay.lastGateReason = "battle HUD待ち";
+      pickOverlay.lastGateReason = battleHudSignal.enemyListStillVisible
+        ? "battle HUD待ち / 相手一覧表示中"
+        : "battle HUD待ち";
       if (keptPending) {
-        pickOverlay.lastGateReason = "battle HUD待ち / gate grace";
+        pickOverlay.lastGateReason += " / gate grace";
       }
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "battle hud wait");
       pickOverlay.lastSummary = buildPickOverlaySummary();
       appendPickOverlayDebugLogIfChanged(
         `gate-battle-hud-wait:${keptPending ? 1 : 0}:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
         [
-          `[debug] pick state: battle HUD待ち${keptPending ? " / gate grace" : ""} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes ignored" : "no"}`,
+          `[debug] pick state: ${pickOverlay.lastGateReason} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes blocked" : "no"}`,
         ],
       );
       return;
@@ -4291,8 +4377,8 @@
     }
 
     pickOverlay.lastGateActive = true;
-    pickOverlay.lastGateReason = battleHudSignal.enemyListStillVisible
-      ? "battle HUD一致 / enemy gate ignored / HUD品質確認中"
+    pickOverlay.lastGateReason = pickGateMode === "hud-only"
+      ? "battle HUDなし / HUD-only品質確認中"
       : "battle HUD一致 / HUD品質確認中";
     const hudSampleSets = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlayHudCandidates(
       elements.video,
@@ -4300,7 +4386,11 @@
       dimensions,
     ));
     if (hudSampleSets.some((candidates) => !candidates.length)) {
-      updateFaintDetection([], [], now);
+      if (pickGateMode === "battle") {
+        updateFaintDetection([], [], now);
+      } else {
+        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      }
       clearPickOverlayPendingMatches();
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "roi read failed");
       pickOverlay.lastSummary = "ROI 読み取り失敗";
@@ -4317,11 +4407,15 @@
       .map((gateState, hudIndex) => (gateState.ready ? hudIndex : -1))
       .filter((hudIndex) => hudIndex >= 0);
     if (!readyHudIndexes.length) {
-      updateFaintDetection([], hudGateStates, now);
+      if (pickGateMode === "battle") {
+        updateFaintDetection([], hudGateStates, now);
+      } else {
+        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      }
       const keptPending = keepPickOverlayPendingThroughGate(now);
-      pickOverlay.lastGateReason = "HUD待ち";
+      pickOverlay.lastGateReason = pickGateMode === "hud-only" ? "HUD-only待ち" : "HUD待ち";
       if (keptPending) {
-        pickOverlay.lastGateReason = "HUD待ち / gate grace";
+        pickOverlay.lastGateReason += " / gate grace";
       }
       pickOverlay.lastHudSummaries = hudGateStates.map((gateState) => gateState.summary);
       pickOverlay.lastSummary = buildPickOverlaySummary();
@@ -4343,7 +4437,11 @@
 
     pickOverlay.lastCompareAt = now;
     if (referenceSamples.some((sample) => !sample)) {
-      updateFaintDetection([], hudGateStates, now);
+      if (pickGateMode === "battle") {
+        updateFaintDetection([], hudGateStates, now);
+      } else {
+        pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+      }
       clearPickOverlayPendingMatches();
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "ref roi read failed");
       pickOverlay.lastSummary = "参照 ROI 読み取り失敗";
@@ -4355,19 +4453,26 @@
       return;
     }
 
-    pickOverlay.lastGateReason = `${battleHudSignal.enemyListStillVisible ? "battle HUD一致 / enemy gate ignored" : "battle HUD一致"} / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
+    pickOverlay.lastGateReason = pickGateMode === "hud-only"
+      ? `battle HUDなし / HUD-only ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`
+      : `battle HUD一致 / HUD ready ${readyHudIndexes.length}/${PICK_OVERLAY_CONFIG.hudRois.length}`;
     const { tentativeMatches, bestByHudIndex } = collectPickOverlayTentativeMatches(
       hudSampleSets,
       referenceSamples,
       readyHudIndexes,
+      pickGateMode,
     );
     const acceptedAssignments = updatePickOverlayAssignments(tentativeMatches);
-    updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates);
-    updateFaintDetection(bestByHudIndex, hudGateStates, now);
+    updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates, pickGateMode);
+    if (pickGateMode === "battle") {
+      updateFaintDetection(bestByHudIndex, hudGateStates, now);
+    } else {
+      pauseFaintDetectionForBattleHudGate("battle HUD待ち");
+    }
     pickOverlay.lastSummary = buildPickOverlaySummary();
   }
 
-  function collectPickOverlayTentativeMatches(hudSampleSets, referenceSamples, eligibleHudIndexes = []) {
+  function collectPickOverlayTentativeMatches(hudSampleSets, referenceSamples, eligibleHudIndexes = [], matchMode = "battle") {
     const eligibleSet = new Set(eligibleHudIndexes);
     const bestByHudIndex = hudSampleSets.map((candidates, hudIndex) => {
       if (!eligibleSet.has(hudIndex) || !candidates.length) {
@@ -4420,7 +4525,7 @@
           bestScore,
           secondBestScore,
           margin,
-          tier: getPickOverlayMatchTier(bestScore, margin),
+          tier: getPickOverlayMatchTier(bestScore, margin, matchMode),
           offsetX: candidate.offsetX,
           offsetY: candidate.offsetY,
           grayScore: scores[0]?.grayScore ?? 0,
@@ -4685,8 +4790,14 @@
     };
   }
 
-  function getPickOverlayMatchTier(bestScore, margin) {
+  function getPickOverlayMatchTier(bestScore, margin, matchMode = "battle") {
     const thresholds = PICK_OVERLAY_CONFIG.thresholds;
+    if (matchMode === "hud-only") {
+      return bestScore >= thresholds.hudOnlyScoreMin && margin >= thresholds.hudOnlyMarginMin
+        ? "hud-only"
+        : "";
+    }
+
     if (bestScore >= thresholds.scoreMin && margin >= thresholds.marginMin) {
       return "strong";
     }
@@ -4703,7 +4814,13 @@
   }
 
   function getPickOverlayTierPriority(tier) {
-    return tier === "strong" ? 2 : tier === "weak" ? 1 : 0;
+    if (tier === "strong") {
+      return 3;
+    }
+    if (tier === "hud-only") {
+      return 2;
+    }
+    return tier === "weak" ? 1 : 0;
   }
 
   function getStrongerPickOverlayTier(leftTier, rightTier) {
@@ -4713,6 +4830,9 @@
   }
 
   function getPickOverlayRequiredStreak(tier) {
+    if (tier === "hud-only") {
+      return PICK_OVERLAY_CONFIG.requiredHudOnlyStreak;
+    }
     return tier === "weak"
       ? PICK_OVERLAY_CONFIG.requiredWeakStreak
       : PICK_OVERLAY_CONFIG.requiredStrongStreak;
@@ -5347,6 +5467,13 @@
     state.pokemonIconRecognition.notifiedByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map(() => false);
   }
 
+  function resetPokemonIconResultNotificationForRefIndex(refIndex) {
+    if (!state.pokemonIconRecognition?.notifiedByRefIndex || refIndex < 0) {
+      return;
+    }
+    state.pokemonIconRecognition.notifiedByRefIndex[refIndex] = false;
+  }
+
   function flushPickOverlayPokemonResults() {
     const recognition = state.pokemonIconRecognition;
     if (!state.csvReady || !recognition?.resultsByRefIndex?.length) {
@@ -5684,10 +5811,17 @@
     return lines;
   }
 
-  function updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates = []) {
+  function updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates = [], matchMode = "battle") {
     const pickOverlay = state.autoSnap.pickOverlay;
     const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
     const summaryKeyParts = [];
+    const minimumScore = matchMode === "hud-only"
+      ? PICK_OVERLAY_CONFIG.thresholds.hudOnlyScoreMin
+      : PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin;
+    const minimumMargin = matchMode === "hud-only"
+      ? PICK_OVERLAY_CONFIG.thresholds.hudOnlyMarginMin
+      : PICK_OVERLAY_CONFIG.thresholds.marginWeakMin;
+    const routeLabel = matchMode === "hud-only" ? " hud-only" : "";
 
     bestByHudIndex.forEach((best, hudIndex) => {
       const gateState = hudGateStates[hudIndex];
@@ -5699,7 +5833,7 @@
 
       const bestSlotLabel = best.refIndex >= 0 ? `slot${best.refIndex + 1}` : "none";
       const margin = best.margin || 0;
-      const matchTier = best.tier || getPickOverlayMatchTier(best.bestScore, margin);
+      const matchTier = best.tier || getPickOverlayMatchTier(best.bestScore, margin, matchMode);
       const assignedOrder = pickOverlay.ordersByRefIndex[best.refIndex] || 0;
       const acceptedAssignment = acceptedAssignments.get(hudIndex);
       const pending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
@@ -5707,9 +5841,9 @@
 
       if (best.refIndex < 0) {
         status = "no_candidate";
-      } else if (!matchTier && best.bestScore < PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin) {
+      } else if (!matchTier && best.bestScore < minimumScore) {
         status = "low_score";
-      } else if (!matchTier && margin < PICK_OVERLAY_CONFIG.thresholds.marginWeakMin) {
+      } else if (!matchTier && margin < minimumMargin) {
         status = "low_margin";
       } else if (!matchTier) {
         status = "low_score_weak_margin";
@@ -5730,23 +5864,30 @@
           : status === "pending"
             ? `pending ${pending.tier} ${bestSlotLabel} streak=${pending.streak}/${getPickOverlayRequiredStreak(pending.tier)}`
             : status === "low_score"
-              ? `rejected ${bestSlotLabel} score<${PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin}`
+              ? `rejected${routeLabel} ${bestSlotLabel} score<${minimumScore}`
             : status === "low_margin"
-                ? `rejected ${bestSlotLabel} margin<${PICK_OVERLAY_CONFIG.thresholds.marginWeakMin}`
+                ? `rejected${routeLabel} ${bestSlotLabel} margin<${minimumMargin}`
                 : status === "low_score_weak_margin"
-                  ? `rejected ${bestSlotLabel} need weak score>=${PICK_OVERLAY_CONFIG.thresholds.scoreWeakMin} margin>=${PICK_OVERLAY_CONFIG.thresholds.marginWeakMin}`
+                  ? `rejected${routeLabel} ${bestSlotLabel} need score>=${minimumScore} margin>=${minimumMargin}`
                 : status === "contested"
-                  ? `rejected ${bestSlotLabel} contested`
+                  ? `rejected${routeLabel} ${bestSlotLabel} contested`
                   : "rejected no candidate";
       const summary = `${statusDetail} score=${formatAutoMetric(best.bestScore)} margin=${formatAutoMetric(margin)} second=${formatAutoMetric(best.secondBestScore)} color=${formatAutoMetric(best.colorScore)} offset=${formatPickOverlayOffset(best)}`;
       pickOverlay.lastHudSummaries[hudIndex] = summary;
-      summaryKeyParts.push(`hud${hudIndex + 1}:${status}:${best.refIndex}:${matchTier || "none"}:${pending?.streak || 0}:${assignedOrder || 0}:${best.offsetX || 0}:${best.offsetY || 0}:${Math.round((best.colorScore || 0) * 100)}`);
+      summaryKeyParts.push(`hud${hudIndex + 1}:${matchMode}:${status}:${best.refIndex}:${matchTier || "none"}:${pending?.streak || 0}:${assignedOrder || 0}:${best.offsetX || 0}:${best.offsetY || 0}:${Math.round((best.colorScore || 0) * 100)}`);
     });
 
     appendPickOverlayDebugLogIfChanged(
       summaryKeyParts.join("|"),
       bestByHudIndex.map((_, hudIndex) => `[debug] pick compare HUD${hudIndex + 1}: ${pickOverlay.lastHudSummaries[hudIndex]}`),
     );
+  }
+
+  function pauseFaintDetectionForBattleHudGate(reason = "battle HUD待ち") {
+    const pickOverlay = state.autoSnap.pickOverlay;
+    pickOverlay.pendingFaintsByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => null);
+    pickOverlay.lastFaintSummaries = FAINT_DETECTION_CONFIG.hudRois.map(() => reason);
+    pickOverlay.lastFaintLogKey = `pause:${reason}`;
   }
 
   function updateFaintDetection(bestByHudIndex = [], hudGateStates = [], now = Date.now()) {
@@ -6463,12 +6604,10 @@
   }
 
   function getPickOverlayBattleHudSignal(metrics) {
-    const threshold = AUTO_SNAP_CONFIG.thresholds.battleHud;
     const battleHudSignal = getBattleHudSignal(metrics);
     return {
       ...battleHudSignal,
-      matched: battleHudSignal.hudAccent >= threshold.hudAccentMin
-        && battleHudSignal.hudBright >= threshold.hudBrightMin,
+      hudOnlyAllowed: !battleHudSignal.matched && !battleHudSignal.enemyListStillVisible,
     };
   }
 
