@@ -307,6 +307,17 @@
       sv: 1,
     },
   };
+  const PERFORMANCE_DEBUG_CONFIG = {
+    logCooldownMs: 1200,
+    thresholds: {
+      captureAutoSnapMetrics: 12,
+      updatePickOverlayDetection: 12,
+      performSnapCapture: 16,
+      pokemonIconCandidateLoad: 120,
+      pokemonIconRecognition: 80,
+      pokemonIconSlot: 25,
+    },
+  };
   const FAINT_DETECTION_CONFIG = {
     compareIntervalMs: 250,
     requiredStrongStreak: 2,
@@ -396,6 +407,7 @@
     isComposing: false,
     suppressSuggestions: false,
     debugMode: false,
+    performanceDebug: createPerformanceDebugState(),
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
@@ -3313,42 +3325,52 @@
   }
 
   function performSnapCapture(target, options = {}) {
+    const perfStartedAt = getPerformanceDebugNow();
     const { frameSource = null } = options;
-    const sides = target === "both" ? CROP_SIDES : [target];
-    const needsLiveVideo = !frameSource;
+    const sourceLabel = frameSource ? "buffer" : "video";
+    try {
+      const sides = target === "both" ? CROP_SIDES : [target];
+      const needsLiveVideo = !frameSource;
 
-    if (needsLiveVideo && (!state.videoReady || !state.stream)) {
-      throw new Error("映像がまだ準備できていないため、撮影できません。");
+      if (needsLiveVideo && (!state.videoReady || !state.stream)) {
+        throw new Error("映像がまだ準備できていないため、撮影できません。");
+      }
+
+      if (sides.includes("enemy")) {
+        resetPickOverlayState("相手参照更新", { redraw: false });
+        resetPokemonIconRecognitionState("相手参照更新");
+      }
+
+      sides.forEach((side) => {
+        const frame = frameSource?.[side]
+          ? cloneReferenceFrame(frameSource[side])
+          : captureReferenceFrameFromVideo(side);
+        state.references[side] = frame;
+      });
+      if (sides.includes("enemy")) {
+        state.autoSnap.pickOverlay.referenceUpdatedAt = Date.now();
+        state.autoSnap.pickOverlay.lastGateReason = "battle HUD待ち";
+        scheduleEnemyReferencePokemonRecognition();
+      }
+
+      refreshCropPanels();
+
+      if (target === "my") {
+        return "自分側の参照画像を更新しました。";
+      }
+
+      if (target === "enemy") {
+        return "相手側の参照画像を更新しました。";
+      }
+
+      return "左右の参照画像を更新しました。";
+    } finally {
+      recordPerformanceDebugMetric(
+        "performSnapCapture",
+        getPerformanceDebugNow() - perfStartedAt,
+        `target=${target} source=${sourceLabel}`,
+      );
     }
-
-    if (sides.includes("enemy")) {
-      resetPickOverlayState("相手参照更新", { redraw: false });
-      resetPokemonIconRecognitionState("相手参照更新");
-    }
-
-    sides.forEach((side) => {
-      const frame = frameSource?.[side]
-        ? cloneReferenceFrame(frameSource[side])
-        : captureReferenceFrameFromVideo(side);
-      state.references[side] = frame;
-    });
-    if (sides.includes("enemy")) {
-      state.autoSnap.pickOverlay.referenceUpdatedAt = Date.now();
-      state.autoSnap.pickOverlay.lastGateReason = "battle HUD待ち";
-      scheduleEnemyReferencePokemonRecognition();
-    }
-
-    refreshCropPanels();
-
-    if (target === "my") {
-      return "自分側の参照画像を更新しました。";
-    }
-
-    if (target === "enemy") {
-      return "相手側の参照画像を更新しました。";
-    }
-
-    return "左右の参照画像を更新しました。";
   }
 
   function clearReferenceImages(options = {}) {
@@ -3773,8 +3795,8 @@
     appendTerminalEntry(
       [
         enabled
-          ? "[debug] デバッグ表示を ON にしました。認識範囲と名前推定ログを表示可能にしました。"
-          : "[debug] デバッグ表示を OFF にしました。認識範囲と名前推定ログを非表示にしました。",
+          ? "[debug] デバッグ表示を ON にしました。認識範囲、名前推定ログ、処理時間ログを表示可能にしました。"
+          : "[debug] デバッグ表示を OFF にしました。認識範囲、名前推定ログ、処理時間ログを非表示にしました。",
       ],
       "system",
     );
@@ -3796,6 +3818,7 @@
 
     lines.push(...getPickOverlayDebugLines());
     lines.push(...getPokemonIconRecognitionDebugLines());
+    lines.push(...getPerformanceDebugLines());
     return lines;
   }
 
@@ -3922,14 +3945,26 @@
 
   function runAutoSnapDetection(now = Date.now()) {
     const auto = state.autoSnap;
+    const metricsStartedAt = getPerformanceDebugNow();
     const metrics = captureAutoSnapMetrics();
+    recordPerformanceDebugMetric(
+      "captureAutoSnapMetrics",
+      getPerformanceDebugNow() - metricsStartedAt,
+      `phase=${getAutoPhaseLabel(auto.phase)}`,
+    );
     if (!metrics) {
       auto.lastReason = "ROI がまだ揃っていません。";
       return;
     }
 
     auto.lastMetrics = metrics;
+    const pickDetectionStartedAt = getPerformanceDebugNow();
     updatePickOverlayDetection(metrics, now);
+    recordPerformanceDebugMetric(
+      "updatePickOverlayDetection",
+      getPerformanceDebugNow() - pickDetectionStartedAt,
+      `phase=${getAutoPhaseLabel(auto.phase)} gate=${state.autoSnap.pickOverlay.lastGateReason || "none"}`,
+    );
     if (auto.phase === "idle" || auto.phase === "snapped") {
       const loadingSignal = getLoadingTemplateSignal(metrics);
       if (!loadingSignal.matched) {
@@ -5262,56 +5297,95 @@
   }
 
   async function recognizeEnemyReferencePokemonSlots(reference, requestId) {
-    const candidates = await ensurePokemonIconCandidatesLoaded();
-    const recognition = state.pokemonIconRecognition;
-    if (recognition.requestId !== requestId || state.references.enemy !== reference) {
-      recognition.lastSummary = `stale request=${requestId} current=${recognition.requestId}`;
-      appendPokemonIconDebugLogIfChanged(
-        `stale:${requestId}:${recognition.requestId}`,
-        [`[debug] icon recog: stale request=${requestId} current=${recognition.requestId}`],
+    const perfStartedAt = getPerformanceDebugNow();
+    const slotDurations = [];
+    let candidateCount = 0;
+    let matchedCount = 0;
+    let status = "loading";
+    try {
+      const candidateLoadStartedAt = getPerformanceDebugNow();
+      const candidates = await ensurePokemonIconCandidatesLoaded();
+      candidateCount = candidates.length;
+      recordPerformanceDebugMetric(
+        "pokemonIconCandidateLoad",
+        getPerformanceDebugNow() - candidateLoadStartedAt,
+        `request=${requestId} candidates=${candidateCount}/${state.pokemonIconReferenceEntries.length}`,
       );
-      return;
-    }
 
-    if (!candidates.length) {
-      recognition.status = "unavailable";
-      recognition.reason = state.pokemonIconCandidatesLoadFailed ? "candidate load failed" : "candidate empty";
-      recognition.lastSummary = "failed: candidates empty";
-      recognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "候補なし");
-      appendPokemonIconDebugLogIfChanged(
-        `done-empty:${requestId}`,
-        ["[debug] icon recog: failed candidates_empty"],
-      );
-      return;
-    }
-
-    const slotSummaries = [];
-    recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((fallbackRoi, refIndex) => {
-      const roi = POKEMON_ICON_RECOGNITION_CONFIG.referenceRois[refIndex] || fallbackRoi;
-      const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
-      const sample = samplePokemonIconSource(reference, crop);
-      if (!sample) {
-        slotSummaries[refIndex] = "rejected no_sample";
-        return null;
+      const recognition = state.pokemonIconRecognition;
+      if (recognition.requestId !== requestId || state.references.enemy !== reference) {
+        status = "stale";
+        recognition.lastSummary = `stale request=${requestId} current=${recognition.requestId}`;
+        appendPokemonIconDebugLogIfChanged(
+          `stale:${requestId}:${recognition.requestId}`,
+          [`[debug] icon recog: stale request=${requestId} current=${recognition.requestId}`],
+        );
+        return;
       }
 
-      const result = recognizePokemonIconSlot(sample, candidates);
-      slotSummaries[refIndex] = formatPokemonIconRecognitionSlotSummary(result);
-      return result;
-    });
-    recognition.status = "ready";
-    recognition.reason = "";
-    recognition.lastSlotSummaries = slotSummaries;
-    const matchedCount = recognition.resultsByRefIndex.filter((result) => result?.matched).length;
-    recognition.lastSummary = `done matched=${matchedCount}/${PICK_OVERLAY_CONFIG.referenceRois.length} candidates=${candidates.length}`;
-    appendPokemonIconDebugLogIfChanged(
-      `done:${requestId}:${matchedCount}:${slotSummaries.join("|")}`,
-      [
-        `[debug] icon recog: ${recognition.lastSummary}`,
-        ...slotSummaries.map((summary, index) => `[debug] icon recog ${getPickSlotLabel(index)}: ${summary}`),
-      ],
-    );
-    flushPickOverlayPokemonResults();
+      if (!candidates.length) {
+        status = "empty";
+        recognition.status = "unavailable";
+        recognition.reason = state.pokemonIconCandidatesLoadFailed ? "candidate load failed" : "candidate empty";
+        recognition.lastSummary = "failed: candidates empty";
+        recognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "候補なし");
+        appendPokemonIconDebugLogIfChanged(
+          `done-empty:${requestId}`,
+          ["[debug] icon recog: failed candidates_empty"],
+        );
+        return;
+      }
+
+      const slotSummaries = [];
+      recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((fallbackRoi, refIndex) => {
+        const slotStartedAt = getPerformanceDebugNow();
+        try {
+          const roi = POKEMON_ICON_RECOGNITION_CONFIG.referenceRois[refIndex] || fallbackRoi;
+          const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
+          const sample = samplePokemonIconSource(reference, crop);
+          if (!sample) {
+            slotSummaries[refIndex] = "rejected no_sample";
+            return null;
+          }
+
+          const result = recognizePokemonIconSlot(sample, candidates);
+          slotSummaries[refIndex] = formatPokemonIconRecognitionSlotSummary(result);
+          return result;
+        } finally {
+          const slotDurationMs = getPerformanceDebugNow() - slotStartedAt;
+          slotDurations[refIndex] = slotDurationMs;
+          recordPerformanceDebugMetric(
+            "pokemonIconSlot",
+            slotDurationMs,
+            `request=${requestId} ${getPickSlotLabel(refIndex)} ${slotSummaries[refIndex] || "未評価"}`,
+            { logKey: `pokemonIconSlot:${refIndex}` },
+          );
+        }
+      });
+      recognition.status = "ready";
+      recognition.reason = "";
+      recognition.lastSlotSummaries = slotSummaries;
+      matchedCount = recognition.resultsByRefIndex.filter((result) => result?.matched).length;
+      status = "done";
+      recognition.lastSummary = `done matched=${matchedCount}/${PICK_OVERLAY_CONFIG.referenceRois.length} candidates=${candidates.length}`;
+      appendPokemonIconDebugLogIfChanged(
+        `done:${requestId}:${matchedCount}:${slotSummaries.join("|")}`,
+        [
+          `[debug] icon recog: ${recognition.lastSummary}`,
+          ...slotSummaries.map((summary, index) => `[debug] icon recog ${getPickSlotLabel(index)}: ${summary}`),
+        ],
+      );
+      flushPickOverlayPokemonResults();
+    } finally {
+      if (state.debugMode) {
+        state.performanceDebug.lastPokemonIconSlotDurations = slotDurations;
+      }
+      recordPerformanceDebugMetric(
+        "pokemonIconRecognition",
+        getPerformanceDebugNow() - perfStartedAt,
+        `request=${requestId} status=${status} candidates=${candidateCount}/${state.pokemonIconReferenceEntries.length} matched=${matchedCount}/${PICK_OVERLAY_CONFIG.referenceRois.length}`,
+      );
+    }
   }
 
   function recognizePokemonIconSlot(referenceSample, candidates) {
@@ -5811,6 +5885,39 @@
     return lines;
   }
 
+  function getPerformanceDebugLines() {
+    const slotDurations = state.performanceDebug.lastPokemonIconSlotDurations || [];
+    const lines = [
+      `[debug] perf auto metrics: ${formatPerformanceDebugMetric("captureAutoSnapMetrics")}`,
+      `[debug] perf pick detect: ${formatPerformanceDebugMetric("updatePickOverlayDetection")}`,
+      `[debug] perf snap: ${formatPerformanceDebugMetric("performSnapCapture")}`,
+      `[debug] perf icon load: ${formatPerformanceDebugMetric("pokemonIconCandidateLoad")}`,
+      `[debug] perf icon recog: ${formatPerformanceDebugMetric("pokemonIconRecognition")}`,
+    ];
+
+    if (slotDurations.length) {
+      const maxSlotDuration = Math.max(...slotDurations.filter((duration) => Number.isFinite(duration)), 0);
+      const slotDetails = slotDurations
+        .map((duration, refIndex) => `${getPickSlotLabel(refIndex)}=${formatPerformanceMs(duration)}`)
+        .join(" ");
+      lines.push(`[debug] perf icon slots: ${slotDetails} max=${formatPerformanceMs(maxSlotDuration)}`);
+    } else {
+      lines.push("[debug] perf icon slots: 未計測");
+    }
+
+    return lines;
+  }
+
+  function formatPerformanceDebugMetric(key) {
+    const metric = state.performanceDebug.metrics[key];
+    if (!metric) {
+      return "未計測";
+    }
+
+    const details = metric.details ? ` ${metric.details}` : "";
+    return `${formatPerformanceMs(metric.durationMs)} max=${formatPerformanceMs(metric.maxMs)} count=${metric.count}${details}`;
+  }
+
   function updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates = [], matchMode = "battle") {
     const pickOverlay = state.autoSnap.pickOverlay;
     const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
@@ -6203,6 +6310,65 @@
 
     recognition.lastLogKey = key;
     appendTerminalDebug(lines);
+  }
+
+  function recordPerformanceDebugMetric(key, durationMs, details = "", options = {}) {
+    if (!state.debugMode || !state.performanceDebug) {
+      return;
+    }
+
+    const normalizedDurationMs = Math.max(0, Number(durationMs) || 0);
+    const metric = state.performanceDebug.metrics[key] || {
+      durationMs: 0,
+      maxMs: 0,
+      count: 0,
+      details: "",
+      updatedAt: 0,
+    };
+    metric.durationMs = normalizedDurationMs;
+    metric.maxMs = Math.max(metric.maxMs || 0, normalizedDurationMs);
+    metric.count += 1;
+    metric.details = details;
+    metric.updatedAt = Date.now();
+    state.performanceDebug.metrics[key] = metric;
+
+    const thresholdMs = options.thresholdMs ?? PERFORMANCE_DEBUG_CONFIG.thresholds[key];
+    if (Number.isFinite(thresholdMs) && normalizedDurationMs >= thresholdMs) {
+      appendPerformanceDebugLog(
+        options.logKey || key,
+        `[debug] perf ${key}: ${formatPerformanceMs(normalizedDurationMs)}${details ? ` ${details}` : ""}`,
+      );
+    }
+  }
+
+  function appendPerformanceDebugLog(key, line) {
+    if (!state.debugMode || !state.performanceDebug) {
+      return;
+    }
+
+    const now = Date.now();
+    const lastLogAt = state.performanceDebug.lastLogAtByKey[key] || 0;
+    if (now - lastLogAt < PERFORMANCE_DEBUG_CONFIG.logCooldownMs) {
+      return;
+    }
+
+    state.performanceDebug.lastLogAtByKey[key] = now;
+    appendTerminalDebug([line]);
+  }
+
+  function getPerformanceDebugNow() {
+    return typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now();
+  }
+
+  function formatPerformanceMs(durationMs) {
+    const numeric = Number(durationMs);
+    if (!Number.isFinite(numeric)) {
+      return "0.0ms";
+    }
+
+    return `${numeric >= 100 ? numeric.toFixed(0) : numeric.toFixed(1)}ms`;
   }
 
   function getLoadingTemplateSignal(metrics) {
@@ -6847,6 +7013,14 @@
       lastSummary: reason || "未評価",
       lastSlotSummaries: PICK_OVERLAY_CONFIG.referenceRois.map(() => reason || "未評価"),
       lastLogKey: "",
+    };
+  }
+
+  function createPerformanceDebugState() {
+    return {
+      metrics: {},
+      lastLogAtByKey: {},
+      lastPokemonIconSlotDurations: [],
     };
   }
 
