@@ -3350,10 +3350,12 @@
       if (sides.includes("enemy")) {
         state.autoSnap.pickOverlay.referenceUpdatedAt = Date.now();
         state.autoSnap.pickOverlay.lastGateReason = "battle HUD待ち";
-        scheduleEnemyReferencePokemonRecognition();
       }
 
       refreshCropPanels();
+      if (sides.includes("enemy")) {
+        scheduleEnemyReferencePokemonRecognition({ deferUntilAfterPaint: true });
+      }
 
       if (target === "my") {
         return "自分側の参照画像を更新しました。";
@@ -5254,7 +5256,8 @@
     });
   }
 
-  function scheduleEnemyReferencePokemonRecognition() {
+  function scheduleEnemyReferencePokemonRecognition(options = {}) {
+    const { deferUntilAfterPaint = false } = options;
     const reference = state.references.enemy;
     if (!reference) {
       state.pokemonIconRecognition.status = "idle";
@@ -5280,10 +5283,30 @@
 
     const requestId = state.pokemonIconRecognition.requestId + 1;
     state.pokemonIconRecognition.requestId = requestId;
-    state.pokemonIconRecognition.status = "loading";
-    state.pokemonIconRecognition.reason = "";
-    state.pokemonIconRecognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`;
+    state.pokemonIconRecognition.status = deferUntilAfterPaint ? "queued" : "loading";
+    state.pokemonIconRecognition.reason = deferUntilAfterPaint ? "waiting for repaint" : "";
+    state.pokemonIconRecognition.lastSummary = deferUntilAfterPaint
+      ? `queued request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`
+      : `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`;
     state.pokemonIconRecognition.lastSlotSummaries = PICK_OVERLAY_CONFIG.referenceRois.map(() => "待機中");
+    const startRecognition = () => startEnemyReferencePokemonRecognition(reference, requestId);
+    if (deferUntilAfterPaint) {
+      queueAfterNextPaint(startRecognition);
+      return;
+    }
+
+    startRecognition();
+  }
+
+  function startEnemyReferencePokemonRecognition(reference, requestId) {
+    const recognition = state.pokemonIconRecognition;
+    if (recognition.requestId !== requestId || state.references.enemy !== reference) {
+      return;
+    }
+
+    recognition.status = "loading";
+    recognition.reason = "";
+    recognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`;
     appendPokemonIconDebugLogIfChanged(
       `schedule-start:${requestId}:${reference.width}x${reference.height}:${state.pokemonIconReferenceEntries.length}`,
       [
@@ -5294,6 +5317,17 @@
       ],
     );
     void recognizeEnemyReferencePokemonSlots(reference, requestId);
+  }
+
+  function queueAfterNextPaint(callback) {
+    if (typeof window.requestAnimationFrame !== "function") {
+      window.setTimeout(callback, 0);
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.setTimeout(callback, 0);
+    });
   }
 
   async function recognizeEnemyReferencePokemonSlots(reference, requestId) {
