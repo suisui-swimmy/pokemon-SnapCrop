@@ -1,10 +1,19 @@
-const CACHE_NAME = "pokemon-snapcrop-v1.3.3";
+const CACHE_NAME = "pokemon-snapcrop-v1.3.4";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
   "./manifest.webmanifest",
+  "./assets/ui/info.svg",
+  "./assets/ui/reload.svg",
+  "./assets/ui/play.svg",
+  "./assets/ui/fullscreen-shrink.svg",
+  "./assets/ui/fullscreen-expand.svg",
+  "./assets/ui/night-mode.svg",
+  "./assets/ui/light-mode.svg",
+  "./assets/ui/volume-2.svg",
+  "./assets/ui/volume-x.svg",
   "./data/pokemon-reference.csv",
   "./data/pokemon-icon-reference.json",
   "./icons/icon-192.png",

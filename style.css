@@ -487,6 +487,58 @@ html[data-theme="light"] .workspace-column-splitter {
   height: 20px;
   display: block;
   flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.toolbar-icon--reload {
+  -webkit-mask-image: url("./assets/ui/reload.svg");
+  mask-image: url("./assets/ui/reload.svg");
+}
+
+.toolbar-icon--play {
+  -webkit-mask-image: url("./assets/ui/play.svg");
+  mask-image: url("./assets/ui/play.svg");
+}
+
+.toolbar-icon--audio-on {
+  -webkit-mask-image: url("./assets/ui/volume-2.svg");
+  mask-image: url("./assets/ui/volume-2.svg");
+}
+
+.toolbar-icon--audio-muted {
+  -webkit-mask-image: url("./assets/ui/volume-x.svg");
+  mask-image: url("./assets/ui/volume-x.svg");
+}
+
+.toolbar-icon--theme-moon {
+  -webkit-mask-image: url("./assets/ui/night-mode.svg");
+  mask-image: url("./assets/ui/night-mode.svg");
+}
+
+.toolbar-icon--theme-sun {
+  -webkit-mask-image: url("./assets/ui/light-mode.svg");
+  mask-image: url("./assets/ui/light-mode.svg");
+}
+
+.toolbar-icon--fullscreen-enter {
+  -webkit-mask-image: url("./assets/ui/fullscreen-expand.svg");
+  mask-image: url("./assets/ui/fullscreen-expand.svg");
+}
+
+.toolbar-icon--fullscreen-exit {
+  -webkit-mask-image: url("./assets/ui/fullscreen-shrink.svg");
+  mask-image: url("./assets/ui/fullscreen-shrink.svg");
+}
+
+.toolbar-icon--help {
+  -webkit-mask-image: url("./assets/ui/info.svg");
+  mask-image: url("./assets/ui/info.svg");
 }
 
 .toolbar-icon--fullscreen,
@@ -627,11 +679,6 @@ html[data-theme="light"] .workspace-column-splitter {
 .toolbar-help-link:hover,
 .toolbar-help-link:focus-visible {
   color: var(--text);
-}
-
-.toolbar-icon--help {
-  width: 20px;
-  height: 20px;
 }
 
 .helper-text {

@@ -33,16 +33,11 @@
           <label class="sr-only" for="audio-select">音声入力</label>
           <select id="audio-select" class="toolbar-select toolbar-select--audio" aria-label="音声入力"></select>
           <button class="ui-button ui-button--subtle ui-button--icon" id="refresh-devices" type="button" aria-label="一覧更新" title="デバイス一覧を更新">
-            <svg class="toolbar-icon" viewBox="0 0 512 512" aria-hidden="true">
-              <path fill="currentColor" d="M403.925,108.102c-27.595-27.595-62.899-47.558-102.459-56.29L304.182,0L201.946,53.867l-27.306,14.454l-5.066,2.654l8.076,4.331l38.16,20.542l81.029,43.602l2.277-42.859c28.265,7.546,53.438,22.53,73.623,42.638c29.94,29.939,48.358,71.119,48.358,116.776c0,23.407-4.843,45.58-13.575,65.687l40.37,17.532c11.076-25.463,17.242-53.637,17.242-83.219C465.212,198.306,441.727,145.904,403.925,108.102z"/>
-              <path fill="currentColor" d="M296.256,416.151l-81.101-43.612l-2.272,42.869c-28.26-7.555-53.51-22.53-73.618-42.636c-29.945-29.95-48.364-71.12-48.364-116.767c0-23.427,4.844-45.522,13.576-65.697l-40.37-17.531c-11.076,25.53-17.242,53.723-17.242,83.228c0,57.679,23.407,110.157,61.21,147.893c27.595,27.594,62.899,47.548,102.453,56.202l-2.716,51.9l102.169-53.878l27.455-14.454l4.988-2.643l-7.999-4.332L296.256,416.151z"/>
-            </svg>
+            <span class="toolbar-icon toolbar-icon--reload" aria-hidden="true"></span>
             <span class="sr-only">一覧更新</span>
           </button>
           <button class="ui-button ui-button--icon" id="start-video" type="button" aria-label="映像を開始" title="映像を開始">
-            <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 5.5v13L18 12 7 5.5Z" fill="currentColor"/>
-            </svg>
+            <span class="toolbar-icon toolbar-icon--play" aria-hidden="true"></span>
             <span class="sr-only">映像を開始</span>
           </button>
           <div class="audio-control">
@@ -55,16 +50,8 @@
               disabled
               data-icon-state="muted"
             >
-              <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-on" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M17 8.5a4.8 4.8 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M19.75 6.25a8.15 8.15 0 0 1 0 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <svg class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-muted" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 14h5l6 5V5l-6 5H3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="m16.5 8.5 4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="m21 8.5-4.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+              <span class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-on" aria-hidden="true"></span>
+              <span class="toolbar-icon toolbar-icon--audio toolbar-icon--audio-muted" aria-hidden="true"></span>
               <span class="sr-only">音声ミュート切替</span>
             </button>
             <div class="audio-volume-shell">
@@ -90,13 +77,8 @@
             title="ライトモードに切り替え"
             data-icon-state="dark"
           >
-            <svg class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-moon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M14.5 3.5a8.5 8.5 0 1 0 6 14.5A9 9 0 0 1 14.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <svg class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-sun" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="4.25" fill="none" stroke="currentColor" stroke-width="1.8"/>
-              <path d="M12 2.5v2.25M12 19.25v2.25M21.5 12h-2.25M4.75 12H2.5M18.72 5.28l-1.6 1.6M6.88 17.12l-1.6 1.6M18.72 18.72l-1.6-1.6M6.88 6.88l-1.6-1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
+            <span class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-moon" aria-hidden="true"></span>
+            <span class="toolbar-icon toolbar-icon--theme toolbar-icon--theme-sun" aria-hidden="true"></span>
             <span class="sr-only">テーマ切替</span>
           </button>
           <button
@@ -107,18 +89,8 @@
             title="全画面を切り替え"
             data-icon-state="enter"
           >
-            <svg class="toolbar-icon toolbar-icon--fullscreen toolbar-icon--fullscreen-enter" viewBox="0 0 512 512" aria-hidden="true">
-              <polygon fill="currentColor" points="30.291,174.821 30.291,51.704 164.736,186.154 186.151,164.735 51.706,30.294 174.819,30.294 174.819,0 0.002,0 0.005,174.821"/>
-              <polygon fill="currentColor" points="337.177,0 337.177,30.294 460.294,30.294 325.848,164.743 347.263,186.154 481.713,51.704 481.713,174.821 511.998,174.821 511.998,0"/>
-              <polygon fill="currentColor" points="164.736,325.847 30.291,460.288 30.291,337.17 0.005,337.179 0.002,512 174.819,512 174.819,481.706 51.706,481.706 186.155,347.266"/>
-              <polygon fill="currentColor" points="481.713,460.288 347.263,325.839 325.844,347.266 460.294,481.706 337.177,481.706 337.177,512 511.998,512 511.998,337.179 481.705,337.187"/>
-            </svg>
-            <svg class="toolbar-icon toolbar-icon--fullscreen toolbar-icon--fullscreen-exit" viewBox="0 0 512 512" aria-hidden="true">
-              <polygon fill="currentColor" points="500.66,155.854 377.547,155.854 511.993,21.418 490.574,0.008 356.137,134.444 356.137,11.331 325.844,11.339 325.844,186.147 500.66,186.147"/>
-              <polygon fill="currentColor" points="377.547,356.129 500.66,356.129 500.66,325.844 325.844,325.837 325.844,500.653 356.137,500.668 356.137,377.555 490.59,511.992 512,490.565"/>
-              <polygon fill="currentColor" points="11.34,155.863 11.348,186.155 186.156,186.155 186.156,11.347 155.88,11.339 155.88,134.444 21.434,0.008 0.016,21.426 134.453,155.863"/>
-              <polygon fill="currentColor" points="11.355,325.837 11.355,356.121 134.453,356.121 0,490.565 21.442,511.984 155.871,377.539 155.871,500.653 186.171,500.644 186.164,325.837"/>
-            </svg>
+            <span class="toolbar-icon toolbar-icon--fullscreen toolbar-icon--fullscreen-enter" aria-hidden="true"></span>
+            <span class="toolbar-icon toolbar-icon--fullscreen toolbar-icon--fullscreen-exit" aria-hidden="true"></span>
             <span class="sr-only">全画面切替</span>
           </button>
         </div>
@@ -130,11 +102,7 @@
           aria-label="README を開く"
           title="README / 使い方"
         >
-          <svg class="toolbar-icon toolbar-icon--help" viewBox="0 0 512 512" aria-hidden="true">
-            <path fill="currentColor" d="M437.015,74.978C390.768,28.686,326.619-0.014,256,0C185.381-0.014,121.231,28.686,74.978,74.978C28.694,121.224-0.015,185.381,0,256c-0.015,70.612,28.694,134.762,74.978,181.015C121.231,483.314,185.381,512.008,256,512c70.619,0.008,134.768-28.686,181.015-74.985c46.299-46.253,75-110.403,74.985-181.015C512.014,185.381,483.314,121.224,437.015,74.978z M403.56,403.552c-37.851,37.798-89.866,61.112-147.56,61.12c-57.694-0.008-109.709-23.321-147.56-61.12C70.649,365.716,47.336,313.702,47.321,256c0.014-57.702,23.328-109.716,61.119-147.552C146.291,70.649,198.306,47.343,256,47.329c57.694,0.014,109.709,23.32,147.56,61.119c37.791,37.836,61.104,89.851,61.119,147.552C464.664,313.702,441.351,365.716,403.56,403.552z"/>
-            <path fill="currentColor" d="M251.694,194.328c21.381,0,38.732-17.343,38.732-38.724c0-21.396-17.351-38.724-38.732-38.724c-21.38,0-38.724,17.328-38.724,38.724C212.97,176.986,230.314,194.328,251.694,194.328z"/>
-            <path fill="currentColor" d="M299.164,362.806h-5.262c-5.387,0-9.761-4.358-9.761-9.746V216.731c0-1.79-0.94-3.462-2.47-4.38c-1.53-0.933-3.44-0.977-5.023-0.142l-66.544,36.986c-19.358,9.679-10.068,21.239-2.858,20.94c7.202-0.284,28.679-2.41,28.679-2.41v85.336c0,5.388-4.373,9.746-9.761,9.746h-10.336c-2.686,0-4.88,2.194-4.88,4.88v21.284c0,2.687,2.194,4.881,4.88,4.881h83.336c2.694,0,4.881-2.194,4.881-4.881v-21.284C304.045,365,301.858,362.806,299.164,362.806z"/>
-          </svg>
+          <span class="toolbar-icon toolbar-icon--help" aria-hidden="true"></span>
           <span class="sr-only">README / 使い方</span>
         </a>
       </header>
