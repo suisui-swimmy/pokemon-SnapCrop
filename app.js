@@ -1,6 +1,7 @@
 (() => {
   const CSV_PATH = "./data/pokemon-reference.csv";
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
+  const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
   const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
     loading: "./assets/auto/loading-indicator.png",
@@ -204,6 +205,31 @@
       },
     },
   };
+  const BATTLE_RESULT_CONFIG = {
+    checkIntervalMs: 320,
+    requiredBattleHudFrames: 2,
+    requiredMatchStreak: 2,
+    searchOffsets: [0, -2, 2, -4, 4],
+    searchPadding: 4,
+    thresholds: {
+      coverageMin: 0.86,
+      spillMax: 0.32,
+    },
+    rois: {
+      left: {
+        x: 430 / 1920,
+        y: 755 / 1080,
+        width: 100 / 1920,
+        height: 100 / 1080,
+      },
+      right: {
+        x: 1390 / 1920,
+        y: 755 / 1080,
+        width: 100 / 1920,
+        height: 100 / 1080,
+      },
+    },
+  };
   const PICK_OVERLAY_ORDER_LABELS = ["", "１", "２", "３", "４"];
   const PICK_OVERLAY_CONFIG = {
     compareIntervalMs: 250,
@@ -312,6 +338,7 @@
     thresholds: {
       captureAutoSnapMetrics: 12,
       updatePickOverlayDetection: 12,
+      battleResultDetection: 12,
       performSnapCapture: 16,
       pokemonIconCandidateLoad: 120,
       pokemonIconRecognition: 80,
@@ -426,6 +453,10 @@
     pokemonIconSampleCanvas: null,
     pokemonIconSampleContext: null,
     autoSnap: createAutoSnapState(),
+    battleResultTemplate: createPendingAutoTemplate(),
+    battleResultDetection: createBattleResultDetectionState(),
+    battleResultDetectorCanvas: null,
+    battleResultDetectorContext: null,
   };
 
   document.addEventListener("DOMContentLoaded", init);
@@ -445,6 +476,7 @@
     applyResponsiveTerminalLayout({ refresh: true });
     refreshDevices();
     loadAutoTemplates();
+    loadBattleResultTemplate();
     loadPickOverlayBadgeImages();
     loadPokemonCsv();
     loadPokemonIconReference();
@@ -509,6 +541,8 @@
       selectionTimer: document.getElementById("debug-overlay-selection-timer"),
       topTimer: document.getElementById("debug-overlay-top-timer"),
       battleHud: document.getElementById("debug-overlay-battle-hud"),
+      battleResultLeft: document.getElementById("debug-overlay-result-left"),
+      battleResultRight: document.getElementById("debug-overlay-result-right"),
       pickHudLeft: document.getElementById("debug-overlay-pick-hud-left"),
       pickHudRight: document.getElementById("debug-overlay-pick-hud-right"),
     };
@@ -2902,6 +2936,8 @@
     renderDebugOverlayBox(elements.autoDebugOverlays.selectionTimer, roiCrops.selectionTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.topTimer, roiCrops.waitingTimerIcon, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.battleHud, roiCrops.battleHud, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.battleResultLeft, roiCrops.battleResultLeft, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.battleResultRight, roiCrops.battleResultRight, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudLeft, roiCrops.pickHudLeft, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudRight, roiCrops.pickHudRight, displayedRect, scaleX, scaleY);
   }
@@ -2947,6 +2983,8 @@
       selectionTimerIcon: getAutoRoiCrop("selectionTimerIcon"),
       waitingTimerIcon: getAutoRoiCrop("waitingTimerIcon"),
       battleHud: getAutoRoiCrop("battleHud"),
+      battleResultLeft: getBattleResultRoiCrop("left"),
+      battleResultRight: getBattleResultRoiCrop("right"),
       pickHudLeft: getPickOverlayHudCrop(0),
       pickHudRight: getPickOverlayHudCrop(1),
     };
@@ -3339,6 +3377,7 @@
       if (sides.includes("enemy")) {
         resetPickOverlayState("相手参照更新", { redraw: false });
         resetPokemonIconRecognitionState("相手参照更新");
+        resetBattleResultDetection("相手参照更新");
       }
 
       sides.forEach((side) => {
@@ -3383,6 +3422,7 @@
     });
     resetPickOverlayState("参照画像クリア", { redraw: false });
     resetPokemonIconRecognitionState("参照画像クリア");
+    resetBattleResultDetection("参照画像クリア");
     refreshCropPanels();
 
     if (!hadReferences) {
@@ -3797,8 +3837,8 @@
     appendTerminalEntry(
       [
         enabled
-          ? "[debug] デバッグ表示を ON にしました。認識範囲、名前推定ログ、処理時間ログを表示可能にしました。"
-          : "[debug] デバッグ表示を OFF にしました。認識範囲、名前推定ログ、処理時間ログを非表示にしました。",
+          ? "[debug] デバッグ表示を ON にしました。認識範囲、勝敗判定、名前推定ログ、処理時間ログを表示可能にしました。"
+          : "[debug] デバッグ表示を OFF にしました。認識範囲、勝敗判定、名前推定ログ、処理時間ログを非表示にしました。",
       ],
       "system",
     );
@@ -3819,6 +3859,7 @@
     }
 
     lines.push(...getPickOverlayDebugLines());
+    lines.push(...getBattleResultDebugLines());
     lines.push(...getPokemonIconRecognitionDebugLines());
     lines.push(...getPerformanceDebugLines());
     return lines;
@@ -3935,6 +3976,7 @@
     state.autoSnap.lastTriggerReason = "";
     state.autoSnap.lastResetReason = reason || "manual reset";
     state.autoSnap.lastSnapMode = "";
+    resetBattleResultDetection(reason || "auto reset");
   }
 
   function getAutoIdleReason() {
@@ -3967,6 +4009,13 @@
       getPerformanceDebugNow() - pickDetectionStartedAt,
       `phase=${getAutoPhaseLabel(auto.phase)} gate=${state.autoSnap.pickOverlay.lastGateReason || "none"}`,
     );
+    const battleResultStartedAt = getPerformanceDebugNow();
+    updateBattleResultDetection(metrics, now);
+    recordPerformanceDebugMetric(
+      "battleResultDetection",
+      getPerformanceDebugNow() - battleResultStartedAt,
+      `state=${getBattleResultStatusLabel()}`,
+    );
     if (auto.phase === "idle" || auto.phase === "snapped") {
       const loadingSignal = getLoadingTemplateSignal(metrics);
       if (!loadingSignal.matched) {
@@ -3996,6 +4045,7 @@
       auto.lastSnapMode = "";
       auto.lastTriggerReason = "";
       auto.loadingSeenAt = now;
+      resetBattleResultDetection("loading 検出");
       auto.lastReason = `loading を検出 coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`;
       appendTerminalDebug(
         [
@@ -4160,6 +4210,41 @@
     );
   }
 
+  function getBattleResultRoiCrop(side) {
+    const dimensions = getStreamDimensions();
+    const roi = BATTLE_RESULT_CONFIG.rois[side];
+    if (!dimensions.width || !dimensions.height || !roi) {
+      return null;
+    }
+
+    return clampAutoRoiCrop(
+      {
+        x: dimensions.width * roi.x,
+        y: dimensions.height * roi.y,
+        width: dimensions.width * roi.width,
+        height: dimensions.height * roi.height,
+      },
+      dimensions.width,
+      dimensions.height,
+    );
+  }
+
+  function expandBattleResultCrop(crop, paddingRatio) {
+    const dimensions = getStreamDimensions();
+    const paddingX = crop.width * paddingRatio;
+    const paddingY = crop.height * paddingRatio;
+    return clampAutoRoiCrop(
+      {
+        x: crop.x - paddingX,
+        y: crop.y - paddingY,
+        width: crop.width + (paddingX * 2),
+        height: crop.height + (paddingY * 2),
+      },
+      dimensions.width,
+      dimensions.height,
+    );
+  }
+
   function clampAutoRoiCrop(crop, videoWidth, videoHeight) {
     const width = clamp(Math.round(crop.width || 1), 1, videoWidth);
     const height = clamp(Math.round(crop.height || 1), 1, videoHeight);
@@ -4311,6 +4396,25 @@
     return state.autoSnap.iconDetectorContext;
   }
 
+  function getBattleResultDetectorContext(width, height) {
+    if (!state.battleResultDetectorCanvas) {
+      state.battleResultDetectorCanvas = document.createElement("canvas");
+    }
+
+    if (
+      state.battleResultDetectorCanvas.width !== width
+      || state.battleResultDetectorCanvas.height !== height
+    ) {
+      state.battleResultDetectorCanvas.width = width;
+      state.battleResultDetectorCanvas.height = height;
+      state.battleResultDetectorContext = state.battleResultDetectorCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+    }
+
+    return state.battleResultDetectorContext;
+  }
+
   function getPickOverlaySampleContext(width, height) {
     if (!state.autoSnap.pickSampleCanvas) {
       state.autoSnap.pickSampleCanvas = document.createElement("canvas");
@@ -4328,6 +4432,144 @@
     }
 
     return state.autoSnap.pickSampleContext;
+  }
+
+  function updateBattleResultDetection(metrics, now = Date.now()) {
+    const detection = state.battleResultDetection;
+    if (detection.result) {
+      return;
+    }
+
+    if (!state.references.enemy) {
+      detection.battleHudFrames = 0;
+      detection.lastSummary = "相手参照画像待ち";
+      return;
+    }
+
+    const battleHudSignal = getBattleHudSignal(metrics);
+    if (!detection.armed) {
+      detection.battleHudFrames = battleHudSignal.matched
+        ? detection.battleHudFrames + 1
+        : 0;
+      detection.lastSummary = battleHudSignal.matched
+        ? `battle HUD ${detection.battleHudFrames}/${BATTLE_RESULT_CONFIG.requiredBattleHudFrames}`
+        : "battle HUD待ち";
+
+      if (detection.battleHudFrames < BATTLE_RESULT_CONFIG.requiredBattleHudFrames) {
+        return;
+      }
+
+      detection.armed = true;
+      detection.lastSummary = "勝敗画面待ち";
+      appendBattleResultDebugLogIfChanged(
+        "armed",
+        ["[debug] result state: battle HUDを確認したため勝敗判定を開始します。"],
+      );
+      return;
+    }
+
+    if (now - detection.lastCheckAt < BATTLE_RESULT_CONFIG.checkIntervalMs) {
+      return;
+    }
+
+    detection.lastCheckAt = now;
+    const leftSignal = matchBattleResultTemplate(getBattleResultRoiCrop("left"));
+    const rightSignal = matchBattleResultTemplate(getBattleResultRoiCrop("right"));
+    detection.lastSignals = {
+      left: leftSignal,
+      right: rightSignal,
+    };
+
+    if (!leftSignal.templateReady || !rightSignal.templateReady) {
+      detection.leftStreak = 0;
+      detection.rightStreak = 0;
+      detection.lastSummary = "勝敗テンプレート待ち";
+      appendBattleResultDebugLogIfChanged(
+        "template-wait",
+        ["[debug] result state: 勝敗テンプレートの読み込みを待っています。"],
+      );
+      return;
+    }
+
+    if (leftSignal.matched === rightSignal.matched) {
+      detection.leftStreak = 0;
+      detection.rightStreak = 0;
+      detection.lastSummary = leftSignal.matched
+        ? "左右同時一致のため保留"
+        : "勝敗画面待ち";
+    } else if (leftSignal.matched) {
+      detection.leftStreak += 1;
+      detection.rightStreak = 0;
+      detection.lastSummary = `WIN候補 ${detection.leftStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`;
+    } else {
+      detection.leftStreak = 0;
+      detection.rightStreak += 1;
+      detection.lastSummary = `LOSE候補 ${detection.rightStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`;
+    }
+
+    appendBattleResultDebugLogIfChanged(
+      [
+        leftSignal.matched ? 1 : 0,
+        rightSignal.matched ? 1 : 0,
+        detection.leftStreak,
+        detection.rightStreak,
+        Math.round(leftSignal.coverageScore * 100),
+        Math.round(leftSignal.spillScore * 100),
+        Math.round(rightSignal.coverageScore * 100),
+        Math.round(rightSignal.spillScore * 100),
+      ].join(":"),
+      [
+        `[debug] result compare: left coverage=${formatAutoMetric(leftSignal.coverageScore)} spill=${formatAutoMetric(leftSignal.spillScore)} offset=${leftSignal.offsetX},${leftSignal.offsetY} matched=${leftSignal.matched ? "yes" : "no"}`,
+        `[debug] result compare: right coverage=${formatAutoMetric(rightSignal.coverageScore)} spill=${formatAutoMetric(rightSignal.spillScore)} offset=${rightSignal.offsetX},${rightSignal.offsetY} matched=${rightSignal.matched ? "yes" : "no"}`,
+        `[debug] result state: ${detection.lastSummary}`,
+      ],
+    );
+
+    if (detection.leftStreak >= BATTLE_RESULT_CONFIG.requiredMatchStreak) {
+      publishBattleResult("WIN", leftSignal, rightSignal);
+    } else if (detection.rightStreak >= BATTLE_RESULT_CONFIG.requiredMatchStreak) {
+      publishBattleResult("LOSE", leftSignal, rightSignal);
+    }
+  }
+
+  function publishBattleResult(result, leftSignal, rightSignal) {
+    const detection = state.battleResultDetection;
+    if (detection.result) {
+      return;
+    }
+
+    const event = {
+      result,
+      detectedAt: Date.now(),
+      source: "win-icon-template",
+      left: { ...leftSignal },
+      right: { ...rightSignal },
+    };
+    detection.result = result;
+    detection.event = event;
+    detection.detectedAt = event.detectedAt;
+    detection.lastSummary = result;
+
+    appendTerminalEntry(
+      [`[result] ${result}`],
+      result === "WIN" ? "success" : "system",
+    );
+    appendTerminalDebug(
+      [
+        `[debug] result accepted: ${result} left=${formatAutoMetric(leftSignal.coverageScore)}/${formatAutoMetric(leftSignal.spillScore)} right=${formatAutoMetric(rightSignal.coverageScore)}/${formatAutoMetric(rightSignal.spillScore)}`,
+      ],
+    );
+  }
+
+  function getBattleResultStatusLabel() {
+    const detection = state.battleResultDetection;
+    if (detection.result) {
+      return detection.result;
+    }
+    if (detection.armed) {
+      return "waiting";
+    }
+    return "battle-hud";
   }
 
   function updatePickOverlayDetection(metrics, now = Date.now()) {
@@ -5890,6 +6132,19 @@
     return lines;
   }
 
+  function getBattleResultDebugLines() {
+    const detection = state.battleResultDetection;
+    const template = state.battleResultTemplate;
+    const leftSignal = detection.lastSignals.left;
+    const rightSignal = detection.lastSignals.right;
+    return [
+      `[debug] result: template=${template.status} active=${template.activeCount || 0}/${Math.max((template.width || 0) * (template.height || 0), 0)} armed=${detection.armed ? "yes" : "no"} battleHud=${detection.battleHudFrames}/${BATTLE_RESULT_CONFIG.requiredBattleHudFrames} result=${detection.result || "none"}`,
+      `[debug] result left: coverage=${formatAutoMetric(leftSignal.coverageScore)} spill=${formatAutoMetric(leftSignal.spillScore)} offset=${leftSignal.offsetX},${leftSignal.offsetY} streak=${detection.leftStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`,
+      `[debug] result right: coverage=${formatAutoMetric(rightSignal.coverageScore)} spill=${formatAutoMetric(rightSignal.spillScore)} offset=${rightSignal.offsetX},${rightSignal.offsetY} streak=${detection.rightStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`,
+      `[debug] result summary: ${detection.lastSummary}`,
+    ];
+  }
+
   function getPokemonIconRecognitionDebugLines() {
     const recognition = state.pokemonIconRecognition;
     const manifestState = state.pokemonIconReferenceLoadFailed
@@ -5924,6 +6179,7 @@
     const lines = [
       `[debug] perf auto metrics: ${formatPerformanceDebugMetric("captureAutoSnapMetrics")}`,
       `[debug] perf pick detect: ${formatPerformanceDebugMetric("updatePickOverlayDetection")}`,
+      `[debug] perf result detect: ${formatPerformanceDebugMetric("battleResultDetection")}`,
       `[debug] perf snap: ${formatPerformanceDebugMetric("performSnapCapture")}`,
       `[debug] perf icon load: ${formatPerformanceDebugMetric("pokemonIconCandidateLoad")}`,
       `[debug] perf icon recog: ${formatPerformanceDebugMetric("pokemonIconRecognition")}`,
@@ -6336,6 +6592,16 @@
     appendTerminalDebug(lines);
   }
 
+  function appendBattleResultDebugLogIfChanged(key, lines) {
+    const detection = state.battleResultDetection;
+    if (!state.debugMode || detection.lastLogKey === key) {
+      return;
+    }
+
+    detection.lastLogKey = key;
+    appendTerminalDebug(lines);
+  }
+
   function appendPokemonIconDebugLogIfChanged(key, lines) {
     const recognition = state.pokemonIconRecognition;
     if (!state.debugMode || recognition.lastLogKey === key) {
@@ -6481,6 +6747,30 @@
     loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "読み込み中 画像の読み込みに失敗しました。");
     loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出タイマー画像の読み込みに失敗しました。");
     loadAutoTemplate("waitingTimer", AUTO_TEMPLATE_PATHS.waitingTimer, "auto-waiting-template-load-failed", "待機タイマー画像の読み込みに失敗しました。");
+  }
+
+  function loadBattleResultTemplate() {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      state.battleResultTemplate = buildBattleResultTemplate(image);
+      if (state.battleResultTemplate.status !== "ready") {
+        appendTerminalNotice(
+          "battle-result-template-invalid",
+          ["[error] 勝敗判定テンプレートを初期化できませんでした。勝敗判定は利用できません。"],
+          "error",
+        );
+      }
+    };
+    image.onerror = () => {
+      state.battleResultTemplate = createPendingAutoTemplate("error");
+      appendTerminalNotice(
+        "battle-result-template-load-failed",
+        ["[error] 勝敗判定テンプレートの読み込みに失敗しました。勝敗判定は利用できません。"],
+        "error",
+      );
+    };
+    image.src = BATTLE_RESULT_TEMPLATE_PATH;
   }
 
   function loadPickOverlayBadgeImages() {
@@ -6743,6 +7033,116 @@
     };
   }
 
+  function matchBattleResultTemplate(crop) {
+    const template = state.battleResultTemplate;
+    const threshold = BATTLE_RESULT_CONFIG.thresholds;
+    if (!crop || !template || template.status !== "ready" || !template.mask) {
+      return createEmptyBattleResultSignal(false);
+    }
+
+    const searchPadding = BATTLE_RESULT_CONFIG.searchPadding;
+    const searchWidth = template.width + (searchPadding * 2);
+    const searchHeight = template.height + (searchPadding * 2);
+    const context = getBattleResultDetectorContext(searchWidth, searchHeight);
+    if (!context) {
+      return createEmptyBattleResultSignal(false);
+    }
+
+    const searchCrop = expandBattleResultCrop(crop, searchPadding / Math.max(template.width, 1));
+    context.clearRect(0, 0, searchWidth, searchHeight);
+    context.drawImage(
+      elements.video,
+      searchCrop.x,
+      searchCrop.y,
+      searchCrop.width,
+      searchCrop.height,
+      0,
+      0,
+      searchWidth,
+      searchHeight,
+    );
+
+    const imageData = context.getImageData(0, 0, searchWidth, searchHeight).data;
+    let bestCoverage = 0;
+    let bestSpill = 1;
+    let bestOffsetX = 0;
+    let bestOffsetY = 0;
+    let bestScore = -Infinity;
+
+    BATTLE_RESULT_CONFIG.searchOffsets.forEach((relativeOffsetY) => {
+      BATTLE_RESULT_CONFIG.searchOffsets.forEach((relativeOffsetX) => {
+        const offsetX = searchPadding + relativeOffsetX;
+        const offsetY = searchPadding + relativeOffsetY;
+        let matchedPixels = 0;
+        let spillPixels = 0;
+
+        for (let y = 0; y < template.height; y += 1) {
+          for (let x = 0; x < template.width; x += 1) {
+            const templateIndex = (y * template.width) + x;
+            const sampleIndex = (((offsetY + y) * searchWidth) + (offsetX + x)) * 4;
+            const sampleIsGold = isBattleResultGoldPixel(
+              imageData[sampleIndex],
+              imageData[sampleIndex + 1],
+              imageData[sampleIndex + 2],
+            );
+
+            if (template.mask[templateIndex]) {
+              if (sampleIsGold) {
+                matchedPixels += 1;
+              }
+            } else if (sampleIsGold) {
+              spillPixels += 1;
+            }
+          }
+        }
+
+        const coverageScore = matchedPixels / Math.max(template.activeCount, 1);
+        const spillScore = spillPixels / Math.max(template.inactiveCount, 1);
+        const score = coverageScore - (spillScore * 0.55);
+        if (
+          score > bestScore
+          || (score === bestScore && coverageScore > bestCoverage)
+        ) {
+          bestScore = score;
+          bestCoverage = coverageScore;
+          bestSpill = spillScore;
+          bestOffsetX = relativeOffsetX;
+          bestOffsetY = relativeOffsetY;
+        }
+      });
+    });
+
+    return {
+      templateReady: true,
+      coverageScore: bestCoverage,
+      spillScore: bestSpill,
+      offsetX: bestOffsetX,
+      offsetY: bestOffsetY,
+      matched: bestCoverage >= threshold.coverageMin
+        && bestSpill <= threshold.spillMax,
+    };
+  }
+
+  function createEmptyBattleResultSignal(templateReady = false) {
+    return {
+      templateReady,
+      coverageScore: 0,
+      spillScore: 1,
+      offsetX: 0,
+      offsetY: 0,
+      matched: false,
+    };
+  }
+
+  function isBattleResultGoldPixel(r, g, b) {
+    return r >= 130
+      && g >= 75
+      && b <= 145
+      && r - b >= 40
+      && g - b >= 20
+      && r >= g * 0.82;
+  }
+
   function getAutoTemplateThreshold(templateKey) {
     if (templateKey === "loading") {
       return AUTO_SNAP_CONFIG.thresholds.loadingTemplate;
@@ -6793,6 +7193,49 @@
       matched: hudAccent >= threshold.hudAccentMin
         && metrics.battleHud.bright >= threshold.hudBrightMin
         && !enemyListStillVisible,
+    };
+  }
+
+  function buildBattleResultTemplate(image) {
+    const width = image.naturalWidth || image.width || 0;
+    const height = image.naturalHeight || image.height || 0;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d", {
+      willReadFrequently: true,
+    });
+    if (!context || !width || !height) {
+      return createPendingAutoTemplate("error");
+    }
+
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const imageData = context.getImageData(0, 0, width, height).data;
+    const mask = new Uint8Array(width * height);
+    let activeCount = 0;
+
+    for (let index = 0; index < imageData.length; index += 4) {
+      if (
+        isBattleResultGoldPixel(
+          imageData[index],
+          imageData[index + 1],
+          imageData[index + 2],
+        )
+      ) {
+        mask[index / 4] = 1;
+        activeCount += 1;
+      }
+    }
+
+    return {
+      status: activeCount ? "ready" : "error",
+      width,
+      height,
+      mask,
+      activeCount,
+      inactiveCount: Math.max((width * height) - activeCount, 1),
     };
   }
 
@@ -7013,6 +7456,25 @@
     };
   }
 
+  function createBattleResultDetectionState(reason = "") {
+    return {
+      armed: false,
+      battleHudFrames: 0,
+      lastCheckAt: 0,
+      leftStreak: 0,
+      rightStreak: 0,
+      result: "",
+      event: null,
+      detectedAt: 0,
+      lastSignals: {
+        left: createEmptyBattleResultSignal(),
+        right: createEmptyBattleResultSignal(),
+      },
+      lastSummary: reason || "battle HUD待ち",
+      lastLogKey: "",
+    };
+  }
+
   function createPickOverlayState(reason = "") {
     return {
       ordersByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => 0),
@@ -7093,6 +7555,10 @@
         waitingTimer: createPendingAutoTemplate(),
       },
     };
+  }
+
+  function resetBattleResultDetection(reason = "") {
+    state.battleResultDetection = createBattleResultDetectionState(reason || "リセット");
   }
 
   function resetPickOverlayState(reason = "", options = {}) {
