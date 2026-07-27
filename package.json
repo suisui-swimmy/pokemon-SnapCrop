@@ -1,0 +1,10 @@
+{
+  "name": "pokemon-snapcrop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "generate:icons": "node tools/generate-pokemon-icon-reference.mjs",
+    "validate:icons": "node tools/validate-pokemon-icon-reference.mjs"
+  }
+}

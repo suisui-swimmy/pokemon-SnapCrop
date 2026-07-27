@@ -1,6 +1,9 @@
 (() => {
   const CSV_PATH = "./data/pokemon-reference.csv";
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
+  const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
+  const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
+  const APP_VERSION = "pokemon-snapcrop-v1.4.0";
   const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
   const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
@@ -312,7 +315,6 @@
     sampleHeight: 64,
     imageLoadConcurrency: 24,
     alphaThreshold: 24,
-    minimumActiveRatio: 0.08,
     refineCandidateLimit: 48,
     searchScales: [0.84, 0.92, 1, 1.08, 1.16],
     searchOffsets: [-8, -4, 0, 4, 8],
@@ -332,6 +334,8 @@
       champions: 0,
       sv: 1,
     },
+    workerEnabled: true,
+    prewarmIdleTimeoutMs: 1500,
   };
   const PERFORMANCE_DEBUG_CONFIG = {
     logCooldownMs: 1200,
@@ -444,12 +448,17 @@
     pickOverlayFaintFrameImage: null,
     pickOverlayEffectFrameId: 0,
     pokemonIconReferenceReady: false,
+    pokemonIconManifest: null,
     pokemonIconReferenceEntries: [],
     pokemonIconReferenceLoadFailed: false,
+    pokemonIconManifestFetchMs: 0,
     pokemonIconCandidates: [],
     pokemonIconCandidatesPromise: null,
     pokemonIconCandidatesLoadFailed: false,
     pokemonIconRecognition: createPokemonIconRecognitionState(),
+    pokemonIconWorker: null,
+    pokemonIconWorkerState: createPokemonIconWorkerState(),
+    pokemonIconRequestSequence: 0,
     pokemonIconSampleCanvas: null,
     pokemonIconSampleContext: null,
     autoSnap: createAutoSnapState(),
@@ -631,6 +640,7 @@
   }
 
   async function loadPokemonIconReference() {
+    const startedAt = getPerformanceDebugNow();
     try {
       const response = await fetch(POKEMON_ICON_REFERENCE_PATH);
       if (!response.ok) {
@@ -642,10 +652,13 @@
         ? manifest.icons
           .filter((entry) => entry?.path && entry?.pokemonName)
           .map((entry) => ({
+            ...entry,
             id: String(entry.id || ""),
             source: String(entry.source || ""),
             path: String(entry.path || ""),
             pokemonName: String(entry.pokemonName || ""),
+            speciesKey: String(entry.speciesKey || ""),
+            variantKey: String(entry.variantKey || ""),
           }))
         : [];
 
@@ -653,6 +666,7 @@
         throw new Error("ポケモンアイコン参照データが空です。");
       }
 
+      state.pokemonIconManifest = manifest;
       state.pokemonIconReferenceEntries = entries;
       state.pokemonIconReferenceReady = true;
       state.pokemonIconReferenceLoadFailed = false;
@@ -661,6 +675,7 @@
         `manifest-ready:${entries.length}`,
         [`[debug] icon recog: manifest ready entries=${entries.length}`],
       );
+      schedulePokemonIconWorkerPrewarm();
       if (state.references.enemy) {
         scheduleEnemyReferencePokemonRecognition();
       }
@@ -678,6 +693,8 @@
         "system",
       );
       appendTerminalDebug([`[debug] icon reference load failed: ${error.message}`]);
+    } finally {
+      state.pokemonIconManifestFetchMs = getPerformanceDebugNow() - startedAt;
     }
   }
 
@@ -1574,7 +1591,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / debug icon export / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / pick clear = p clear <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
@@ -1605,7 +1622,7 @@
     }
 
     if (command === "debug") {
-      handleDebugCommand(arg);
+      handleDebugCommand(arg, extra, detail, rest);
       return true;
     }
 
@@ -3523,7 +3540,7 @@
     );
   }
 
-  function handleDebugCommand(arg) {
+  function handleDebugCommand(arg, extra = "", detail = "", rest = []) {
     const action = arg || "status";
 
     if (action === "on") {
@@ -3541,9 +3558,21 @@
       return;
     }
 
+    if (action === "icon") {
+      if (extra !== "export" || detail || rest.length) {
+        appendTerminalEntry(
+          ["[error] debug icon は export を指定できます。"],
+          "error",
+        );
+        return;
+      }
+      void exportPokemonIconDiagnosticBundle();
+      return;
+    }
+
     appendTerminalEntry(
       [
-        "[error] debug は on / off / status を指定できます。",
+        "[error] debug は on / off / status / icon export を指定できます。",
       ],
       "error",
     );
@@ -3863,6 +3892,149 @@
     lines.push(...getPokemonIconRecognitionDebugLines());
     lines.push(...getPerformanceDebugLines());
     return lines;
+  }
+
+  async function exportPokemonIconDiagnosticBundle() {
+    if (!state.debugMode) {
+      appendTerminalEntry(
+        ["[error] debug icon export は debug on のときだけ使用できます。"],
+        "error",
+      );
+      return;
+    }
+    const reference = state.references.enemy;
+    if (!reference) {
+      appendTerminalEntry(
+        ["[error] 相手側の参照画像がありません。先に snap enemy または snap both を実行してください。"],
+        "error",
+      );
+      return;
+    }
+
+    try {
+      const capturedAt = new Date().toISOString();
+      const recognition = state.pokemonIconRecognition;
+      const roiImages = createPokemonIconDiagnosticRoiImages(reference);
+      const results = recognition.resultsByRefIndex || [];
+      const bundle = {
+        schemaVersion: 1,
+        kind: "pokemon-snapcrop-icon-diagnostic",
+        capturedAt,
+        appVersion: APP_VERSION,
+        matcherPath: POKEMON_ICON_MATCHER_PATH,
+        workerPath: POKEMON_ICON_WORKER_PATH,
+        referenceImage: {
+          width: reference.width,
+          height: reference.height,
+          dataUrl: reference.toDataURL("image/png"),
+        },
+        labels: {
+          pokemonNames: PICK_OVERLAY_CONFIG.referenceRois.map(() => ""),
+        },
+        settings: {
+          roi: POKEMON_ICON_RECOGNITION_CONFIG.referenceRois,
+          legacy: {
+            sampleWidth: POKEMON_ICON_RECOGNITION_CONFIG.sampleWidth,
+            sampleHeight: POKEMON_ICON_RECOGNITION_CONFIG.sampleHeight,
+            scoreMin: POKEMON_ICON_RECOGNITION_CONFIG.scoreMin,
+            marginMin: POKEMON_ICON_RECOGNITION_CONFIG.marginMin,
+          },
+          matcher: recognition.lastDiagnostics?.config || null,
+        },
+        candidateStats: {
+          manifest: state.pokemonIconManifest?.stats || null,
+          worker: recognition.candidateStats || state.pokemonIconWorkerState.stats,
+        },
+        slots: roiImages.map((roiImage, refIndex) => {
+          const result = results[refIndex] || null;
+          return {
+            refIndex,
+            slot: refIndex + 1,
+            roi: POKEMON_ICON_RECOGNITION_CONFIG.referenceRois[refIndex],
+            width: roiImage.width,
+            height: roiImage.height,
+            dataUrl: roiImage.dataUrl,
+            foregroundMask: {
+              encoding: "rle-u8",
+              width: recognition.lastDiagnostics?.config?.sampleWidth || 64,
+              height: recognition.lastDiagnostics?.config?.sampleHeight || 64,
+              data: result?.foregroundMaskRle || [],
+            },
+            label: "",
+            coarseTopCandidates: result?.coarseTopCandidates || [],
+            refinedTopCandidates: result?.refinedTopCandidates || [],
+            finalResult: result,
+          };
+        }),
+        assignment: recognition.lastDiagnostics?.assignment || null,
+        globalTransform: recognition.lastDiagnostics?.globalTransform || null,
+        timings: {
+          matcher: recognition.lastDiagnostics?.timings || null,
+          worker: recognition.workerTiming || null,
+        },
+        candidateLoadFailures: recognition.candidateFailures.length
+          ? recognition.candidateFailures
+          : state.pokemonIconWorkerState.failures,
+        visualCollisions: recognition.visualCollisions.length
+          ? recognition.visualCollisions
+          : state.pokemonIconWorkerState.visualCollisions,
+        runtimeMergedDuplicates: state.pokemonIconWorkerState.runtimeMergedDuplicates,
+      };
+      const fileName = `pokemon-icon-diagnostic-${capturedAt.replace(/[:.]/gu, "-")}.json`;
+      downloadJsonFile(bundle, fileName);
+      appendTerminalEntry(
+        [`[debug] 名前推定の診断bundleを保存しました: ${fileName}`],
+        "success",
+      );
+    } catch (error) {
+      appendTerminalError("[error] 名前推定の診断bundleを保存できませんでした。", error);
+    }
+  }
+
+  function createPokemonIconDiagnosticRoiImages(reference) {
+    return POKEMON_ICON_RECOGNITION_CONFIG.referenceRois.map((roi) => {
+      const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
+      const width = Math.max(1, Math.round(crop.width));
+      const height = Math.max(1, Math.round(crop.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("診断ROIのcanvas初期化に失敗しました。");
+      }
+      context.drawImage(
+        reference,
+        Math.round(crop.x),
+        Math.round(crop.y),
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+      );
+      return {
+        width,
+        height,
+        dataUrl: canvas.toDataURL("image/png"),
+      };
+    });
+  }
+
+  function downloadJsonFile(value, fileName) {
+    const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function syncAutoSnapMonitoring() {
@@ -5258,7 +5430,7 @@
   }
 
   function readPokemonIconSampleFromContext(useAlphaMask) {
-    const { sampleWidth, sampleHeight, alphaThreshold, minimumActiveRatio } = POKEMON_ICON_RECOGNITION_CONFIG;
+    const { sampleWidth, sampleHeight, alphaThreshold } = POKEMON_ICON_RECOGNITION_CONFIG;
     const context = getPokemonIconSampleContext();
     if (!context) {
       return null;
@@ -5299,7 +5471,7 @@
       }
     }
 
-    if (useAlphaMask && activeCount < sampleSize * minimumActiveRatio) {
+    if (useAlphaMask && activeCount === 0) {
       return null;
     }
 
@@ -5409,6 +5581,343 @@
 
     const correlation = clamp(numerator / denominator, -1, 1);
     return (correlation + 1) / 2;
+  }
+
+  function schedulePokemonIconWorkerPrewarm() {
+    if (!POKEMON_ICON_RECOGNITION_CONFIG.workerEnabled || !state.pokemonIconManifest) {
+      return;
+    }
+    const start = () => {
+      initializePokemonIconWorker({ prewarm: true });
+    };
+    queueAfterNextPaint(() => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(start, {
+          timeout: POKEMON_ICON_RECOGNITION_CONFIG.prewarmIdleTimeoutMs,
+        });
+        return;
+      }
+      window.setTimeout(start, 0);
+    });
+  }
+
+  function initializePokemonIconWorker(options = {}) {
+    const { prewarm = true } = options;
+    const workerState = state.pokemonIconWorkerState;
+    if (state.pokemonIconWorker) {
+      if (prewarm && workerState.prewarmStatus === "idle") {
+        state.pokemonIconWorker.postMessage({ type: "prewarm" });
+      }
+      return true;
+    }
+    if (["failed", "unsupported"].includes(workerState.status)) {
+      return false;
+    }
+    if (
+      !POKEMON_ICON_RECOGNITION_CONFIG.workerEnabled
+      || typeof window.Worker !== "function"
+      || !state.pokemonIconManifest
+    ) {
+      workerState.status = "unsupported";
+      workerState.prewarmStatus = "unsupported";
+      workerState.reason = typeof window.Worker !== "function"
+        ? "Worker unavailable"
+        : "Worker disabled or manifest missing";
+      return false;
+    }
+
+    try {
+      const workerUrl = new URL(POKEMON_ICON_WORKER_PATH, document.baseURI);
+      const worker = new Worker(workerUrl, {
+        type: "module",
+        name: "pokemon-icon-matcher",
+      });
+      state.pokemonIconWorker = worker;
+      workerState.status = "initializing";
+      workerState.prewarmStatus = prewarm ? "queued" : "idle";
+      workerState.reason = "";
+      worker.addEventListener("message", handlePokemonIconWorkerMessage);
+      worker.addEventListener("error", handlePokemonIconWorkerError);
+      worker.addEventListener("messageerror", handlePokemonIconWorkerMessageError);
+      worker.postMessage({
+        type: "init",
+        manifest: {
+          ...state.pokemonIconManifest,
+          icons: state.pokemonIconReferenceEntries,
+        },
+        prewarm,
+      });
+      return true;
+    } catch (error) {
+      workerState.status = "failed";
+      workerState.prewarmStatus = "failed";
+      workerState.reason = error.message;
+      appendTerminalDebug([`[debug] icon worker init failed: ${error.message}`]);
+      return false;
+    }
+  }
+
+  function handlePokemonIconWorkerMessage(event) {
+    const message = event.data || {};
+    const workerState = state.pokemonIconWorkerState;
+    if (message.stats) {
+      workerState.stats = message.stats;
+    }
+    if (Array.isArray(message.failures)) {
+      workerState.failures = message.failures;
+    }
+    if (Array.isArray(message.visualCollisions)) {
+      workerState.visualCollisions = message.visualCollisions;
+    }
+    if (Array.isArray(message.runtimeMergedDuplicates)) {
+      workerState.runtimeMergedDuplicates = message.runtimeMergedDuplicates;
+    }
+
+    if (message.type === "worker-loaded") {
+      workerState.status = "loaded";
+      return;
+    }
+    if (message.type === "worker-ready") {
+      workerState.status = "ready";
+      workerState.capabilities = message.capabilities || {};
+      return;
+    }
+    if (message.type === "prewarm-start") {
+      workerState.status = "prewarming";
+      workerState.prewarmStatus = "loading";
+      state.pokemonIconRecognition.lastSummary = `worker prewarm loading canonical=${message.stats?.canonicalManifestCount || state.pokemonIconReferenceEntries.length}`;
+      return;
+    }
+    if (message.type === "prewarm-progress") {
+      workerState.status = "prewarming";
+      workerState.prewarmStatus = "loading";
+      return;
+    }
+    if (message.type === "prewarm-complete") {
+      workerState.status = "ready";
+      workerState.prewarmStatus = "ready";
+      workerState.reason = "";
+      if (!state.pokemonIconRecognition.reference) {
+        state.pokemonIconRecognition.lastSummary = `worker prewarm ready loaded=${message.stats?.loadedCount || 0}/${message.stats?.canonicalManifestCount || 0}`;
+      }
+      appendPokemonIconDebugLogIfChanged(
+        `worker-prewarm-ready:${message.stats?.loadedCount || 0}:${message.stats?.loadFailureCount || 0}`,
+        [
+          `[debug] icon worker: prewarm ready loaded=${message.stats?.loadedCount || 0}/${message.stats?.canonicalManifestCount || 0} runtimeMerged=${message.stats?.runtimeNormalizedDuplicateCount || 0} collisions=${message.stats?.runtimeVisualCollisionGroupCount || 0} failures=${message.stats?.loadFailureCount || 0}`,
+        ],
+      );
+      return;
+    }
+    if (message.type === "worker-unsupported" || message.type === "prewarm-error") {
+      workerState.status = message.type === "worker-unsupported" ? "unsupported" : "failed";
+      workerState.prewarmStatus = workerState.status;
+      workerState.reason = message.error || message.type;
+      state.pokemonIconWorker?.terminate();
+      state.pokemonIconWorker = null;
+      fallbackCurrentPokemonIconRecognition(workerState.reason);
+      return;
+    }
+    if (message.type === "recognition-start") {
+      if (state.pokemonIconRecognition.requestId === message.requestId) {
+        state.pokemonIconRecognition.status = "recognizing";
+        state.pokemonIconRecognition.reason = "";
+        state.pokemonIconRecognition.lastSummary = `worker recognizing request=${message.requestId} candidates=${message.candidateCount || 0}`;
+      }
+      return;
+    }
+    if (message.type === "recognition-result") {
+      applyPokemonIconWorkerResult(message);
+      return;
+    }
+    if (message.type === "recognition-cancelled") {
+      if (state.pokemonIconRecognition.requestId === message.requestId) {
+        state.pokemonIconRecognition.status = "cancelled";
+        state.pokemonIconRecognition.reason = message.reason || "cancelled";
+        state.pokemonIconRecognition.lastSummary = `cancelled request=${message.requestId}`;
+      }
+      return;
+    }
+    if (message.type === "recognition-error") {
+      if (state.pokemonIconRecognition.requestId === message.requestId) {
+        workerState.reason = message.error || "recognition error";
+        fallbackCurrentPokemonIconRecognition(workerState.reason);
+      }
+    }
+  }
+
+  function handlePokemonIconWorkerError(event) {
+    const message = event?.message || "Worker error";
+    state.pokemonIconWorkerState.status = "failed";
+    state.pokemonIconWorkerState.prewarmStatus = "failed";
+    state.pokemonIconWorkerState.reason = message;
+    state.pokemonIconWorker?.terminate();
+    state.pokemonIconWorker = null;
+    appendTerminalDebug([`[debug] icon worker error: ${message}`]);
+    fallbackCurrentPokemonIconRecognition(message);
+  }
+
+  function handlePokemonIconWorkerMessageError() {
+    state.pokemonIconWorkerState.status = "failed";
+    state.pokemonIconWorkerState.reason = "Worker message decode failed";
+    state.pokemonIconWorker?.terminate();
+    state.pokemonIconWorker = null;
+    appendTerminalDebug(["[debug] icon worker messageerror"]);
+    fallbackCurrentPokemonIconRecognition("Worker message decode failed");
+  }
+
+  function fallbackCurrentPokemonIconRecognition(reason = "") {
+    const recognition = state.pokemonIconRecognition;
+    const reference = recognition.reference;
+    const requestId = recognition.requestId;
+    if (!reference || state.references.enemy !== reference || !requestId) {
+      return;
+    }
+    if (recognition.engine === "legacy" && ["loading", "recognizing", "ready"].includes(recognition.status)) {
+      return;
+    }
+    recognition.engine = "legacy";
+    recognition.status = "loading";
+    recognition.reason = reason ? `worker fallback: ${reason}` : "worker fallback";
+    recognition.lastSummary = `legacy fallback request=${requestId}`;
+    appendTerminalNotice(
+      "pokemon-icon-worker-fallback",
+      ["[system] 名前推定を互換モードで実行します。詳細は debug status で確認できます。"],
+      "system",
+    );
+    void recognizeEnemyReferencePokemonSlots(reference, requestId);
+  }
+
+  function createPokemonIconWorkerSlotPayloads(reference) {
+    const slots = [];
+    const transfer = [];
+    POKEMON_ICON_RECOGNITION_CONFIG.referenceRois.forEach((roi) => {
+      const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
+      const width = Math.max(1, Math.round(crop.width));
+      const height = Math.max(1, Math.round(crop.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+      if (!context) {
+        throw new Error("名前推定ROIのcanvas初期化に失敗しました。");
+      }
+      context.drawImage(
+        reference,
+        Math.round(crop.x),
+        Math.round(crop.y),
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+      );
+      const imageData = context.getImageData(0, 0, width, height);
+      slots.push({
+        width,
+        height,
+        buffer: imageData.data.buffer,
+      });
+      transfer.push(imageData.data.buffer);
+    });
+    return {
+      slots,
+      transfer,
+    };
+  }
+
+  function startPokemonIconWorkerRecognition(reference, requestId) {
+    if (!initializePokemonIconWorker({ prewarm: true }) || !state.pokemonIconWorker) {
+      return false;
+    }
+    try {
+      const payload = createPokemonIconWorkerSlotPayloads(reference);
+      const recognition = state.pokemonIconRecognition;
+      recognition.engine = "worker";
+      recognition.status = "queued";
+      recognition.reason = state.pokemonIconWorkerState.prewarmStatus === "ready"
+        ? "worker queue"
+        : "worker prewarm";
+      recognition.requestSentAt = getPerformanceDebugNow();
+      recognition.lastSummary = `worker queued request=${requestId} slots=${payload.slots.length}`;
+      state.pokemonIconWorker.postMessage({
+        type: "recognize",
+        requestId,
+        slots: payload.slots,
+      }, payload.transfer);
+      return true;
+    } catch (error) {
+      state.pokemonIconWorkerState.status = "failed";
+      state.pokemonIconWorkerState.reason = error.message;
+      appendTerminalDebug([`[debug] icon worker request failed: ${error.message}`]);
+      return false;
+    }
+  }
+
+  function applyPokemonIconWorkerResult(message) {
+    const recognition = state.pokemonIconRecognition;
+    if (
+      recognition.requestId !== message.requestId
+      || state.references.enemy !== recognition.reference
+    ) {
+      appendPokemonIconDebugLogIfChanged(
+        `worker-stale:${message.requestId}:${recognition.requestId}`,
+        [`[debug] icon worker: stale request=${message.requestId} current=${recognition.requestId}`],
+      );
+      return;
+    }
+    const results = Array.isArray(message.result?.results)
+      ? message.result.results
+      : [];
+    if (results.length !== PICK_OVERLAY_CONFIG.referenceRois.length) {
+      fallbackCurrentPokemonIconRecognition("Worker result slot count mismatch");
+      return;
+    }
+    recognition.engine = "worker";
+    recognition.status = "ready";
+    recognition.reason = "";
+    recognition.resultsByRefIndex = results;
+    recognition.lastDiagnostics = message.result;
+    recognition.workerTiming = message.workerTiming || {};
+    recognition.candidateStats = message.stats || state.pokemonIconWorkerState.stats;
+    recognition.candidateFailures = message.failures || [];
+    recognition.visualCollisions = message.visualCollisions || [];
+    recognition.lastSlotSummaries = results.map(formatPokemonIconRecognitionSlotSummary);
+    const matchedCount = results.filter((result) => result?.matched).length;
+    recognition.lastSummary = `worker done matched=${matchedCount}/${results.length} candidates=${message.stats?.loadedCount || 0} total=${formatPerformanceMs(message.result?.timings?.totalMs || 0)}`;
+    results.forEach((result, refIndex) => {
+      recordPerformanceDebugMetric(
+        "pokemonIconSlot",
+        result?.durationMs || 0,
+        `request=${message.requestId} ${getPickSlotLabel(refIndex)} ${recognition.lastSlotSummaries[refIndex]}`,
+        { logKey: `pokemonIconSlot:${refIndex}` },
+      );
+    });
+    recordPerformanceDebugMetric(
+      "pokemonIconRecognition",
+      getPerformanceDebugNow() - (recognition.requestSentAt || getPerformanceDebugNow()),
+      `request=${message.requestId} engine=worker matched=${matchedCount}/${results.length} worker=${formatPerformanceMs(message.workerTiming?.totalWorkerMs || 0)}`,
+    );
+    appendPokemonIconDebugLogIfChanged(
+      `worker-done:${message.requestId}:${matchedCount}:${recognition.lastSlotSummaries.join("|")}`,
+      [
+        `[debug] icon worker: ${recognition.lastSummary}`,
+        ...recognition.lastSlotSummaries.map((summary, index) => `[debug] icon recog ${getPickSlotLabel(index)}: ${summary}`),
+      ],
+    );
+    flushPickOverlayPokemonResults();
+  }
+
+  function cancelPokemonIconWorkerRequest(requestId) {
+    if (!requestId || !state.pokemonIconWorker) {
+      return;
+    }
+    state.pokemonIconWorker.postMessage({
+      type: "cancel",
+      requestId,
+    });
   }
 
   async function ensurePokemonIconCandidatesLoaded() {
@@ -5523,8 +6032,10 @@
       return;
     }
 
-    const requestId = state.pokemonIconRecognition.requestId + 1;
+    const requestId = state.pokemonIconRequestSequence + 1;
+    state.pokemonIconRequestSequence = requestId;
     state.pokemonIconRecognition.requestId = requestId;
+    state.pokemonIconRecognition.reference = reference;
     state.pokemonIconRecognition.status = deferUntilAfterPaint ? "queued" : "loading";
     state.pokemonIconRecognition.reason = deferUntilAfterPaint ? "waiting for repaint" : "";
     state.pokemonIconRecognition.lastSummary = deferUntilAfterPaint
@@ -5546,6 +6057,17 @@
       return;
     }
 
+    if (startPokemonIconWorkerRecognition(reference, requestId)) {
+      appendPokemonIconDebugLogIfChanged(
+        `worker-start:${requestId}:${reference.width}x${reference.height}`,
+        [
+          `[debug] icon worker: queued request=${requestId} ref=${reference.width}x${reference.height} prewarm=${state.pokemonIconWorkerState.prewarmStatus}`,
+        ],
+      );
+      return;
+    }
+
+    recognition.engine = "legacy";
     recognition.status = "loading";
     recognition.reason = "";
     recognition.lastSummary = `start request=${requestId} ref=${reference.width}x${reference.height} entries=${state.pokemonIconReferenceEntries.length} nameRoi=114x114`;
@@ -5613,20 +6135,43 @@
       }
 
       const slotSummaries = [];
-      recognition.resultsByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map((fallbackRoi, refIndex) => {
+      const resultsByRefIndex = [];
+      for (
+        let refIndex = 0;
+        refIndex < PICK_OVERLAY_CONFIG.referenceRois.length;
+        refIndex += 1
+      ) {
         const slotStartedAt = getPerformanceDebugNow();
         try {
+          const fallbackRoi = PICK_OVERLAY_CONFIG.referenceRois[refIndex];
           const roi = POKEMON_ICON_RECOGNITION_CONFIG.referenceRois[refIndex] || fallbackRoi;
           const crop = getPickOverlayNormalizedRect(roi, reference.width, reference.height);
           const sample = samplePokemonIconSource(reference, crop);
           if (!sample) {
             slotSummaries[refIndex] = "rejected no_sample";
-            return null;
+            resultsByRefIndex[refIndex] = null;
+            continue;
           }
 
-          const result = recognizePokemonIconSlot(sample, candidates);
+          const result = await recognizePokemonIconSlot(sample, candidates, {
+            isCancelled: () => (
+              state.pokemonIconRecognition.requestId !== requestId
+              || state.references.enemy !== reference
+            ),
+          });
+          if (
+            state.pokemonIconRecognition.requestId !== requestId
+            || state.references.enemy !== reference
+          ) {
+            status = "stale";
+            appendPokemonIconDebugLogIfChanged(
+              `fallback-stale:${requestId}:${state.pokemonIconRecognition.requestId}`,
+              [`[debug] icon fallback: stale request=${requestId} current=${state.pokemonIconRecognition.requestId}`],
+            );
+            return;
+          }
           slotSummaries[refIndex] = formatPokemonIconRecognitionSlotSummary(result);
-          return result;
+          resultsByRefIndex[refIndex] = result;
         } finally {
           const slotDurationMs = getPerformanceDebugNow() - slotStartedAt;
           slotDurations[refIndex] = slotDurationMs;
@@ -5637,7 +6182,8 @@
             { logKey: `pokemonIconSlot:${refIndex}` },
           );
         }
-      });
+      }
+      recognition.resultsByRefIndex = resultsByRefIndex;
       recognition.status = "ready";
       recognition.reason = "";
       recognition.lastSlotSummaries = slotSummaries;
@@ -5664,27 +6210,46 @@
     }
   }
 
-  function recognizePokemonIconSlot(referenceSample, candidates) {
+  async function recognizePokemonIconSlot(referenceSample, candidates, options = {}) {
     if (!referenceSample) {
       return null;
     }
 
-    const coarseRanked = candidates
-      .map((candidate) => {
-        const scores = comparePokemonIconSamples(referenceSample, candidate.sample, { useColor: false });
-        return {
-          ...candidate,
-          ...scores,
-          bestScale: 1,
-          bestOffsetX: 0,
-          bestOffsetY: 0,
-        };
-      })
-      .sort(comparePokemonIconRecognitionResults);
-    const ranked = coarseRanked
-      .slice(0, POKEMON_ICON_RECOGNITION_CONFIG.refineCandidateLimit)
-      .map((candidate) => refinePokemonIconCandidate(referenceSample, candidate))
-      .sort(comparePokemonIconRecognitionResults);
+    const isCancelled = options.isCancelled || (() => false);
+    const coarseRanked = [];
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      const scores = comparePokemonIconSamples(referenceSample, candidate.sample, { useColor: false });
+      coarseRanked.push({
+        ...candidate,
+        ...scores,
+        bestScale: 1,
+        bestOffsetX: 0,
+        bestOffsetY: 0,
+      });
+      if ((index + 1) % 32 === 0) {
+        await yieldPokemonIconFallback();
+        if (isCancelled()) {
+          return null;
+        }
+      }
+    }
+    coarseRanked.sort(comparePokemonIconRecognitionResults);
+    const ranked = [];
+    const refineCandidates = coarseRanked.slice(
+      0,
+      POKEMON_ICON_RECOGNITION_CONFIG.refineCandidateLimit,
+    );
+    for (const candidate of refineCandidates) {
+      ranked.push(await refinePokemonIconCandidate(referenceSample, candidate, {
+        isCancelled,
+      }));
+      await yieldPokemonIconFallback();
+      if (isCancelled()) {
+        return null;
+      }
+    }
+    ranked.sort(comparePokemonIconRecognitionResults);
     const best = ranked[0] || null;
     if (!best) {
       return null;
@@ -5726,18 +6291,24 @@
     };
   }
 
-  function refinePokemonIconCandidate(referenceSample, candidate) {
+  function yieldPokemonIconFallback() {
+    return new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+
+  async function refinePokemonIconCandidate(referenceSample, candidate, options = {}) {
     if (!candidate.image) {
       return candidate;
     }
 
+    const isCancelled = options.isCancelled || (() => false);
     let best = null;
-    POKEMON_ICON_RECOGNITION_CONFIG.searchScales.forEach((scale) => {
-      POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetY) => {
-        POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets.forEach((offsetX) => {
+    let transformCount = 0;
+    for (const scale of POKEMON_ICON_RECOGNITION_CONFIG.searchScales) {
+      for (const offsetY of POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets) {
+        for (const offsetX of POKEMON_ICON_RECOGNITION_CONFIG.searchOffsets) {
           const sample = samplePokemonIconCandidateImage(candidate.image, { scale, offsetX, offsetY });
           if (!sample) {
-            return;
+            continue;
           }
 
           const scores = comparePokemonIconSamples(referenceSample, sample, { useColor: true });
@@ -5751,9 +6322,16 @@
           if (!best || comparePokemonIconRecognitionResults(refined, best) < 0) {
             best = refined;
           }
-        });
-      });
-    });
+          transformCount += 1;
+          if (transformCount % 8 === 0) {
+            await yieldPokemonIconFallback();
+            if (isCancelled()) {
+              return candidate;
+            }
+          }
+        }
+      }
+    }
     return best || candidate;
   }
 
@@ -5797,6 +6375,17 @@
 
     const bestLabel = result.bestId || "unknown";
     const sourceLabel = result.bestSource || "unknown";
+    if ("silhouette" in result || result.rejectionReason) {
+      const pokemonLabel = result.pokemonName || result.bestPokemonName || "unresolved";
+      const metrics = `score=${formatPokemonIconScore(result.bestScore ?? result.score)} silhouette=${formatPokemonIconScore(result.silhouette)} coverage=${formatPokemonIconScore(result.candidateCoverage ?? result.coverage)} input=${formatPokemonIconScore(result.inputCoverage)} spill=${formatPokemonIconScore(result.spill)} missing=${formatPokemonIconScore(result.missing)} gray=${formatPokemonIconScore(result.gray)} edge=${formatPokemonIconScore(result.edge)} color=${formatPokemonIconScore(result.color)} margin=${formatPokemonIconScore(result.localMargin ?? result.margin)} assignment=${formatPokemonIconScore(result.assignmentMargin)} globalAssignment=${formatPokemonIconScore(result.globalAssignmentMargin)} sourceAgree=${formatPokemonIconScore(result.sourceAgreement)} support=${result.supportingTemplateCount || 0}`;
+      const globalTransform = result.globalTransform || {};
+      const localCorrection = result.localCorrection || {};
+      const transform = `global=${formatPokemonIconScore(globalTransform.scale || 1)}@${Math.round(globalTransform.offsetX || 0)},${Math.round(globalTransform.offsetY || 0)} local=${formatPokemonIconScore(localCorrection.scaleDelta || 0)}@${Math.round(localCorrection.offsetX || 0)},${Math.round(localCorrection.offsetY || 0)}`;
+      if (result.matched) {
+        return `accepted ${pokemonLabel} best=${bestLabel} source=${sourceLabel} ${metrics} ${transform}`;
+      }
+      return `rejected reason=${result.rejectionReason || "unresolved"} bestName=${pokemonLabel} best=${bestLabel} source=${sourceLabel} ${metrics} ${transform}`;
+    }
     const metrics = `score=${formatPokemonIconScore(result.bestScore)} shape=${formatPokemonIconScore(result.bestShapeScore)} color=${formatPokemonIconScore(result.bestColorScore)} margin=${formatPokemonIconScore(result.margin)} second=${formatPokemonIconScore(result.secondBestScore)}`;
     const transform = `scale=${formatPokemonIconScore(result.bestScale || 1)} offset=${Math.round(result.bestOffsetX || 0)},${Math.round(result.bestOffsetY || 0)}`;
     if (result.matched) {
@@ -5807,6 +6396,7 @@
   }
 
   function resetPokemonIconRecognitionState(reason = "") {
+    cancelPokemonIconWorkerRequest(state.pokemonIconRecognition?.requestId);
     state.pokemonIconRecognition = createPokemonIconRecognitionState(reason);
   }
 
@@ -6147,6 +6737,9 @@
 
   function getPokemonIconRecognitionDebugLines() {
     const recognition = state.pokemonIconRecognition;
+    const manifestStats = state.pokemonIconManifest?.stats || {};
+    const workerState = state.pokemonIconWorkerState;
+    const workerStats = workerState.stats || {};
     const manifestState = state.pokemonIconReferenceLoadFailed
       ? "failed"
       : state.pokemonIconReferenceReady
@@ -6160,12 +6753,40 @@
           ? "ready"
           : "idle";
     const lines = [
-      `[debug] icon recog: status=${recognition.status} manifest=${manifestState} entries=${state.pokemonIconReferenceEntries.length} candidates=${candidateState}:${state.pokemonIconCandidates.length}`,
+      `[debug] icon recog: status=${recognition.status} engine=${recognition.engine || "pending"} manifest=${manifestState} entries=${state.pokemonIconReferenceEntries.length} legacyCandidates=${candidateState}:${state.pokemonIconCandidates.length}`,
       `[debug] icon recog summary: ${recognition.lastSummary || recognition.reason || "未評価"}`,
+      `[debug] icon manifest: raw=${manifestStats.rawCandidateCount || 0} canonical=${manifestStats.canonicalCandidateCount || state.pokemonIconReferenceEntries.length} buildMerged=${manifestStats.mergedDuplicateCount || 0} names=${manifestStats.uniquePokemonNameCount || 0} species=${manifestStats.uniqueSpeciesKeyCount || 0}`,
+      `[debug] icon sources: champions=${manifestStats.sourceCounts?.raw?.champions || 0} sv=${manifestStats.sourceCounts?.raw?.sv || 0} svOnlyNames=${manifestStats.svOnlyPokemonNameCount || 0} buildCollisions=${manifestStats.visualCollisionGroupCount || 0} invalid=${manifestStats.invalidCount || 0}`,
+      `[debug] icon worker: status=${workerState.status} prewarm=${workerState.prewarmStatus} loaded=${workerStats.loadedCount || 0}/${workerStats.canonicalManifestCount || manifestStats.canonicalCandidateCount || 0} runtimeMerged=${workerStats.runtimeNormalizedDuplicateCount || 0} collisions=${workerStats.runtimeVisualCollisionGroupCount || 0} failures=${workerStats.loadFailureCount || workerState.failures.length}`,
+      `[debug] icon manifest perf: fetch+parse=${formatPerformanceMs(state.pokemonIconManifestFetchMs)}`,
     ];
 
     if (recognition.reason) {
       lines.push(`[debug] icon recog reason: ${recognition.reason}`);
+    }
+    if (workerState.reason) {
+      lines.push(`[debug] icon worker reason: ${workerState.reason}`);
+    }
+    if (workerStats.timings) {
+      lines.push(
+        `[debug] icon prewarm perf: fetch=${formatPerformanceMs(workerStats.timings.candidateFetchMs)} decode=${formatPerformanceMs(workerStats.timings.candidateDecodeMs)} preprocess=${formatPerformanceMs(workerStats.timings.candidatePreprocessMs)} dedupe=${formatPerformanceMs(workerStats.timings.dedupeMs)} total=${formatPerformanceMs(workerStats.timings.prewarmTotalMs)}`,
+      );
+    }
+    if (recognition.lastDiagnostics?.timings) {
+      const timings = recognition.lastDiagnostics.timings;
+      lines.push(
+        `[debug] icon worker perf: foreground=${formatPerformanceMs(timings.foregroundMs)} coarse=${formatPerformanceMs(timings.coarseMs)} global=${formatPerformanceMs(timings.globalTransformMs)} refine=${formatPerformanceMs(timings.refineMs)} assignment=${formatPerformanceMs(timings.assignmentMs)} total=${formatPerformanceMs(timings.totalMs)} mainRT=${formatPerformanceMs(recognition.workerTiming?.totalWorkerMs)}`,
+      );
+    }
+    if (workerState.failures.length) {
+      const reasonCounts = workerState.failures.reduce((counts, failure) => {
+        const reason = failure.reason || "unknown_error";
+        counts[reason] = (counts[reason] || 0) + 1;
+        return counts;
+      }, {});
+      lines.push(
+        `[debug] icon failures: ${Object.entries(reasonCounts).map(([reason, count]) => `${reason}=${count}`).join(" ")}`,
+      );
     }
 
     recognition.lastSlotSummaries.forEach((summary, refIndex) => {
@@ -7539,12 +8160,33 @@
     return {
       status: reason ? "reset" : "idle",
       reason,
+      engine: "",
       requestId: 0,
+      reference: null,
+      requestSentAt: 0,
       resultsByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => null),
       notifiedByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => false),
       lastSummary: reason || "未評価",
       lastSlotSummaries: PICK_OVERLAY_CONFIG.referenceRois.map(() => reason || "未評価"),
+      lastDiagnostics: null,
+      workerTiming: {},
+      candidateStats: null,
+      candidateFailures: [],
+      visualCollisions: [],
       lastLogKey: "",
+    };
+  }
+
+  function createPokemonIconWorkerState() {
+    return {
+      status: "idle",
+      prewarmStatus: "idle",
+      reason: "",
+      capabilities: {},
+      stats: null,
+      failures: [],
+      runtimeMergedDuplicates: [],
+      visualCollisions: [],
     };
   }
 

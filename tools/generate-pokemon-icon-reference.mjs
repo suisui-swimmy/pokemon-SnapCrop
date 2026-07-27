@@ -1,5 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  buildIconManifestStats,
+  groupExactIconCandidates,
+  hashStringSet,
+  ICON_MANIFEST_SCHEMA_VERSION,
+  ICON_SAMPLE_SIZE,
+  sha256Buffer,
+  validateRawAccounting,
+} from "./pokemon-icon-manifest.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const ICON_SOURCES = [
@@ -20,6 +29,7 @@ const POKEMON_DATA_TSV_PATH = path.join(ROOT, "others", "pokemon-data", "POKEMON
 const POKEAPI_CSV_DIR = path.join(ROOT, "others", "pokeapi", "data", "v2", "csv");
 const POKEMON_REFERENCE_PATH = path.join(ROOT, "data", "pokemon-reference.csv");
 const OUTPUT_PATH = path.join(ROOT, "data", "pokemon-icon-reference.json");
+const BASELINE_PATH = path.join(ROOT, "tests", "fixtures", "pokemon-icon-baseline.json");
 const JA_LANGUAGE_ID = "1";
 
 function parseCsv(text, delimiter = ",") {
@@ -238,6 +248,146 @@ function createPokeApiNameMap(resolver) {
   return map;
 }
 
+function toStableIdentifier(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+}
+
+function createSpeciesMetadataResolver() {
+  const exact = new Map();
+  const byPokemonName = new Map();
+
+  function addExact(key, metadata) {
+    const lookupKey = normalizeLookupKey(key);
+    if (!lookupKey || exact.has(lookupKey) || !metadata?.speciesKey) {
+      return;
+    }
+    exact.set(lookupKey, metadata);
+  }
+
+  function addPokemonName(name, metadata) {
+    const lookupKey = normalizeReferenceName(name);
+    if (!lookupKey || byPokemonName.has(lookupKey) || !metadata?.speciesKey) {
+      return;
+    }
+    byPokemonName.set(lookupKey, metadata);
+  }
+
+  const pokemonRows = readPokeApiCsv("pokemon.csv");
+  const speciesRows = readPokeApiCsv("pokemon_species.csv");
+  const formRows = readPokeApiCsv("pokemon_forms.csv");
+  const speciesNameRows = readPokeApiCsv("pokemon_species_names.csv");
+  const formNameRows = readPokeApiCsv("pokemon_form_names.csv");
+  const pokemonById = new Map(pokemonRows.map((row) => [row.id, row]));
+  const speciesById = new Map(speciesRows.map((row) => [row.id, row]));
+  const speciesNameJaById = new Map(
+    speciesNameRows
+      .filter((row) => row.local_language_id === JA_LANGUAGE_ID)
+      .map((row) => [row.pokemon_species_id, row.name]),
+  );
+  const formNameJaById = new Map(
+    formNameRows
+      .filter((row) => row.local_language_id === JA_LANGUAGE_ID)
+      .map((row) => [row.pokemon_form_id, row.pokemon_name || row.form_name]),
+  );
+
+  formRows.forEach((form) => {
+    const pokemon = pokemonById.get(form.pokemon_id);
+    const species = pokemon ? speciesById.get(pokemon.species_id) : null;
+    if (!pokemon || !species?.identifier) {
+      return;
+    }
+    const metadata = {
+      speciesKey: `species:${species.identifier}`,
+      variantKey: `variant:${form.identifier || pokemon.identifier}`,
+      method: "pokeapi_form",
+      fallback: false,
+    };
+    [form.identifier, pokemon.identifier, species.identifier].forEach((key) => addExact(key, metadata));
+    addPokemonName(speciesNameJaById.get(species.id), metadata);
+    addPokemonName(formNameJaById.get(form.id), metadata);
+  });
+
+  if (fs.existsSync(POKEMON_DATA_TSV_PATH)) {
+    readTable(POKEMON_DATA_TSV_PATH, "\t").forEach((row) => {
+      const speciesIdentifier = row.pokeapi_species_id_name || toStableIdentifier(row.pkmn_base_species);
+      if (!speciesIdentifier) {
+        return;
+      }
+      const variantIdentifier = row.pokeapi_form_id_name
+        || row.pokeapi_pokemon_id_name
+        || row.pkmn_id_name
+        || speciesIdentifier;
+      const metadata = {
+        speciesKey: `species:${speciesIdentifier}`,
+        variantKey: `variant:${variantIdentifier}`,
+        method: "pokemon_data",
+        fallback: false,
+      };
+      [
+        row.pkmn_name,
+        row.pkmn_id_name,
+        row.pokeapi_form_id_name,
+        row.pokeapi_pokemon_id_name,
+        row.pokeapi_species_id_name,
+      ].forEach((key) => addExact(key, metadata));
+      [
+        row.yakkuncom_name,
+        row.pokeapi_species_name_ja,
+        row.pokeapi_form_name_ja,
+      ].forEach((name) => addPokemonName(name, metadata));
+    });
+  }
+
+  return {
+    resolve(stem, pokemonName) {
+      const decoded = decodeStem(stem);
+      const exactMatch = exact.get(normalizeLookupKey(decoded));
+      if (exactMatch) {
+        return {
+          ...exactMatch,
+          variantKey: `variant:${toStableIdentifier(decoded) || exactMatch.variantKey.replace(/^variant:/u, "")}`,
+        };
+      }
+
+      const parts = decoded.split("-").filter(Boolean);
+      for (let length = parts.length - 1; length >= 1; length -= 1) {
+        const baseMatch = exact.get(normalizeLookupKey(parts.slice(0, length).join("-")));
+        if (baseMatch) {
+          return {
+            ...baseMatch,
+            variantKey: `variant:${toStableIdentifier(decoded)}`,
+            method: "base_id_fallback",
+            fallback: true,
+          };
+        }
+      }
+
+      const nameMatch = byPokemonName.get(normalizeReferenceName(pokemonName));
+      if (nameMatch) {
+        return {
+          ...nameMatch,
+          variantKey: `variant:${toStableIdentifier(decoded)}`,
+          method: "pokemon_name_fallback",
+          fallback: true,
+        };
+      }
+
+      return {
+        speciesKey: `icon:${toStableIdentifier(decoded) || "unknown"}`,
+        variantKey: `variant:${toStableIdentifier(decoded) || "unknown"}`,
+        method: "icon_id_fallback",
+        fallback: true,
+      };
+    },
+  };
+}
+
 function createManualNameMap(resolver) {
   const entries = [
     ["Gourgeist-Jumbo", "パンプジン(とくだいサイズ)"],
@@ -294,14 +444,49 @@ function resolveIconName(stem, maps) {
   return "";
 }
 
+function loadBaseline() {
+  return JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
+}
+
+function validateBaselineCoverage(manifest, baseline) {
+  const requiredMissing = baseline.requiredMappings.filter(
+    (requiredId) => !manifest.icons.some((icon) => icon.mergedIds.includes(requiredId)),
+  );
+  if (requiredMissing.length) {
+    throw new Error(`Required icon mappings missing: ${requiredMissing.join(", ")}`);
+  }
+  if (manifest.stats.pokemonNameSetSha256 !== baseline.pokemonNameSetSha256) {
+    throw new Error(
+      `pokemonName coverage changed: expected ${baseline.pokemonNameSetSha256}, got ${manifest.stats.pokemonNameSetSha256}`,
+    );
+  }
+  if (manifest.stats.svOnlyPokemonNameSetSha256 !== baseline.svOnlyPokemonNameSetSha256) {
+    throw new Error(
+      `SV-only pokemonName coverage changed: expected ${baseline.svOnlyPokemonNameSetSha256}, got ${manifest.stats.svOnlyPokemonNameSetSha256}`,
+    );
+  }
+  if (manifest.stats.unresolvedCount > baseline.unresolvedCount) {
+    throw new Error(
+      `Unresolved mappings increased: expected <=${baseline.unresolvedCount}, got ${manifest.stats.unresolvedCount}`,
+    );
+  }
+  const accounting = validateRawAccounting(manifest.stats);
+  if (!accounting.valid) {
+    throw new Error(
+      `Raw candidate accounting mismatch: raw=${accounting.rawCandidateCount} accounted=${accounting.accounted}`,
+    );
+  }
+}
+
 function main() {
   const resolver = createReferenceNameResolver();
+  const speciesResolver = createSpeciesMetadataResolver();
   const maps = [
     createManualNameMap(resolver),
     createPokemonDataNameMap(resolver),
     createPokeApiNameMap(resolver),
   ];
-  const icons = [];
+  const rawEntries = [];
   const unresolved = [];
   const copied = {};
 
@@ -312,49 +497,88 @@ function main() {
     fileNames.forEach((fileName) => {
       const stem = path.basename(fileName, ".webp");
       const pokemonName = resolveIconName(stem, maps);
+      const speciesResolution = speciesResolver.resolve(stem, pokemonName);
+      const copiedPath = path.join(sourceConfig.outputDir, fileName);
       const entry = {
         id: decodeStem(stem),
         source: sourceConfig.source,
         path: iconPathForFile(sourceConfig, fileName),
+        pokemonName,
+        speciesKey: speciesResolution.speciesKey,
+        variantKey: speciesResolution.variantKey,
+        speciesResolution: {
+          method: speciesResolution.method,
+          fallback: speciesResolution.fallback,
+        },
+        fileHash: sha256Buffer(fs.readFileSync(copiedPath)),
       };
+      rawEntries.push(entry);
 
       if (pokemonName) {
-        icons.push({
-          ...entry,
-          pokemonName,
-        });
+        return;
       } else {
-        unresolved.push(entry);
+        unresolved.push({
+          ...entry,
+          invalidReason: "name_unresolved",
+        });
       }
     });
   });
 
-  const required = ["Garchomp-Mega", "Dragonite-Mega", "Raichu-Mega-X", "Sneasler"];
-  const missingRequired = required.filter((id) => !icons.some((icon) => icon.id === id));
-  if (missingRequired.length) {
-    throw new Error(`Required icon mappings missing: ${missingRequired.join(", ")}`);
-  }
+  const {
+    icons,
+    rawAudit,
+    visualCollisions,
+  } = groupExactIconCandidates(rawEntries);
+  const stats = buildIconManifestStats({
+    rawEntries,
+    icons,
+    rawAudit,
+    visualCollisions,
+    unresolved,
+  });
 
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: ICON_MANIFEST_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
-    sample: {
-      width: 60,
-      height: 75,
+    sample: ICON_SAMPLE_SIZE,
+    normalization: {
+      candidate: "alpha_bbox",
+      input: "shared_median_or_border_background",
+      alphaThreshold: 24,
+      paddingRatio: 0.18,
     },
     sources: {
-      copied,
+      raw: copied,
+      canonicalPrimary: stats.sourceCounts.canonicalPrimary,
       unresolved: unresolved.length,
     },
+    stats,
     icons,
+    rawCandidates: rawAudit,
+    visualCollisions,
     unresolved,
   };
+  validateBaselineCoverage(manifest, loadBaseline());
 
   fs.writeFileSync(`${OUTPUT_PATH}.tmp`, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   fs.renameSync(`${OUTPUT_PATH}.tmp`, OUTPUT_PATH);
 
   console.log(`Copied champions=${copied.champions || 0} sv=${copied.sv || 0}`);
-  console.log(`Resolved icons=${icons.length} unresolved=${unresolved.length}`);
+  console.log(
+    `Candidates raw=${stats.rawCandidateCount} canonical=${stats.canonicalCandidateCount} merged=${stats.mergedDuplicateCount} collisions=${stats.visualCollisionGroupCount} unresolved=${stats.unresolvedCount}`,
+  );
+  console.log(
+    `Coverage names=${stats.uniquePokemonNameCount} species=${stats.uniqueSpeciesKeyCount} svOnlyNames=${stats.svOnlyPokemonNameCount} fallbackSpecies=${stats.speciesFallbackCount}`,
+  );
 }
 
-main();
+if (path.resolve(process.argv[1] || "") === path.resolve(import.meta.filename)) {
+  main();
+}
+
+export {
+  createSpeciesMetadataResolver,
+  main,
+  validateBaselineCoverage,
+};

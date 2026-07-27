@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../icons/icon-192.png">
+  <title>Pokémon Icon Matcher Benchmark</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #11151d;
+      color: #eef3fa;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+    }
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+    h1, h2 {
+      margin: 0 0 16px;
+    }
+    section {
+      margin: 16px 0;
+      padding: 16px;
+      border: 1px solid #334055;
+      border-radius: 10px;
+      background: #181e29;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: end;
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      font-size: 13px;
+      color: #b9c4d5;
+    }
+    input, button, select {
+      box-sizing: border-box;
+      min-height: 36px;
+      border: 1px solid #46536a;
+      border-radius: 6px;
+      background: #10141c;
+      color: inherit;
+      padding: 7px 10px;
+    }
+    button {
+      cursor: pointer;
+      background: #26364d;
+    }
+    button:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #303a4c;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: #b9c4d5;
+    }
+    .scroll {
+      overflow: auto;
+    }
+    .status {
+      white-space: pre-wrap;
+      color: #a9d3ff;
+    }
+    .error {
+      color: #ffacac;
+    }
+    .bundle-card {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #303a4c;
+    }
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .slot {
+      padding: 8px;
+      border: 1px solid #303a4c;
+      border-radius: 7px;
+    }
+    .slot img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+      display: block;
+      margin-bottom: 6px;
+      background: #0b0e14;
+    }
+    .slot input {
+      width: 100%;
+    }
+    code {
+      color: #b8dfbe;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pokémon Icon Matcher Benchmark</h1>
+    <p><code>debug icon export</code> で保存したJSONを読み込み、ラベルを付けてcurrent / legacyを同じROIで比較します。</p>
+
+    <section>
+      <div class="controls">
+        <label>
+          診断bundle
+          <input id="bundle-files" type="file" accept=".json,application/json" multiple>
+        </label>
+        <label>
+          coarse name limit
+          <input id="coarse-limit" type="number" min="8" max="64" value="24">
+        </label>
+        <label>
+          templates / name
+          <input id="templates-per-name" type="number" min="1" max="4" value="2">
+        </label>
+        <label>
+          score min
+          <input id="score-min" type="number" min="0" max="1" step="0.005" value="0.74">
+        </label>
+        <label>
+          margin min
+          <input id="margin-min" type="number" min="0" max="1" step="0.005" value="0.035">
+        </label>
+        <button id="add-synthetic" type="button" disabled>合成fixtureを追加</button>
+        <button id="run-current" type="button" disabled>currentを実行</button>
+        <button id="run-both" type="button" disabled>current / legacy比較</button>
+        <button id="save-labeled" type="button" disabled>ラベル付きbundleを保存</button>
+      </div>
+      <p id="status" class="status">Workerを準備しています…</p>
+    </section>
+
+    <section>
+      <h2>Candidate status</h2>
+      <div id="candidate-status" class="scroll">未準備</div>
+    </section>
+
+    <section>
+      <h2>Metrics</h2>
+      <div id="metrics" class="scroll">bundleを読み込んでください。</div>
+    </section>
+
+    <section>
+      <h2>Bundles / labels</h2>
+      <div id="bundles">bundleはまだありません。</div>
+    </section>
+  </main>
+  <script type="module" src="./pokemon-icon-benchmark.js"></script>
+</body>
+</html>

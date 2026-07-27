@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "capturedFromSchemaVersion": 1,
+  "capturedFromGeneratedAt": "2026-06-26T07:35:28.298Z",
+  "rawCandidateCount": 1284,
+  "unresolvedCount": 0,
+  "pokemonNameCount": 867,
+  "pokemonNameSetSha256": "2af583f9ea5350f96a88c3081f7ee5a0e8e77f276155b12a9b34b9f2ac42426d",
+  "svOnlyPokemonNameCount": 573,
+  "svOnlyPokemonNameSetSha256": "52423940edacf2400c1842fc5c87e8a75d4e14f1d446c6415aba0dfd1664274d",
+  "requiredMappings": [
+    "Garchomp-Mega",
+    "Dragonite-Mega",
+    "Raichu-Mega-X",
+    "Sneasler"
+  ]
+}
