@@ -4157,7 +4157,7 @@
     }
 
     const battleHudSignal = getBattleHudSignal(metrics);
-    auto.lastReason = `待機タイマー後 fallback 待ち battleHud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"}`;
+    auto.lastReason = `待機タイマー後 fallback 待ち battleHud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes" : "no"} source=${battleHudSignal.preBattleScreenSource} color=${battleHudSignal.enemyListColorSignal ? "yes" : "no"}`;
     if (battleHudSignal.matched) {
       triggerAutoFallback("battle_hud");
       return;
@@ -4634,9 +4634,9 @@
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "battle hud wait");
       pickOverlay.lastSummary = buildPickOverlaySummary();
       appendPickOverlayDebugLogIfChanged(
-        `gate-battle-hud-wait:${keptPending ? 1 : 0}:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}`,
+        `gate-battle-hud-wait:${keptPending ? 1 : 0}:${Math.round(battleHudSignal.hudAccent * 20)}:${Math.round(battleHudSignal.hudBright * 20)}:${battleHudSignal.enemyListStillVisible ? 1 : 0}:${battleHudSignal.preBattleScreenSource}:${battleHudSignal.enemyListColorSignal ? 1 : 0}`,
         [
-          `[debug] pick state: ${pickOverlay.lastGateReason} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes blocked" : "no"}`,
+          `[debug] pick state: ${pickOverlay.lastGateReason} hud=${formatAutoMetric(battleHudSignal.hudAccent)} bright=${formatAutoMetric(battleHudSignal.hudBright)} enemyListVisible=${battleHudSignal.enemyListStillVisible ? "yes blocked" : "no"} source=${battleHudSignal.preBattleScreenSource} color=${battleHudSignal.enemyListColorSignal ? "yes" : "no"}`,
         ],
       );
       return;
@@ -7184,15 +7184,51 @@
   function getBattleHudSignal(metrics) {
     const threshold = AUTO_SNAP_CONFIG.thresholds.battleHud;
     const hudAccent = metrics.battleHud.blue + metrics.battleHud.white + metrics.battleHud.chroma;
-    const enemyListStillVisible = metrics.selectionRight.red >= 0.16
-      && metrics.selectionRight.chroma >= 0.28;
+    const preBattleScreenSignal = getPreBattleScreenSignal(metrics);
     return {
       hudAccent,
       hudBright: metrics.battleHud.bright,
-      enemyListStillVisible,
+      enemyListStillVisible: preBattleScreenSignal.matched,
+      preBattleScreenSource: preBattleScreenSignal.source,
+      enemyListColorSignal: preBattleScreenSignal.colorMatched,
       matched: hudAccent >= threshold.hudAccentMin
         && metrics.battleHud.bright >= threshold.hudBrightMin
-        && !enemyListStillVisible,
+        && !preBattleScreenSignal.matched,
+    };
+  }
+
+  function getPreBattleScreenSignal(metrics) {
+    const selectionTimerSignal = getSelectionTimerSignal(metrics);
+    const waitingTimerSignal = getWaitingTimerIconSignal(metrics);
+    const selectionTimerMatched = Boolean(selectionTimerSignal?.matched);
+    const waitingTimerMatched = Boolean(waitingTimerSignal?.matched);
+    const templatesReady = Boolean(
+      selectionTimerSignal?.templateReady
+      && waitingTimerSignal?.templateReady,
+    );
+    const colorMatched = metrics.selectionRight.red >= 0.16
+      && metrics.selectionRight.chroma >= 0.28;
+    const useColorFallback = !templatesReady
+      && !selectionTimerMatched
+      && !waitingTimerMatched;
+    const matched = selectionTimerMatched
+      || waitingTimerMatched
+      || (useColorFallback && colorMatched);
+    const source = selectionTimerMatched
+      ? "selection-timer"
+      : waitingTimerMatched
+        ? "waiting-timer"
+        : useColorFallback && colorMatched
+          ? "color-fallback"
+          : templatesReady
+            ? "clear"
+            : "template-loading";
+
+    return {
+      matched,
+      source,
+      templatesReady,
+      colorMatched,
     };
   }
 
@@ -7397,7 +7433,7 @@
       );
       lines.push(
         waitingTimerSignal.templateReady
-          ? `[debug] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)}`
+          ? `[debug] waiting icon coverage=${formatAutoMetric(waitingTimerSignal.coverageScore)} spill=${formatAutoMetric(waitingTimerSignal.spillScore)} dark=${formatAutoMetric(waitingTimerSignal.darkBackground)} offset=${waitingTimerSignal.offsetX},${waitingTimerSignal.offsetY} battleHud=${formatAutoMetric(battleHudSignal.hudAccent)} preBattle=${battleHudSignal.preBattleScreenSource} color=${battleHudSignal.enemyListColorSignal ? "yes" : "no"}`
           : "[debug] waiting icon: テンプレート読み込み待ち",
       );
     } else {
