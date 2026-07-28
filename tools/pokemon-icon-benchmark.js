@@ -365,8 +365,18 @@ function formatSlotRuns(entry, slotIndex) {
     if (!result) {
       return;
     }
+    const bestPokemonName = result.bestPokemonName
+      || result.refinedTopCandidates?.[0]?.pokemonName
+      || result.coarseTopCandidates?.[0]?.pokemonName
+      || "";
+    const resultLabel = result.matched
+      ? result.pokemonName
+      : [
+          `reject(${result.rejectionReason || "unknown"})`,
+          bestPokemonName ? `best=${bestPokemonName}` : "",
+        ].filter(Boolean).join(" ");
     values.push(
-      `${mode}: ${result.matched ? result.pokemonName : `reject(${result.rejectionReason || "unknown"})`} score=${formatNumber(result.score ?? result.bestScore)} time=${formatMs(result.durationMs)}`,
+      `${mode}: ${resultLabel} score=${formatNumber(result.score ?? result.bestScore)} time=${formatMs(result.durationMs)}`,
     );
   });
   return values.join("\n") || "未実行";
