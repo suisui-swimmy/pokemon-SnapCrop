@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.4";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.5";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -8716,7 +8716,13 @@
   function appendPokemonResultEntry(pokemon) {
     const entry = document.createElement("div");
     entry.className = "terminal-entry terminal-entry--success";
-    entry.append(document.createTextNode(getPokemonResultLine(pokemon)));
+    entry.append(document.createTextNode("タイプ: "));
+
+    const types = document.createElement("span");
+    types.className = "terminal-entry__types";
+    appendSuggestionTypeChips(types, pokemon.types);
+    entry.append(types);
+    entry.append(document.createTextNode(getPokemonResultDetails(pokemon)));
 
     const url = getPokemonYakkunUrl(pokemon);
     if (url) {
@@ -9017,8 +9023,8 @@
     };
   }
 
-  function getPokemonResultLine(pokemon) {
-    return `タイプ: ${pokemon.types.join("/")} | 特性: ${pokemon.abilities.join("/")} | 種族値: H-${pokemon.stats.H} A-${pokemon.stats.A} B-${pokemon.stats.B} C-${pokemon.stats.C} D-${pokemon.stats.D} S-${pokemon.stats.S}`;
+  function getPokemonResultDetails(pokemon) {
+    return ` | 特性: ${pokemon.abilities.join("/")} | 種族値: H-${pokemon.stats.H} A-${pokemon.stats.A} B-${pokemon.stats.B} C-${pokemon.stats.C} D-${pokemon.stats.D} S-${pokemon.stats.S}`;
   }
 
   function getPokemonYakkunUrl(pokemon) {

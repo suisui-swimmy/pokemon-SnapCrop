@@ -1113,6 +1113,13 @@ html[data-theme="light"] .terminal-entry--system {
   color: var(--text);
 }
 
+.terminal-entry__types {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: -0.12em;
+}
+
 .terminal-suggestions {
   display: flex;
   flex-direction: column;
