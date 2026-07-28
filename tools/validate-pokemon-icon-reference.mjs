@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  getPokemonIconRecognitionCandidateReasons,
   hashStringSet,
   ICON_MANIFEST_SCHEMA_VERSION,
   ICON_SAMPLE_SIZE,
@@ -50,6 +51,21 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
       `classification file hash missing for ${key}`,
     );
   });
+  check(
+    manifest.recognitionCandidatePolicy?.mode === "any",
+    "recognitionCandidatePolicy mode must be any",
+  );
+  check(
+    JSON.stringify(manifest.recognitionCandidatePolicy?.includes) === JSON.stringify([
+      "champions-source",
+      "final-evolution",
+      "mega",
+      "legend:mythical",
+      "legend:sublegendary",
+      "legend:restricted",
+    ]),
+    "recognitionCandidatePolicy includes mismatch",
+  );
 
   const accounting = validateRawAccounting(manifest.stats || {});
   check(accounting.valid, `raw accounting mismatch raw=${accounting.rawCandidateCount} accounted=${accounting.accounted}`);
@@ -57,13 +73,29 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
   check(manifest.icons.length === manifest.stats?.canonicalCandidateCount, "icons length must equal canonicalCandidateCount");
   check(manifest.unresolved.length === manifest.stats?.unresolvedCount, "unresolved length must equal unresolvedCount");
   check(
-    manifest.icons.filter((icon) => icon.isChampionsCandidate).length
-      === manifest.stats?.championsCandidateCount,
-    "championsCandidateCount mismatch",
+    manifest.icons.filter((icon) => icon.hasChampionsSource).length
+      === manifest.stats?.championsSourceIconCount,
+    "championsSourceIconCount mismatch",
+  );
+  check(
+    manifest.icons.filter((icon) => icon.isRecognitionCandidate).length
+      === manifest.stats?.recognitionCandidateCount,
+    "recognitionCandidateCount mismatch",
   );
   check(
     manifest.stats?.classificationUnresolvedCount === 0,
     "classification contains unresolved candidates",
+  );
+  const recognitionReasonCounts = {};
+  manifest.icons.forEach((icon) => {
+    (icon.recognitionCandidateReasons || []).forEach((reason) => {
+      recognitionReasonCounts[reason] = (recognitionReasonCounts[reason] || 0) + 1;
+    });
+  });
+  check(
+    JSON.stringify(recognitionReasonCounts)
+      === JSON.stringify(manifest.stats?.recognitionCandidateReasonCounts),
+    "recognitionCandidateReasonCounts mismatch",
   );
 
   const rawStatusCounts = Object.fromEntries(
@@ -115,8 +147,18 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
     check(Array.isArray(icon.sources) && icon.sources.includes(icon.source), `${label}: sources invalid`);
     check(icon.canonical?.path === icon.path, `${label}: canonical path mismatch`);
     check(
-      icon.isChampionsCandidate === icon.sources.includes("champions"),
-      `${label}: isChampionsCandidate mismatch`,
+      icon.hasChampionsSource === icon.sources.includes("champions"),
+      `${label}: hasChampionsSource mismatch`,
+    );
+    const expectedRecognitionReasons = getPokemonIconRecognitionCandidateReasons(icon);
+    check(
+      icon.isRecognitionCandidate === (expectedRecognitionReasons.length > 0),
+      `${label}: isRecognitionCandidate mismatch`,
+    );
+    check(
+      JSON.stringify(icon.recognitionCandidateReasons)
+        === JSON.stringify(expectedRecognitionReasons),
+      `${label}: recognitionCandidateReasons mismatch`,
     );
     check(Boolean(icon.showdownId), `${label}: showdownId missing`);
     check(
@@ -181,8 +223,11 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
       uniquePokemonNameCount: manifest.stats?.uniquePokemonNameCount || 0,
       uniqueSpeciesKeyCount: manifest.stats?.uniqueSpeciesKeyCount || 0,
       svOnlyPokemonNameCount: manifest.stats?.svOnlyPokemonNameCount || 0,
-      championsCandidateCount: manifest.stats?.championsCandidateCount || 0,
-      championsCandidatePokemonNameCount: manifest.stats?.championsCandidatePokemonNameCount || 0,
+      championsSourceIconCount: manifest.stats?.championsSourceIconCount || 0,
+      championsSourcePokemonNameCount: manifest.stats?.championsSourcePokemonNameCount || 0,
+      recognitionCandidateCount: manifest.stats?.recognitionCandidateCount || 0,
+      recognitionCandidatePokemonNameCount: manifest.stats?.recognitionCandidatePokemonNameCount || 0,
+      recognitionCandidateReasonCounts: manifest.stats?.recognitionCandidateReasonCounts || {},
       classificationFallbackCount: manifest.stats?.classificationFallbackCount || 0,
       classificationUnresolvedCount: manifest.stats?.classificationUnresolvedCount || 0,
       pokemonNameSetPreserved: hashStringSet(names) === baseline.pokemonNameSetSha256,

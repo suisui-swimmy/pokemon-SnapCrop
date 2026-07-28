@@ -5,7 +5,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   buildIconManifestStats,
+  getPokemonIconRecognitionCandidateReasons,
   groupExactIconCandidates,
+  isPokemonIconRecognitionCandidate,
   validateRawAccounting,
 } from "../tools/pokemon-icon-manifest.mjs";
 import { validatePokemonIconManifest } from "../tools/validate-pokemon-icon-reference.mjs";
@@ -44,6 +46,40 @@ test("same hash and pokemonName are merged into one canonical candidate", () => 
   assert.deepEqual(result.icons[0].sources, ["champions", "sv"]);
   assert.equal(result.statusCounts.canonical, 1);
   assert.equal(result.statusCounts.merged_duplicate, 1);
+});
+
+test("recognition candidates use classification and keep Champions source exceptions", () => {
+  assert.equal(isPokemonIconRecognitionCandidate({}), false);
+  assert.deepEqual(
+    getPokemonIconRecognitionCandidateReasons({
+      hasChampionsSource: true,
+      isFinalEvolution: true,
+      isMega: true,
+      legendClass: "restricted",
+    }),
+    [
+      "champions-source",
+      "final-evolution",
+      "mega",
+      "legend:restricted",
+    ],
+  );
+  assert.equal(
+    isPokemonIconRecognitionCandidate({ isFinalEvolution: true }),
+    true,
+  );
+  assert.equal(
+    isPokemonIconRecognitionCandidate({ isMega: true }),
+    true,
+  );
+  assert.equal(
+    isPokemonIconRecognitionCandidate({ legendClass: "sublegendary" }),
+    true,
+  );
+  assert.equal(
+    isPokemonIconRecognitionCandidate({ legendClass: "normal" }),
+    false,
+  );
 });
 
 test("same pokemonName with different image hashes remains as separate templates", () => {
@@ -138,18 +174,34 @@ test("generated manifest preserves Champions, SV-only names, and baseline covera
   assert.ok(manifest.rawCandidates.some((entry) => entry.source === "sv"));
 });
 
-test("generated manifest carries Showdown classification for Champions exceptions", () => {
+test("generated manifest carries Showdown classification and general recognition candidates", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "pokemon-icon-reference.json"), "utf8"));
   const icon = (id) => manifest.icons.find((entry) => entry.mergedIds?.includes(id));
+  const svIcon = (id) => manifest.icons.find((entry) =>
+    entry.mergedIds?.includes(id)
+    && entry.sources?.length === 1
+    && entry.sources[0] === "sv");
 
   assert.equal(manifest.classification.name, "pokemon-showdown");
   assert.match(manifest.classification.revision, /^[0-9a-f]{40}$/u);
-  assert.equal(manifest.stats.championsCandidateCount, 358);
+  assert.equal(manifest.stats.championsSourceIconCount, 358);
+  assert.equal(manifest.stats.recognitionCandidateCount, 922);
+  assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 543);
   assert.equal(manifest.stats.classificationUnresolvedCount, 0);
 
-  assert.equal(icon("Pikachu").isChampionsCandidate, true);
+  assert.equal(icon("Pikachu").hasChampionsSource, true);
+  assert.equal(icon("Pikachu").isRecognitionCandidate, true);
+  assert.deepEqual(
+    icon("Pikachu").recognitionCandidateReasons,
+    ["champions-source"],
+  );
   assert.equal(icon("Pikachu").canEvolve, true);
   assert.equal(icon("Pikachu").evolutionDepth, 1);
+
+  assert.equal(svIcon("Abomasnow").hasChampionsSource, false);
+  assert.equal(svIcon("Abomasnow").isFinalEvolution, true);
+  assert.equal(svIcon("Abomasnow").isRecognitionCandidate, true);
+  assert.equal(icon("Bulbasaur").isRecognitionCandidate, false);
 
   assert.equal(icon("Qwilfish").canEvolve, false);
   assert.deepEqual(icon("Qwilfish").evoIds, []);
@@ -172,4 +224,5 @@ test("generated manifest carries Showdown classification for Champions exception
   assert.equal(icon("Articuno").legendClass, "sublegendary");
   assert.equal(icon("Mewtwo").legendClass, "restricted");
   assert.equal(icon("Mew").legendClass, "mythical");
+  assert.ok(icon("Mewtwo").recognitionCandidateReasons.includes("legend:restricted"));
 });

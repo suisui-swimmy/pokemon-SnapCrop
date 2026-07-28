@@ -28,8 +28,25 @@ const state = {
   longTasks: [],
   manifestFetchMs: 0,
 };
+const RECOGNITION_LEGEND_CLASSES = new Set([
+  "mythical",
+  "sublegendary",
+  "restricted",
+]);
 
 initialize();
+
+function isRecognitionCandidate(entry) {
+  return Boolean(
+    entry?.isRecognitionCandidate === true
+    || entry?.hasChampionsSource === true
+    || entry?.isChampionsCandidate === true
+    || entry?.sources?.includes("champions")
+    || entry?.isFinalEvolution === true
+    || entry?.isMega === true
+    || RECOGNITION_LEGEND_CLASSES.has(entry?.legendClass)
+  );
+}
 
 async function initialize() {
   bindEvents();
@@ -42,11 +59,9 @@ async function initialize() {
     }
     const manifest = await response.json();
     state.manifestFetchMs = performance.now() - manifestStartedAt;
-    const eligibleIcons = (manifest.icons || []).filter((entry) =>
-      entry.isChampionsCandidate === true
-      || entry.sources?.includes("champions"));
+    const eligibleIcons = (manifest.icons || []).filter(isRecognitionCandidate);
     if (!eligibleIcons.length) {
-      throw new Error("Pokémon Champions候補がmanifestにありません");
+      throw new Error("名前認識候補がmanifestにありません");
     }
     const recognitionManifest = {
       ...manifest,
@@ -54,6 +69,7 @@ async function initialize() {
       stats: {
         ...manifest.stats,
         canonicalCandidateCount: eligibleIcons.length,
+        recognitionCandidateCount: eligibleIcons.length,
       },
     };
     state.manifest = recognitionManifest;
@@ -73,7 +89,7 @@ async function initialize() {
       prewarm: true,
     });
     setStatus(
-      `Champions候補 ${eligibleIcons.length}/${manifest.icons.length}件をprewarmしています…`,
+      `認識候補 ${eligibleIcons.length}/${manifest.icons.length}件をprewarmしています…`,
     );
   } catch (error) {
     setStatus(`初期化に失敗しました: ${error.message}`, true);
@@ -709,7 +725,7 @@ function renderCandidateStatus() {
     ["load failures", stats.loadFailureCount],
     ["unique pokemonName", stats.uniquePokemonNameCount],
     ["unique speciesKey", stats.uniqueSpeciesKeyCount],
-    ["Champions raw", stats.championsRawCount],
+    ["Champions source raw", stats.championsRawCount],
     ["SV raw", stats.svRawCount],
     ["SV-only pokemonName", stats.svOnlyPokemonNameCount],
     ["manifest fetch + parse", formatMs(state.manifestFetchMs)],

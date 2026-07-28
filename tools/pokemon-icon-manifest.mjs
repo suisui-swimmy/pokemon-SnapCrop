@@ -1,10 +1,15 @@
 import crypto from "node:crypto";
 
-export const ICON_MANIFEST_SCHEMA_VERSION = 3;
+export const ICON_MANIFEST_SCHEMA_VERSION = 4;
 export const ICON_SAMPLE_SIZE = Object.freeze({
   width: 64,
   height: 64,
 });
+export const RECOGNITION_LEGEND_CLASSES = Object.freeze([
+  "mythical",
+  "sublegendary",
+  "restricted",
+]);
 export const RAW_CANDIDATE_STATUSES = Object.freeze([
   "canonical",
   "merged_duplicate",
@@ -62,6 +67,32 @@ function classificationMetadata(entry) {
   return Object.fromEntries(
     CLASSIFICATION_FIELDS.map((field) => [field, entry[field] ?? null]),
   );
+}
+
+export function getPokemonIconRecognitionCandidateReasons(entry) {
+  const reasons = [];
+  if (
+    entry?.hasChampionsSource === true
+    || entry?.isChampionsCandidate === true
+    || entry?.source === "champions"
+    || entry?.sources?.includes("champions")
+  ) {
+    reasons.push("champions-source");
+  }
+  if (entry?.isFinalEvolution === true) {
+    reasons.push("final-evolution");
+  }
+  if (entry?.isMega === true) {
+    reasons.push("mega");
+  }
+  if (RECOGNITION_LEGEND_CLASSES.includes(entry?.legendClass)) {
+    reasons.push(`legend:${entry.legendClass}`);
+  }
+  return reasons;
+}
+
+export function isPokemonIconRecognitionCandidate(entry) {
+  return getPokemonIconRecognitionCandidateReasons(entry).length > 0;
 }
 
 export function createRawAuditEntry(entry, status, details = {}) {
@@ -134,7 +165,15 @@ export function groupExactIconCandidates(rawEntries) {
           const speciesKeys = uniqueSorted(ordered.map((entry) => entry.speciesKey));
           const variantKeys = uniqueSorted(ordered.map((entry) => entry.variantKey));
           const showdownIds = uniqueSorted(ordered.map((entry) => entry.showdownId));
-          const isChampionsCandidate = ordered.some((entry) => entry.isChampionsCandidate);
+          const hasChampionsSource = ordered.some((entry) =>
+            entry.hasChampionsSource === true
+            || entry.isChampionsCandidate === true
+            || entry.source === "champions");
+          const classification = classificationMetadata(canonical);
+          const recognitionCandidateReasons = getPokemonIconRecognitionCandidateReasons({
+            ...classification,
+            hasChampionsSource,
+          });
 
           icons.push({
             id: canonical.id,
@@ -144,8 +183,10 @@ export function groupExactIconCandidates(rawEntries) {
             speciesResolution: canonical.speciesResolution,
             source: canonical.source,
             path: canonical.path,
-            isChampionsCandidate,
-            ...classificationMetadata(canonical),
+            hasChampionsSource,
+            isRecognitionCandidate: recognitionCandidateReasons.length > 0,
+            recognitionCandidateReasons,
+            ...classification,
             aliases: mergedIds.filter((id) => id !== canonical.id),
             mergedIds,
             sources,
@@ -250,10 +291,12 @@ export function buildIconManifestStats({
     ]),
   );
   const speciesFallbackCount = rawEntries.filter((entry) => entry.speciesResolution?.fallback).length;
-  const championsCandidates = icons.filter((entry) => entry.isChampionsCandidate);
+  const championsSourceIcons = icons.filter((entry) => entry.hasChampionsSource);
+  const recognitionCandidates = icons.filter((entry) => entry.isRecognitionCandidate);
   const classificationMethodCounts = {};
   const legendClassCounts = {};
   const evolutionDepthCounts = {};
+  const recognitionCandidateReasonCounts = {};
   icons.forEach((entry) => {
     const method = entry.classificationMethod || "unresolved";
     classificationMethodCounts[method] = (classificationMethodCounts[method] || 0) + 1;
@@ -263,6 +306,11 @@ export function buildIconManifestStats({
       ? String(entry.evolutionDepth)
       : "unresolved";
     evolutionDepthCounts[depth] = (evolutionDepthCounts[depth] || 0) + 1;
+    (entry.recognitionCandidateReasons || []).forEach((reason) => {
+      recognitionCandidateReasonCounts[reason] = (
+        recognitionCandidateReasonCounts[reason] || 0
+      ) + 1;
+    });
   });
 
   return {
@@ -276,10 +324,15 @@ export function buildIconManifestStats({
     uniquePokemonNameCount: allNames.length,
     uniqueSpeciesKeyCount: allSpeciesKeys.length,
     speciesFallbackCount,
-    championsCandidateCount: championsCandidates.length,
-    championsCandidatePokemonNameCount: new Set(
-      championsCandidates.map((entry) => entry.pokemonName),
+    championsSourceIconCount: championsSourceIcons.length,
+    championsSourcePokemonNameCount: new Set(
+      championsSourceIcons.map((entry) => entry.pokemonName),
     ).size,
+    recognitionCandidateCount: recognitionCandidates.length,
+    recognitionCandidatePokemonNameCount: new Set(
+      recognitionCandidates.map((entry) => entry.pokemonName),
+    ).size,
+    recognitionCandidateReasonCounts,
     classificationFallbackCount: icons.filter((entry) => entry.classificationFallback).length,
     classificationUnresolvedCount: icons.filter((entry) => !entry.classificationSource).length,
     classificationMethodCounts,

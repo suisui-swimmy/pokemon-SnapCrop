@@ -3,7 +3,12 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.0";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.1";
+  const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
+    "mythical",
+    "sublegendary",
+    "restricted",
+  ]);
   const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
   const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
@@ -661,22 +666,20 @@
             variantKey: String(entry.variantKey || ""),
           }))
         : [];
-      const entries = manifestEntries.filter((entry) =>
-        entry.isChampionsCandidate === true
-        || entry.sources?.includes("champions"));
+      const entries = manifestEntries.filter(isPokemonIconRecognitionCandidate);
 
       if (!entries.length) {
-        throw new Error("Pokémon Championsのアイコン参照データが空です。");
+        throw new Error("ポケモン名認識の候補データが空です。");
       }
 
       state.pokemonIconManifest = manifest;
       state.pokemonIconReferenceEntries = entries;
       state.pokemonIconReferenceReady = true;
       state.pokemonIconReferenceLoadFailed = false;
-      state.pokemonIconRecognition.lastSummary = `manifest ready champions=${entries.length}/${manifestEntries.length}`;
+      state.pokemonIconRecognition.lastSummary = `manifest ready eligible=${entries.length}/${manifestEntries.length}`;
       appendPokemonIconDebugLogIfChanged(
         `manifest-ready:${entries.length}:${manifestEntries.length}`,
-        [`[debug] icon recog: manifest ready champions=${entries.length}/${manifestEntries.length}`],
+        [`[debug] icon recog: manifest ready eligible=${entries.length}/${manifestEntries.length}`],
       );
       schedulePokemonIconWorkerPrewarm();
       if (state.references.enemy) {
@@ -699,6 +702,18 @@
     } finally {
       state.pokemonIconManifestFetchMs = getPerformanceDebugNow() - startedAt;
     }
+  }
+
+  function isPokemonIconRecognitionCandidate(entry) {
+    return Boolean(
+      entry?.isRecognitionCandidate === true
+      || entry?.hasChampionsSource === true
+      || entry?.isChampionsCandidate === true
+      || entry?.sources?.includes("champions")
+      || entry?.isFinalEvolution === true
+      || entry?.isMega === true
+      || POKEMON_ICON_RECOGNITION_LEGEND_CLASSES.has(entry?.legendClass)
+    );
   }
 
   async function runControlActionAndRestoreTerminalFocus(action, options = {}) {
@@ -5644,14 +5659,15 @@
       worker.addEventListener("messageerror", handlePokemonIconWorkerMessageError);
       worker.postMessage({
         type: "init",
-         manifest: {
-           ...state.pokemonIconManifest,
-           icons: state.pokemonIconReferenceEntries,
-           stats: {
-             ...state.pokemonIconManifest?.stats,
-             canonicalCandidateCount: state.pokemonIconReferenceEntries.length,
-           },
-         },
+        manifest: {
+          ...state.pokemonIconManifest,
+          icons: state.pokemonIconReferenceEntries,
+          stats: {
+            ...state.pokemonIconManifest?.stats,
+            canonicalCandidateCount: state.pokemonIconReferenceEntries.length,
+            recognitionCandidateCount: state.pokemonIconReferenceEntries.length,
+          },
+        },
         prewarm,
       });
       return true;
@@ -6764,7 +6780,7 @@
       `[debug] icon recog summary: ${recognition.lastSummary || recognition.reason || "未評価"}`,
       `[debug] icon manifest: raw=${manifestStats.rawCandidateCount || 0} canonical=${manifestStats.canonicalCandidateCount || state.pokemonIconReferenceEntries.length} buildMerged=${manifestStats.mergedDuplicateCount || 0} names=${manifestStats.uniquePokemonNameCount || 0} species=${manifestStats.uniqueSpeciesKeyCount || 0}`,
       `[debug] icon sources: champions=${manifestStats.sourceCounts?.raw?.champions || 0} sv=${manifestStats.sourceCounts?.raw?.sv || 0} svOnlyNames=${manifestStats.svOnlyPokemonNameCount || 0} buildCollisions=${manifestStats.visualCollisionGroupCount || 0} invalid=${manifestStats.invalidCount || 0}`,
-      `[debug] icon classification: eligible=${manifestStats.championsCandidateCount || state.pokemonIconReferenceEntries.length} fallback=${manifestStats.classificationFallbackCount || 0} unresolved=${manifestStats.classificationUnresolvedCount || 0} revision=${state.pokemonIconManifest?.classification?.revision?.slice(0, 12) || "unknown"}`,
+      `[debug] icon classification: eligible=${manifestStats.recognitionCandidateCount || state.pokemonIconReferenceEntries.length} championsSource=${manifestStats.championsSourceIconCount || manifestStats.championsCandidateCount || 0} fallback=${manifestStats.classificationFallbackCount || 0} unresolved=${manifestStats.classificationUnresolvedCount || 0} revision=${state.pokemonIconManifest?.classification?.revision?.slice(0, 12) || "unknown"}`,
       `[debug] icon worker: status=${workerState.status} prewarm=${workerState.prewarmStatus} loaded=${workerStats.loadedCount || 0}/${workerStats.canonicalManifestCount || manifestStats.canonicalCandidateCount || 0} runtimeMerged=${workerStats.runtimeNormalizedDuplicateCount || 0} collisions=${workerStats.runtimeVisualCollisionGroupCount || 0} failures=${workerStats.loadFailureCount || workerState.failures.length}`,
       `[debug] icon manifest perf: fetch+parse=${formatPerformanceMs(state.pokemonIconManifestFetchMs)}`,
     ];

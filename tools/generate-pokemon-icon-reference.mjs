@@ -530,7 +530,7 @@ function main() {
           method: speciesResolution.method,
           fallback: speciesResolution.fallback,
         },
-        isChampionsCandidate: sourceConfig.source === "champions",
+        hasChampionsSource: sourceConfig.source === "champions",
         ...classification,
         fileHash: sha256Buffer(fs.readFileSync(copiedPath)),
       };
@@ -571,6 +571,17 @@ function main() {
       paddingRatio: 0.18,
     },
     classification: showdown.source,
+    recognitionCandidatePolicy: {
+      mode: "any",
+      includes: [
+        "champions-source",
+        "final-evolution",
+        "mega",
+        "legend:mythical",
+        "legend:sublegendary",
+        "legend:restricted",
+      ],
+    },
     sources: {
       raw: copied,
       canonicalPrimary: stats.sourceCounts.canonicalPrimary,
@@ -595,7 +606,7 @@ function main() {
     `Coverage names=${stats.uniquePokemonNameCount} species=${stats.uniqueSpeciesKeyCount} svOnlyNames=${stats.svOnlyPokemonNameCount} fallbackSpecies=${stats.speciesFallbackCount}`,
   );
   console.log(
-    `Classification champions=${stats.championsCandidateCount} fallback=${stats.classificationFallbackCount} revision=${showdown.source.revision || "unversioned"}`,
+    `Classification recognition=${stats.recognitionCandidateCount} championsSource=${stats.championsSourceIconCount} fallback=${stats.classificationFallbackCount} revision=${showdown.source.revision || "unversioned"}`,
   );
 }
 
