@@ -3,7 +3,7 @@ import {
   createBenchmarkRunRecord,
 } from "./pokemon-icon-benchmark-metadata.mjs";
 
-const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.5";
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.6";
 
 const elements = {
   files: document.getElementById("bundle-files"),

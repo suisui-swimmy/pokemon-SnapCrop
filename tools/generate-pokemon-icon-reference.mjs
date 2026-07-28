@@ -127,10 +127,23 @@ function createReferenceNameResolver() {
   const names = rows.map((row) => row["ポケモン名"]).filter(Boolean);
   const exact = new Set(names);
   const loose = new Map();
+  const exactYakkunNames = new Map();
   names.forEach((name) => {
     const key = normalizeReferenceName(name);
     if (!loose.has(key)) {
       loose.set(key, name);
+    }
+  });
+  rows.forEach((row) => {
+    const yakkunId = String(row["ポケ徹ID"] || "").trim();
+    const name = row["ポケモン名"] || "";
+    if (
+      yakkunId
+      && name
+      && row["ポケ徹リンク種別"] === "exact"
+      && !exactYakkunNames.has(yakkunId)
+    ) {
+      exactYakkunNames.set(yakkunId, name);
     }
   });
 
@@ -144,6 +157,9 @@ function createReferenceNameResolver() {
         return name;
       }
       return loose.get(normalizeReferenceName(name)) || "";
+    },
+    resolveExactYakkunId(yakkunId) {
+      return exactYakkunNames.get(String(yakkunId || "").trim()) || "";
     },
   };
 }
@@ -167,12 +183,27 @@ function pushCandidateNames(map, key, names, resolver) {
   return names.some((name) => pushResolvedName(map, key, name, resolver));
 }
 
-function pokemonDataNameCandidates(row) {
+function isRegionalPokemonDataRow(row) {
+  return [
+    row.pkmn_name,
+    row.pkmn_forme,
+    row.pokeapi_form_id_name,
+    row.pokeapi_pokemon_id_name,
+  ].some((value) => /(^|-)(alola|galar|hisui|paldea)(-|$)/iu.test(String(value || "")));
+}
+
+function pokemonDataNameCandidates(row, resolver) {
   const speciesName = row.pokeapi_species_name_ja || row.yakkuncom_name || "";
   const formName = row.pokeapi_form_name_ja || "";
   const yakkunName = row.yakkuncom_name || "";
+  const exactYakkunName = isRegionalPokemonDataRow(row)
+    ? resolver.resolveExactYakkunId(row.yakkuncom_id)
+    : "";
   const candidates = [];
 
+  if (exactYakkunName) {
+    candidates.push(exactYakkunName);
+  }
   if (yakkunName) {
     candidates.push(yakkunName);
   }
@@ -196,7 +227,7 @@ function createPokemonDataNameMap(resolver) {
   }
 
   readTable(POKEMON_DATA_TSV_PATH, "\t").forEach((row) => {
-    const candidates = pokemonDataNameCandidates(row);
+    const candidates = pokemonDataNameCandidates(row, resolver);
     [
       row.pkmn_name,
       row.pokeapi_form_id_name,
@@ -617,8 +648,11 @@ if (path.resolve(process.argv[1] || "") === path.resolve(import.meta.filename)) 
 }
 
 export {
+  createReferenceNameResolver,
   createSpeciesMetadataResolver,
+  isRegionalPokemonDataRow,
   main,
+  pokemonDataNameCandidates,
   SHOWDOWN_ROOT_CANDIDATES,
   validateBaselineCoverage,
 };

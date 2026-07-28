@@ -10,6 +10,10 @@ import {
   isPokemonIconRecognitionCandidate,
   validateRawAccounting,
 } from "../tools/pokemon-icon-manifest.mjs";
+import {
+  createReferenceNameResolver,
+  pokemonDataNameCandidates,
+} from "../tools/generate-pokemon-icon-reference.mjs";
 import { validatePokemonIconManifest } from "../tools/validate-pokemon-icon-reference.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -119,6 +123,44 @@ test("same image hash with different pokemonName becomes a visual collision", ()
   assert.ok(result.icons.every((entry) => entry.visualCollisionId));
 });
 
+test("exact Yakkun form ids resolve regional names before base species names", () => {
+  const resolver = createReferenceNameResolver();
+  const cases = [
+    ["n38a", "キュウコン(アローラ)", "Alola"],
+    ["n59h", "ウインディ(ヒスイ)", "Hisui"],
+    ["n26a", "ライチュウ(アローラ)", "Alola"],
+    ["n128a", "ケンタロス(パルデア・コンバット種)", "Paldea-Combat"],
+    ["n128b", "ケンタロス(パルデア・ブレイズ種)", "Paldea-Blaze"],
+    ["n128c", "ケンタロス(パルデア・ウォーター種)", "Paldea-Aqua"],
+  ];
+
+  cases.forEach(([yakkunId, expectedName, forme]) => {
+    assert.equal(resolver.resolveExactYakkunId(yakkunId), expectedName);
+    assert.equal(
+      pokemonDataNameCandidates({
+        pkmn_forme: forme,
+        yakkuncom_id: yakkunId,
+        yakkuncom_name: expectedName.replace(/\(.+$/u, ""),
+        pokeapi_species_name_ja: expectedName.replace(/\(.+$/u, ""),
+        pokeapi_form_name_ja: "",
+      }, resolver)[0],
+      expectedName,
+    );
+  });
+
+  assert.equal(
+    pokemonDataNameCandidates({
+      pkmn_name: "Aegislash-Blade",
+      pkmn_forme: "Blade",
+      yakkuncom_id: "n681b",
+      yakkuncom_name: "ギルガルド",
+      pokeapi_species_name_ja: "ギルガルド",
+      pokeapi_form_name_ja: "ブレードフォルム",
+    }, resolver)[0],
+    "ギルガルド",
+  );
+});
+
 test("raw accounting includes canonical, merged, collision, and invalid entries", () => {
   const rawEntries = [
     candidate(),
@@ -190,7 +232,7 @@ test("generated manifest carries Showdown classification and general recognition
   assert.match(manifest.classification.revision, /^[0-9a-f]{40}$/u);
   assert.equal(manifest.stats.championsSourceIconCount, 358);
   assert.equal(manifest.stats.recognitionCandidateCount, 788);
-  assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 468);
+  assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 496);
   assert.equal(manifest.stats.classificationUnresolvedCount, 0);
 
   assert.equal(icon("Pikachu").hasChampionsSource, true);
@@ -231,4 +273,40 @@ test("generated manifest carries Showdown classification and general recognition
   assert.equal(icon("Mewtwo").legendClass, "restricted");
   assert.equal(icon("Mew").legendClass, "mythical");
   assert.ok(icon("Mewtwo").recognitionCandidateReasons.includes("legend:restricted"));
+});
+
+test("generated manifest preserves regional form names and base species keys", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "pokemon-icon-reference.json"), "utf8"));
+  const icon = (id) => manifest.icons.find((entry) => entry.mergedIds?.includes(id));
+  const cases = [
+    ["Ninetales-Alola", "キュウコン(アローラ)", "species:ninetales", "variant:ninetales-alola"],
+    ["Arcanine-Hisui", "ウインディ(ヒスイ)", "species:arcanine", "variant:arcanine-hisui"],
+    ["Raichu-Alola", "ライチュウ(アローラ)", "species:raichu", "variant:raichu-alola"],
+    ["Tauros-Paldea-Combat", "ケンタロス(パルデア・コンバット種)", "species:tauros", "variant:tauros-paldea-combat"],
+    ["Tauros-Paldea-Blaze", "ケンタロス(パルデア・ブレイズ種)", "species:tauros", "variant:tauros-paldea-blaze"],
+    ["Tauros-Paldea-Aqua", "ケンタロス(パルデア・ウォーター種)", "species:tauros", "variant:tauros-paldea-aqua"],
+  ];
+
+  cases.forEach(([id, pokemonName, speciesKey, variantKey]) => {
+    assert.equal(icon(id).pokemonName, pokemonName);
+    assert.equal(icon(id).speciesKey, speciesKey);
+    assert.equal(icon(id).variantKey, variantKey);
+  });
+
+  const regionalLabels = new Map([
+    ["alola", "アローラ"],
+    ["galar", "ガラル"],
+    ["hisui", "ヒスイ"],
+    ["paldea", "パルデア"],
+  ]);
+  const regionalIcons = manifest.icons.filter((entry) =>
+    /-(alola|galar|hisui|paldea)(-|$)/u.test(entry.variantKey));
+  assert.equal(new Set(regionalIcons.map((entry) => entry.variantKey)).size, 44);
+  regionalIcons.forEach((entry) => {
+    const region = entry.variantKey.match(/-(alola|galar|hisui|paldea)(-|$)/u)?.[1];
+    assert.ok(
+      entry.pokemonName.includes(`(${regionalLabels.get(region)}`),
+      `${entry.id} should keep its regional form name`,
+    );
+  });
 });

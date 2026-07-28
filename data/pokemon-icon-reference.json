@@ -1,6 +1,6 @@
 {
   "schemaVersion": 5,
-  "generatedAt": "2026-07-28T05:48:01.193Z",
+  "generatedAt": "2026-07-28T15:43:36.957Z",
   "sample": {
     "width": 64,
     "height": 64
@@ -63,13 +63,13 @@
     "visualCollisionEntryCount": 0,
     "invalidCount": 0,
     "unresolvedCount": 0,
-    "uniquePokemonNameCount": 867,
+    "uniquePokemonNameCount": 911,
     "uniqueSpeciesKeyCount": 777,
     "speciesFallbackCount": 6,
     "championsSourceIconCount": 358,
-    "championsSourcePokemonNameCount": 294,
+    "championsSourcePokemonNameCount": 309,
     "recognitionCandidateCount": 788,
-    "recognitionCandidatePokemonNameCount": 468,
+    "recognitionCandidatePokemonNameCount": 496,
     "recognitionCandidateReasonCounts": {
       "champions-source": 283,
       "final-evolution": 784,
@@ -107,12 +107,12 @@
       }
     },
     "sourceNameCounts": {
-      "champions": 294,
-      "sv": 844
+      "champions": 309,
+      "sv": 888
     },
-    "svOnlyPokemonNameCount": 573,
-    "pokemonNameSetSha256": "2af583f9ea5350f96a88c3081f7ee5a0e8e77f276155b12a9b34b9f2ac42426d",
-    "svOnlyPokemonNameSetSha256": "52423940edacf2400c1842fc5c87e8a75d4e14f1d446c6415aba0dfd1664274d",
+    "svOnlyPokemonNameCount": 602,
+    "pokemonNameSetSha256": "42dc7ee252b7e7bb9852d0a491b51e374eb900d522244c142a43f59619c51b60",
+    "svOnlyPokemonNameSetSha256": "61dd6eca47dba7864e5c2af1ddf5a4a81cfb788a3d4eaf48e7a243e550112b19",
     "rawAccounting": {
       "canonical": 1264,
       "merged_duplicate": 20,
@@ -1905,7 +1905,7 @@
     },
     {
       "id": "Arcanine-Hisui",
-      "pokemonName": "ウインディ",
+      "pokemonName": "ウインディ(ヒスイ)",
       "speciesKey": "species:arcanine",
       "variantKey": "variant:arcanine-hisui",
       "speciesResolution": {
@@ -2442,7 +2442,7 @@
     },
     {
       "id": "Avalugg-Hisui",
-      "pokemonName": "クレベース",
+      "pokemonName": "クレベース(ヒスイ)",
       "speciesKey": "species:avalugg",
       "variantKey": "variant:avalugg-hisui",
       "speciesResolution": {
@@ -4926,7 +4926,7 @@
     },
     {
       "id": "Decidueye-Hisui",
-      "pokemonName": "ジュナイパー",
+      "pokemonName": "ジュナイパー(ヒスイ)",
       "speciesKey": "species:decidueye",
       "variantKey": "variant:decidueye-hisui",
       "speciesResolution": {
@@ -9084,7 +9084,7 @@
     },
     {
       "id": "Goodra-Hisui",
-      "pokemonName": "ヌメルゴン",
+      "pokemonName": "ヌメルゴン(ヒスイ)",
       "speciesKey": "species:goodra",
       "variantKey": "variant:goodra-hisui",
       "speciesResolution": {
@@ -13257,7 +13257,7 @@
     },
     {
       "id": "Ninetales-Alola",
-      "pokemonName": "キュウコン",
+      "pokemonName": "キュウコン(アローラ)",
       "speciesKey": "species:ninetales",
       "variantKey": "variant:ninetales-alola",
       "speciesResolution": {
@@ -14699,7 +14699,7 @@
     },
     {
       "id": "Raichu-Alola",
-      "pokemonName": "ライチュウ",
+      "pokemonName": "ライチュウ(アローラ)",
       "speciesKey": "species:raichu",
       "variantKey": "variant:raichu-alola",
       "speciesResolution": {
@@ -15770,7 +15770,7 @@
     },
     {
       "id": "Samurott-Hisui",
-      "pokemonName": "ダイケンキ",
+      "pokemonName": "ダイケンキ(ヒスイ)",
       "speciesKey": "species:samurott",
       "variantKey": "variant:samurott-hisui",
       "speciesResolution": {
@@ -17135,7 +17135,7 @@
     },
     {
       "id": "Slowbro-Galar",
-      "pokemonName": "ヤドラン",
+      "pokemonName": "ヤドラン(ガラル)",
       "speciesKey": "species:slowbro",
       "variantKey": "variant:slowbro-galar",
       "speciesResolution": {
@@ -17312,7 +17312,7 @@
     },
     {
       "id": "Slowking-Galar",
-      "pokemonName": "ヤドキング",
+      "pokemonName": "ヤドキング(ガラル)",
       "speciesKey": "species:slowking",
       "variantKey": "variant:slowking-galar",
       "speciesResolution": {
@@ -18026,7 +18026,7 @@
     },
     {
       "id": "Stunfisk-Galar",
-      "pokemonName": "マッギョ",
+      "pokemonName": "マッギョ(ガラル)",
       "speciesKey": "species:stunfisk",
       "variantKey": "variant:stunfisk-galar",
       "speciesResolution": {
@@ -18386,7 +18386,7 @@
     },
     {
       "id": "Tauros-Paldea-Aqua",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ウォーター種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-aqua",
       "speciesResolution": {
@@ -18446,7 +18446,7 @@
     },
     {
       "id": "Tauros-Paldea-Blaze",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ブレイズ種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-blaze",
       "speciesResolution": {
@@ -18506,7 +18506,7 @@
     },
     {
       "id": "Tauros-Paldea-Combat",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・コンバット種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-combat",
       "speciesResolution": {
@@ -19106,7 +19106,7 @@
     },
     {
       "id": "Typhlosion-Hisui",
-      "pokemonName": "バクフーン",
+      "pokemonName": "バクフーン(ヒスイ)",
       "speciesKey": "species:typhlosion",
       "variantKey": "variant:typhlosion-hisui",
       "speciesResolution": {
@@ -21380,7 +21380,7 @@
     },
     {
       "id": "Zoroark-Hisui",
-      "pokemonName": "ゾロアーク",
+      "pokemonName": "ゾロアーク(ヒスイ)",
       "speciesKey": "species:zoroark",
       "variantKey": "variant:zoroark-hisui",
       "speciesResolution": {
@@ -23021,7 +23021,7 @@
     },
     {
       "id": "Arcanine-Hisui",
-      "pokemonName": "ウインディ",
+      "pokemonName": "ウインディ(ヒスイ)",
       "speciesKey": "species:arcanine",
       "variantKey": "variant:arcanine-hisui",
       "speciesResolution": {
@@ -23558,7 +23558,7 @@
     },
     {
       "id": "Articuno-Galar",
-      "pokemonName": "フリーザー",
+      "pokemonName": "フリーザー(ガラル)",
       "speciesKey": "species:articuno",
       "variantKey": "variant:articuno-galar",
       "speciesResolution": {
@@ -23854,7 +23854,7 @@
     },
     {
       "id": "Avalugg-Hisui",
-      "pokemonName": "クレベース",
+      "pokemonName": "クレベース(ヒスイ)",
       "speciesKey": "species:avalugg",
       "variantKey": "variant:avalugg-hisui",
       "speciesResolution": {
@@ -25976,7 +25976,7 @@
     },
     {
       "id": "Braviary-Hisui",
-      "pokemonName": "ウォーグル",
+      "pokemonName": "ウォーグル(ヒスイ)",
       "speciesKey": "species:braviary",
       "variantKey": "variant:braviary-hisui",
       "speciesResolution": {
@@ -31248,7 +31248,7 @@
     },
     {
       "id": "Decidueye-Hisui",
-      "pokemonName": "ジュナイパー",
+      "pokemonName": "ジュナイパー(ヒスイ)",
       "speciesKey": "species:decidueye",
       "variantKey": "variant:decidueye-hisui",
       "speciesResolution": {
@@ -32389,7 +32389,7 @@
     },
     {
       "id": "Diglett-Alola",
-      "pokemonName": "ディグダ",
+      "pokemonName": "ディグダ(アローラ)",
       "speciesKey": "species:diglett",
       "variantKey": "variant:diglett-alola",
       "speciesResolution": {
@@ -33919,7 +33919,7 @@
     },
     {
       "id": "Dugtrio-Alola",
-      "pokemonName": "ダグトリオ",
+      "pokemonName": "ダグトリオ(アローラ)",
       "speciesKey": "species:dugtrio",
       "variantKey": "variant:dugtrio-alola",
       "speciesResolution": {
@@ -34812,7 +34812,7 @@
     },
     {
       "id": "Electrode-Hisui",
-      "pokemonName": "マルマイン",
+      "pokemonName": "マルマイン(ヒスイ)",
       "speciesKey": "species:electrode",
       "variantKey": "variant:electrode-hisui",
       "speciesResolution": {
@@ -35825,7 +35825,7 @@
     },
     {
       "id": "Exeggutor-Alola",
-      "pokemonName": "ナッシー",
+      "pokemonName": "ナッシー(アローラ)",
       "speciesKey": "species:exeggutor",
       "variantKey": "variant:exeggutor-alola",
       "speciesResolution": {
@@ -39002,7 +39002,7 @@
     },
     {
       "id": "Geodude-Alola",
-      "pokemonName": "イシツブテ",
+      "pokemonName": "イシツブテ(アローラ)",
       "speciesKey": "species:geodude",
       "variantKey": "variant:geodude-alola",
       "speciesResolution": {
@@ -40188,7 +40188,7 @@
     },
     {
       "id": "Golem-Alola",
-      "pokemonName": "ゴローニャ",
+      "pokemonName": "ゴローニャ(アローラ)",
       "speciesKey": "species:golem",
       "variantKey": "variant:golem-alola",
       "speciesResolution": {
@@ -40481,7 +40481,7 @@
     },
     {
       "id": "Goodra-Hisui",
-      "pokemonName": "ヌメルゴン",
+      "pokemonName": "ヌメルゴン(ヒスイ)",
       "speciesKey": "species:goodra",
       "variantKey": "variant:goodra-hisui",
       "speciesResolution": {
@@ -41072,7 +41072,7 @@
     },
     {
       "id": "Graveler-Alola",
-      "pokemonName": "ゴローン",
+      "pokemonName": "ゴローン(アローラ)",
       "speciesKey": "species:graveler",
       "variantKey": "variant:graveler-alola",
       "speciesResolution": {
@@ -41485,7 +41485,7 @@
     },
     {
       "id": "Grimer-Alola",
-      "pokemonName": "ベトベター",
+      "pokemonName": "ベトベター(アローラ)",
       "speciesKey": "species:grimer",
       "variantKey": "variant:grimer-alola",
       "speciesResolution": {
@@ -41842,7 +41842,7 @@
     },
     {
       "id": "Growlithe-Hisui",
-      "pokemonName": "ガーディ",
+      "pokemonName": "ガーディ(ヒスイ)",
       "speciesKey": "species:growlithe",
       "variantKey": "variant:growlithe-hisui",
       "speciesResolution": {
@@ -47978,7 +47978,7 @@
     },
     {
       "id": "Lilligant-Hisui",
-      "pokemonName": "ドレディア",
+      "pokemonName": "ドレディア(ヒスイ)",
       "speciesKey": "species:lilligant",
       "variantKey": "variant:lilligant-hisui",
       "speciesResolution": {
@@ -51471,7 +51471,7 @@
     },
     {
       "id": "Meowth-Alola",
-      "pokemonName": "ニャース",
+      "pokemonName": "ニャース(アローラ)",
       "speciesKey": "species:meowth",
       "variantKey": "variant:meowth-alola",
       "speciesResolution": {
@@ -51530,7 +51530,7 @@
     },
     {
       "id": "Meowth-Galar",
-      "pokemonName": "ニャース",
+      "pokemonName": "ニャース(ガラル)",
       "speciesKey": "species:meowth",
       "variantKey": "variant:meowth-galar",
       "speciesResolution": {
@@ -52607,7 +52607,7 @@
     },
     {
       "id": "Moltres-Galar",
-      "pokemonName": "ファイヤー",
+      "pokemonName": "ファイヤー(ガラル)",
       "speciesKey": "species:moltres",
       "variantKey": "variant:moltres-galar",
       "speciesResolution": {
@@ -53141,7 +53141,7 @@
     },
     {
       "id": "Muk-Alola",
-      "pokemonName": "ベトベトン",
+      "pokemonName": "ベトベトン(アローラ)",
       "speciesKey": "species:muk",
       "variantKey": "variant:muk-alola",
       "speciesResolution": {
@@ -53743,7 +53743,7 @@
     },
     {
       "id": "Ninetales-Alola",
-      "pokemonName": "キュウコン",
+      "pokemonName": "キュウコン(アローラ)",
       "speciesKey": "species:ninetales",
       "variantKey": "variant:ninetales-alola",
       "speciesResolution": {
@@ -56068,7 +56068,7 @@
     },
     {
       "id": "Persian-Alola",
-      "pokemonName": "ペルシアン",
+      "pokemonName": "ペルシアン(アローラ)",
       "speciesKey": "species:persian",
       "variantKey": "variant:persian-alola",
       "speciesResolution": {
@@ -58490,7 +58490,7 @@
     },
     {
       "id": "Qwilfish-Hisui",
-      "pokemonName": "ハリーセン",
+      "pokemonName": "ハリーセン(ヒスイ)",
       "speciesKey": "species:qwilfish",
       "variantKey": "variant:qwilfish-hisui",
       "speciesResolution": {
@@ -58785,7 +58785,7 @@
     },
     {
       "id": "Raichu-Alola",
-      "pokemonName": "ライチュウ",
+      "pokemonName": "ライチュウ(アローラ)",
       "speciesKey": "species:raichu",
       "variantKey": "variant:raichu-alola",
       "speciesResolution": {
@@ -61233,7 +61233,7 @@
     },
     {
       "id": "Samurott-Hisui",
-      "pokemonName": "ダイケンキ",
+      "pokemonName": "ダイケンキ(ヒスイ)",
       "speciesKey": "species:samurott",
       "variantKey": "variant:samurott-hisui",
       "speciesResolution": {
@@ -61469,7 +61469,7 @@
     },
     {
       "id": "Sandshrew-Alola",
-      "pokemonName": "サンド",
+      "pokemonName": "サンド(アローラ)",
       "speciesKey": "species:sandshrew",
       "variantKey": "variant:sandshrew-alola",
       "speciesResolution": {
@@ -61587,7 +61587,7 @@
     },
     {
       "id": "Sandslash-Alola",
-      "pokemonName": "サンドパン",
+      "pokemonName": "サンドパン(アローラ)",
       "speciesKey": "species:sandslash",
       "variantKey": "variant:sandslash-alola",
       "speciesResolution": {
@@ -64599,7 +64599,7 @@
     },
     {
       "id": "Sliggoo-Hisui",
-      "pokemonName": "ヌメイル",
+      "pokemonName": "ヌメイル(ヒスイ)",
       "speciesKey": "species:sliggoo",
       "variantKey": "variant:sliggoo-hisui",
       "speciesResolution": {
@@ -64778,7 +64778,7 @@
     },
     {
       "id": "Slowbro-Galar",
-      "pokemonName": "ヤドラン",
+      "pokemonName": "ヤドラン(ガラル)",
       "speciesKey": "species:slowbro",
       "variantKey": "variant:slowbro-galar",
       "speciesResolution": {
@@ -64953,7 +64953,7 @@
     },
     {
       "id": "Slowking-Galar",
-      "pokemonName": "ヤドキング",
+      "pokemonName": "ヤドキング(ガラル)",
       "speciesKey": "species:slowking",
       "variantKey": "variant:slowking-galar",
       "speciesResolution": {
@@ -65072,7 +65072,7 @@
     },
     {
       "id": "Slowpoke-Galar",
-      "pokemonName": "ヤドン",
+      "pokemonName": "ヤドン(ガラル)",
       "speciesKey": "species:slowpoke",
       "variantKey": "variant:slowpoke-galar",
       "speciesResolution": {
@@ -65427,7 +65427,7 @@
     },
     {
       "id": "Sneasel-Hisui",
-      "pokemonName": "ニューラ",
+      "pokemonName": "ニューラ(ヒスイ)",
       "speciesKey": "species:sneasel",
       "variantKey": "variant:sneasel-hisui",
       "speciesResolution": {
@@ -67201,7 +67201,7 @@
     },
     {
       "id": "Stunfisk-Galar",
-      "pokemonName": "マッギョ",
+      "pokemonName": "マッギョ(ガラル)",
       "speciesKey": "species:stunfisk",
       "variantKey": "variant:stunfisk-galar",
       "speciesResolution": {
@@ -68326,7 +68326,7 @@
     },
     {
       "id": "Tauros-Paldea-Aqua",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ウォーター種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-aqua",
       "speciesResolution": {
@@ -68385,7 +68385,7 @@
     },
     {
       "id": "Tauros-Paldea-Blaze",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ブレイズ種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-blaze",
       "speciesResolution": {
@@ -68444,7 +68444,7 @@
     },
     {
       "id": "Tauros-Paldea-Combat",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・コンバット種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-combat",
       "speciesResolution": {
@@ -70891,7 +70891,7 @@
     },
     {
       "id": "Typhlosion-Hisui",
-      "pokemonName": "バクフーン",
+      "pokemonName": "バクフーン(ヒスイ)",
       "speciesKey": "species:typhlosion",
       "variantKey": "variant:typhlosion-hisui",
       "speciesResolution": {
@@ -72790,7 +72790,7 @@
     },
     {
       "id": "Voltorb-Hisui",
-      "pokemonName": "ビリリダマ",
+      "pokemonName": "ビリリダマ(ヒスイ)",
       "speciesKey": "species:voltorb",
       "variantKey": "variant:voltorb-hisui",
       "speciesResolution": {
@@ -72967,7 +72967,7 @@
     },
     {
       "id": "Vulpix-Alola",
-      "pokemonName": "ロコン",
+      "pokemonName": "ロコン(アローラ)",
       "speciesKey": "species:vulpix",
       "variantKey": "variant:vulpix-alola",
       "speciesResolution": {
@@ -73441,7 +73441,7 @@
     },
     {
       "id": "Weezing-Galar",
-      "pokemonName": "マタドガス",
+      "pokemonName": "マタドガス(ガラル)",
       "speciesKey": "species:weezing",
       "variantKey": "variant:weezing-galar",
       "speciesResolution": {
@@ -73916,7 +73916,7 @@
     },
     {
       "id": "Wooper-Paldea",
-      "pokemonName": "ウパー",
+      "pokemonName": "ウパー(パルデア)",
       "speciesKey": "species:wooper",
       "variantKey": "variant:wooper-paldea",
       "speciesResolution": {
@@ -74639,7 +74639,7 @@
     },
     {
       "id": "Zapdos-Galar",
-      "pokemonName": "サンダー",
+      "pokemonName": "サンダー(ガラル)",
       "speciesKey": "species:zapdos",
       "variantKey": "variant:zapdos-galar",
       "speciesResolution": {
@@ -74943,7 +74943,7 @@
     },
     {
       "id": "Zoroark-Hisui",
-      "pokemonName": "ゾロアーク",
+      "pokemonName": "ゾロアーク(ヒスイ)",
       "speciesKey": "species:zoroark",
       "variantKey": "variant:zoroark-hisui",
       "speciesResolution": {
@@ -75061,7 +75061,7 @@
     },
     {
       "id": "Zorua-Hisui",
-      "pokemonName": "ゾロア",
+      "pokemonName": "ゾロア(ヒスイ)",
       "speciesKey": "species:zorua",
       "variantKey": "variant:zorua-hisui",
       "speciesResolution": {
@@ -75571,7 +75571,7 @@
     },
     {
       "id": "Arcanine-Hisui",
-      "pokemonName": "ウインディ",
+      "pokemonName": "ウインディ(ヒスイ)",
       "speciesKey": "species:arcanine",
       "variantKey": "variant:arcanine-hisui",
       "source": "champions",
@@ -75688,7 +75688,7 @@
     },
     {
       "id": "Avalugg-Hisui",
-      "pokemonName": "クレベース",
+      "pokemonName": "クレベース(ヒスイ)",
       "speciesKey": "species:avalugg",
       "variantKey": "variant:avalugg-hisui",
       "source": "champions",
@@ -76234,7 +76234,7 @@
     },
     {
       "id": "Decidueye-Hisui",
-      "pokemonName": "ジュナイパー",
+      "pokemonName": "ジュナイパー(ヒスイ)",
       "speciesKey": "species:decidueye",
       "variantKey": "variant:decidueye-hisui",
       "source": "champions",
@@ -77144,7 +77144,7 @@
     },
     {
       "id": "Goodra-Hisui",
-      "pokemonName": "ヌメルゴン",
+      "pokemonName": "ヌメルゴン(ヒスイ)",
       "speciesKey": "species:goodra",
       "variantKey": "variant:goodra-hisui",
       "source": "champions",
@@ -78066,7 +78066,7 @@
     },
     {
       "id": "Ninetales-Alola",
-      "pokemonName": "キュウコン",
+      "pokemonName": "キュウコン(アローラ)",
       "speciesKey": "species:ninetales",
       "variantKey": "variant:ninetales-alola",
       "source": "champions",
@@ -78378,7 +78378,7 @@
     },
     {
       "id": "Raichu-Alola",
-      "pokemonName": "ライチュウ",
+      "pokemonName": "ライチュウ(アローラ)",
       "speciesKey": "species:raichu",
       "variantKey": "variant:raichu-alola",
       "source": "champions",
@@ -78612,7 +78612,7 @@
     },
     {
       "id": "Samurott-Hisui",
-      "pokemonName": "ダイケンキ",
+      "pokemonName": "ダイケンキ(ヒスイ)",
       "speciesKey": "species:samurott",
       "variantKey": "variant:samurott-hisui",
       "source": "champions",
@@ -78911,7 +78911,7 @@
     },
     {
       "id": "Slowbro-Galar",
-      "pokemonName": "ヤドラン",
+      "pokemonName": "ヤドラン(ガラル)",
       "speciesKey": "species:slowbro",
       "variantKey": "variant:slowbro-galar",
       "source": "champions",
@@ -78950,7 +78950,7 @@
     },
     {
       "id": "Slowking-Galar",
-      "pokemonName": "ヤドキング",
+      "pokemonName": "ヤドキング(ガラル)",
       "speciesKey": "species:slowking",
       "variantKey": "variant:slowking-galar",
       "source": "champions",
@@ -79106,7 +79106,7 @@
     },
     {
       "id": "Stunfisk-Galar",
-      "pokemonName": "マッギョ",
+      "pokemonName": "マッギョ(ガラル)",
       "speciesKey": "species:stunfisk",
       "variantKey": "variant:stunfisk-galar",
       "source": "champions",
@@ -79184,7 +79184,7 @@
     },
     {
       "id": "Tauros-Paldea-Aqua",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ウォーター種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-aqua",
       "source": "champions",
@@ -79197,7 +79197,7 @@
     },
     {
       "id": "Tauros-Paldea-Blaze",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ブレイズ種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-blaze",
       "source": "champions",
@@ -79210,7 +79210,7 @@
     },
     {
       "id": "Tauros-Paldea-Combat",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・コンバット種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-combat",
       "source": "champions",
@@ -79340,7 +79340,7 @@
     },
     {
       "id": "Typhlosion-Hisui",
-      "pokemonName": "バクフーン",
+      "pokemonName": "バクフーン(ヒスイ)",
       "speciesKey": "species:typhlosion",
       "variantKey": "variant:typhlosion-hisui",
       "source": "champions",
@@ -79834,7 +79834,7 @@
     },
     {
       "id": "Zoroark-Hisui",
-      "pokemonName": "ゾロアーク",
+      "pokemonName": "ゾロアーク(ヒスイ)",
       "speciesKey": "species:zoroark",
       "variantKey": "variant:zoroark-hisui",
       "source": "champions",
@@ -80210,7 +80210,7 @@
     },
     {
       "id": "Arcanine-Hisui",
-      "pokemonName": "ウインディ",
+      "pokemonName": "ウインディ(ヒスイ)",
       "speciesKey": "species:arcanine",
       "variantKey": "variant:arcanine-hisui",
       "source": "sv",
@@ -80327,7 +80327,7 @@
     },
     {
       "id": "Articuno-Galar",
-      "pokemonName": "フリーザー",
+      "pokemonName": "フリーザー(ガラル)",
       "speciesKey": "species:articuno",
       "variantKey": "variant:articuno-galar",
       "source": "sv",
@@ -80392,7 +80392,7 @@
     },
     {
       "id": "Avalugg-Hisui",
-      "pokemonName": "クレベース",
+      "pokemonName": "クレベース(ヒスイ)",
       "speciesKey": "species:avalugg",
       "variantKey": "variant:avalugg-hisui",
       "source": "sv",
@@ -80872,7 +80872,7 @@
     },
     {
       "id": "Braviary-Hisui",
-      "pokemonName": "ウォーグル",
+      "pokemonName": "ウォーグル(ヒスイ)",
       "speciesKey": "species:braviary",
       "variantKey": "variant:braviary-hisui",
       "source": "sv",
@@ -82029,7 +82029,7 @@
     },
     {
       "id": "Decidueye-Hisui",
-      "pokemonName": "ジュナイパー",
+      "pokemonName": "ジュナイパー(ヒスイ)",
       "speciesKey": "species:decidueye",
       "variantKey": "variant:decidueye-hisui",
       "source": "sv",
@@ -82276,7 +82276,7 @@
     },
     {
       "id": "Diglett-Alola",
-      "pokemonName": "ディグダ",
+      "pokemonName": "ディグダ(アローラ)",
       "speciesKey": "species:diglett",
       "variantKey": "variant:diglett-alola",
       "source": "sv",
@@ -82626,7 +82626,7 @@
     },
     {
       "id": "Dugtrio-Alola",
-      "pokemonName": "ダグトリオ",
+      "pokemonName": "ダグトリオ(アローラ)",
       "speciesKey": "species:dugtrio",
       "variantKey": "variant:dugtrio-alola",
       "source": "sv",
@@ -82833,7 +82833,7 @@
     },
     {
       "id": "Electrode-Hisui",
-      "pokemonName": "マルマイン",
+      "pokemonName": "マルマイン(ヒスイ)",
       "speciesKey": "species:electrode",
       "variantKey": "variant:electrode-hisui",
       "source": "sv",
@@ -83054,7 +83054,7 @@
     },
     {
       "id": "Exeggutor-Alola",
-      "pokemonName": "ナッシー",
+      "pokemonName": "ナッシー(アローラ)",
       "speciesKey": "species:exeggutor",
       "variantKey": "variant:exeggutor-alola",
       "source": "sv",
@@ -83768,7 +83768,7 @@
     },
     {
       "id": "Geodude-Alola",
-      "pokemonName": "イシツブテ",
+      "pokemonName": "イシツブテ(アローラ)",
       "speciesKey": "species:geodude",
       "variantKey": "variant:geodude-alola",
       "source": "sv",
@@ -84040,7 +84040,7 @@
     },
     {
       "id": "Golem-Alola",
-      "pokemonName": "ゴローニャ",
+      "pokemonName": "ゴローニャ(アローラ)",
       "speciesKey": "species:golem",
       "variantKey": "variant:golem-alola",
       "source": "sv",
@@ -84105,7 +84105,7 @@
     },
     {
       "id": "Goodra-Hisui",
-      "pokemonName": "ヌメルゴン",
+      "pokemonName": "ヌメルゴン(ヒスイ)",
       "speciesKey": "species:goodra",
       "variantKey": "variant:goodra-hisui",
       "source": "sv",
@@ -84235,7 +84235,7 @@
     },
     {
       "id": "Graveler-Alola",
-      "pokemonName": "ゴローン",
+      "pokemonName": "ゴローン(アローラ)",
       "speciesKey": "species:graveler",
       "variantKey": "variant:graveler-alola",
       "source": "sv",
@@ -84326,7 +84326,7 @@
     },
     {
       "id": "Grimer-Alola",
-      "pokemonName": "ベトベター",
+      "pokemonName": "ベトベター(アローラ)",
       "speciesKey": "species:grimer",
       "variantKey": "variant:grimer-alola",
       "source": "sv",
@@ -84416,7 +84416,7 @@
     },
     {
       "id": "Growlithe-Hisui",
-      "pokemonName": "ガーディ",
+      "pokemonName": "ガーディ(ヒスイ)",
       "speciesKey": "species:growlithe",
       "variantKey": "variant:growlithe-hisui",
       "source": "sv",
@@ -85767,7 +85767,7 @@
     },
     {
       "id": "Lilligant-Hisui",
-      "pokemonName": "ドレディア",
+      "pokemonName": "ドレディア(ヒスイ)",
       "speciesKey": "species:lilligant",
       "variantKey": "variant:lilligant-hisui",
       "source": "sv",
@@ -86558,7 +86558,7 @@
     },
     {
       "id": "Meowth-Alola",
-      "pokemonName": "ニャース",
+      "pokemonName": "ニャース(アローラ)",
       "speciesKey": "species:meowth",
       "variantKey": "variant:meowth-alola",
       "source": "sv",
@@ -86571,7 +86571,7 @@
     },
     {
       "id": "Meowth-Galar",
-      "pokemonName": "ニャース",
+      "pokemonName": "ニャース(ガラル)",
       "speciesKey": "species:meowth",
       "variantKey": "variant:meowth-galar",
       "source": "sv",
@@ -86817,7 +86817,7 @@
     },
     {
       "id": "Moltres-Galar",
-      "pokemonName": "ファイヤー",
+      "pokemonName": "ファイヤー(ガラル)",
       "speciesKey": "species:moltres",
       "variantKey": "variant:moltres-galar",
       "source": "sv",
@@ -86934,7 +86934,7 @@
     },
     {
       "id": "Muk-Alola",
-      "pokemonName": "ベトベトン",
+      "pokemonName": "ベトベトン(アローラ)",
       "speciesKey": "species:muk",
       "variantKey": "variant:muk-alola",
       "source": "sv",
@@ -87064,7 +87064,7 @@
     },
     {
       "id": "Ninetales-Alola",
-      "pokemonName": "キュウコン",
+      "pokemonName": "キュウコン(アローラ)",
       "speciesKey": "species:ninetales",
       "variantKey": "variant:ninetales-alola",
       "source": "sv",
@@ -87583,7 +87583,7 @@
     },
     {
       "id": "Persian-Alola",
-      "pokemonName": "ペルシアン",
+      "pokemonName": "ペルシアン(アローラ)",
       "speciesKey": "species:persian",
       "variantKey": "variant:persian-alola",
       "source": "sv",
@@ -88140,7 +88140,7 @@
     },
     {
       "id": "Qwilfish-Hisui",
-      "pokemonName": "ハリーセン",
+      "pokemonName": "ハリーセン(ヒスイ)",
       "speciesKey": "species:qwilfish",
       "variantKey": "variant:qwilfish-hisui",
       "source": "sv",
@@ -88205,7 +88205,7 @@
     },
     {
       "id": "Raichu-Alola",
-      "pokemonName": "ライチュウ",
+      "pokemonName": "ライチュウ(アローラ)",
       "speciesKey": "species:raichu",
       "variantKey": "variant:raichu-alola",
       "source": "sv",
@@ -88738,7 +88738,7 @@
     },
     {
       "id": "Samurott-Hisui",
-      "pokemonName": "ダイケンキ",
+      "pokemonName": "ダイケンキ(ヒスイ)",
       "speciesKey": "species:samurott",
       "variantKey": "variant:samurott-hisui",
       "source": "sv",
@@ -88790,7 +88790,7 @@
     },
     {
       "id": "Sandshrew-Alola",
-      "pokemonName": "サンド",
+      "pokemonName": "サンド(アローラ)",
       "speciesKey": "species:sandshrew",
       "variantKey": "variant:sandshrew-alola",
       "source": "sv",
@@ -88816,7 +88816,7 @@
     },
     {
       "id": "Sandslash-Alola",
-      "pokemonName": "サンドパン",
+      "pokemonName": "サンドパン(アローラ)",
       "speciesKey": "species:sandslash",
       "variantKey": "variant:sandslash-alola",
       "source": "sv",
@@ -89503,7 +89503,7 @@
     },
     {
       "id": "Sliggoo-Hisui",
-      "pokemonName": "ヌメイル",
+      "pokemonName": "ヌメイル(ヒスイ)",
       "speciesKey": "species:sliggoo",
       "variantKey": "variant:sliggoo-hisui",
       "source": "sv",
@@ -89542,7 +89542,7 @@
     },
     {
       "id": "Slowbro-Galar",
-      "pokemonName": "ヤドラン",
+      "pokemonName": "ヤドラン(ガラル)",
       "speciesKey": "species:slowbro",
       "variantKey": "variant:slowbro-galar",
       "source": "sv",
@@ -89581,7 +89581,7 @@
     },
     {
       "id": "Slowking-Galar",
-      "pokemonName": "ヤドキング",
+      "pokemonName": "ヤドキング(ガラル)",
       "speciesKey": "species:slowking",
       "variantKey": "variant:slowking-galar",
       "source": "sv",
@@ -89607,7 +89607,7 @@
     },
     {
       "id": "Slowpoke-Galar",
-      "pokemonName": "ヤドン",
+      "pokemonName": "ヤドン(ガラル)",
       "speciesKey": "species:slowpoke",
       "variantKey": "variant:slowpoke-galar",
       "source": "sv",
@@ -89685,7 +89685,7 @@
     },
     {
       "id": "Sneasel-Hisui",
-      "pokemonName": "ニューラ",
+      "pokemonName": "ニューラ(ヒスイ)",
       "speciesKey": "species:sneasel",
       "variantKey": "variant:sneasel-hisui",
       "source": "sv",
@@ -90087,7 +90087,7 @@
     },
     {
       "id": "Stunfisk-Galar",
-      "pokemonName": "マッギョ",
+      "pokemonName": "マッギョ(ガラル)",
       "speciesKey": "species:stunfisk",
       "variantKey": "variant:stunfisk-galar",
       "source": "sv",
@@ -90346,7 +90346,7 @@
     },
     {
       "id": "Tauros-Paldea-Aqua",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ウォーター種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-aqua",
       "source": "sv",
@@ -90359,7 +90359,7 @@
     },
     {
       "id": "Tauros-Paldea-Blaze",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・ブレイズ種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-blaze",
       "source": "sv",
@@ -90372,7 +90372,7 @@
     },
     {
       "id": "Tauros-Paldea-Combat",
-      "pokemonName": "ケンタロス",
+      "pokemonName": "ケンタロス(パルデア・コンバット種)",
       "speciesKey": "species:tauros",
       "variantKey": "variant:tauros-paldea-combat",
       "source": "sv",
@@ -90905,7 +90905,7 @@
     },
     {
       "id": "Typhlosion-Hisui",
-      "pokemonName": "バクフーン",
+      "pokemonName": "バクフーン(ヒスイ)",
       "speciesKey": "species:typhlosion",
       "variantKey": "variant:typhlosion-hisui",
       "source": "sv",
@@ -91333,7 +91333,7 @@
     },
     {
       "id": "Voltorb-Hisui",
-      "pokemonName": "ビリリダマ",
+      "pokemonName": "ビリリダマ(ヒスイ)",
       "speciesKey": "species:voltorb",
       "variantKey": "variant:voltorb-hisui",
       "source": "sv",
@@ -91372,7 +91372,7 @@
     },
     {
       "id": "Vulpix-Alola",
-      "pokemonName": "ロコン",
+      "pokemonName": "ロコン(アローラ)",
       "speciesKey": "species:vulpix",
       "variantKey": "variant:vulpix-alola",
       "source": "sv",
@@ -91476,7 +91476,7 @@
     },
     {
       "id": "Weezing-Galar",
-      "pokemonName": "マタドガス",
+      "pokemonName": "マタドガス(ガラル)",
       "speciesKey": "species:weezing",
       "variantKey": "variant:weezing-galar",
       "source": "sv",
@@ -91580,7 +91580,7 @@
     },
     {
       "id": "Wooper-Paldea",
-      "pokemonName": "ウパー",
+      "pokemonName": "ウパー(パルデア)",
       "speciesKey": "species:wooper",
       "variantKey": "variant:wooper-paldea",
       "source": "sv",
@@ -91736,7 +91736,7 @@
     },
     {
       "id": "Zapdos-Galar",
-      "pokemonName": "サンダー",
+      "pokemonName": "サンダー(ガラル)",
       "speciesKey": "species:zapdos",
       "variantKey": "variant:zapdos-galar",
       "source": "sv",
@@ -91801,7 +91801,7 @@
     },
     {
       "id": "Zoroark-Hisui",
-      "pokemonName": "ゾロアーク",
+      "pokemonName": "ゾロアーク(ヒスイ)",
       "speciesKey": "species:zoroark",
       "variantKey": "variant:zoroark-hisui",
       "source": "sv",
@@ -91827,7 +91827,7 @@
     },
     {
       "id": "Zorua-Hisui",
-      "pokemonName": "ゾロア",
+      "pokemonName": "ゾロア(ヒスイ)",
       "speciesKey": "species:zorua",
       "variantKey": "variant:zorua-hisui",
       "source": "sv",
