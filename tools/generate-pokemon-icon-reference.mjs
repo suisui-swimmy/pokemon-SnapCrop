@@ -573,10 +573,12 @@ function main() {
     classification: showdown.source,
     recognitionCandidatePolicy: {
       mode: "any",
+      excludes: [
+        "mega",
+      ],
       includes: [
         "champions-source",
         "final-evolution",
-        "mega",
         "legend:mythical",
         "legend:sublegendary",
         "legend:restricted",

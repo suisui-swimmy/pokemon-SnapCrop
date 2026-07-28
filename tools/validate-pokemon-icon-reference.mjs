@@ -56,10 +56,15 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
     "recognitionCandidatePolicy mode must be any",
   );
   check(
+    JSON.stringify(manifest.recognitionCandidatePolicy?.excludes) === JSON.stringify([
+      "mega",
+    ]),
+    "recognitionCandidatePolicy excludes mismatch",
+  );
+  check(
     JSON.stringify(manifest.recognitionCandidatePolicy?.includes) === JSON.stringify([
       "champions-source",
       "final-evolution",
-      "mega",
       "legend:mythical",
       "legend:sublegendary",
       "legend:restricted",

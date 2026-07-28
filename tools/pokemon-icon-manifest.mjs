@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-export const ICON_MANIFEST_SCHEMA_VERSION = 4;
+export const ICON_MANIFEST_SCHEMA_VERSION = 5;
 export const ICON_SAMPLE_SIZE = Object.freeze({
   width: 64,
   height: 64,
@@ -70,6 +70,9 @@ function classificationMetadata(entry) {
 }
 
 export function getPokemonIconRecognitionCandidateReasons(entry) {
+  if (entry?.isMega === true) {
+    return [];
+  }
   const reasons = [];
   if (
     entry?.hasChampionsSource === true
@@ -81,9 +84,6 @@ export function getPokemonIconRecognitionCandidateReasons(entry) {
   }
   if (entry?.isFinalEvolution === true) {
     reasons.push("final-evolution");
-  }
-  if (entry?.isMega === true) {
-    reasons.push("mega");
   }
   if (RECOGNITION_LEGEND_CLASSES.includes(entry?.legendClass)) {
     reasons.push(`legend:${entry.legendClass}`);

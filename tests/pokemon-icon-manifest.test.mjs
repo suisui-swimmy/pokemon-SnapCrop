@@ -48,7 +48,7 @@ test("same hash and pokemonName are merged into one canonical candidate", () => 
   assert.equal(result.statusCounts.merged_duplicate, 1);
 });
 
-test("recognition candidates use classification and keep Champions source exceptions", () => {
+test("recognition candidates use classification, keep Champions exceptions, and hard-exclude Mega forms", () => {
   assert.equal(isPokemonIconRecognitionCandidate({}), false);
   assert.deepEqual(
     getPokemonIconRecognitionCandidateReasons({
@@ -57,12 +57,7 @@ test("recognition candidates use classification and keep Champions source except
       isMega: true,
       legendClass: "restricted",
     }),
-    [
-      "champions-source",
-      "final-evolution",
-      "mega",
-      "legend:restricted",
-    ],
+    [],
   );
   assert.equal(
     isPokemonIconRecognitionCandidate({ isFinalEvolution: true }),
@@ -70,7 +65,16 @@ test("recognition candidates use classification and keep Champions source except
   );
   assert.equal(
     isPokemonIconRecognitionCandidate({ isMega: true }),
-    true,
+    false,
+  );
+  assert.equal(
+    isPokemonIconRecognitionCandidate({
+      hasChampionsSource: true,
+      isFinalEvolution: true,
+      isMega: true,
+      legendClass: "restricted",
+    }),
+    false,
   );
   assert.equal(
     isPokemonIconRecognitionCandidate({ legendClass: "sublegendary" }),
@@ -185,8 +189,8 @@ test("generated manifest carries Showdown classification and general recognition
   assert.equal(manifest.classification.name, "pokemon-showdown");
   assert.match(manifest.classification.revision, /^[0-9a-f]{40}$/u);
   assert.equal(manifest.stats.championsSourceIconCount, 358);
-  assert.equal(manifest.stats.recognitionCandidateCount, 922);
-  assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 543);
+  assert.equal(manifest.stats.recognitionCandidateCount, 788);
+  assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 468);
   assert.equal(manifest.stats.classificationUnresolvedCount, 0);
 
   assert.equal(icon("Pikachu").hasChampionsSource, true);
@@ -216,6 +220,8 @@ test("generated manifest carries Showdown classification and general recognition
   assert.ok(meowsticMega.mergedIds.includes("Meowstic-M-Mega"));
   assert.equal(meowsticMega.evolutionDepth, 1);
   assert.equal(meowsticMega.isMega, true);
+  assert.equal(meowsticMega.isRecognitionCandidate, false);
+  assert.deepEqual(meowsticMega.recognitionCandidateReasons, []);
   assert.deepEqual(
     meowsticMega.showdownIds,
     ["meowsticfmega", "meowsticmmega"],

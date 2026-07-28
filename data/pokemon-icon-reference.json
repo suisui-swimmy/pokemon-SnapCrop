@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 4,
-  "generatedAt": "2026-07-28T05:13:46.285Z",
+  "schemaVersion": 5,
+  "generatedAt": "2026-07-28T05:48:01.193Z",
   "sample": {
     "width": 64,
     "height": 64
@@ -33,10 +33,12 @@
   },
   "recognitionCandidatePolicy": {
     "mode": "any",
+    "excludes": [
+      "mega"
+    ],
     "includes": [
       "champions-source",
       "final-evolution",
-      "mega",
       "legend:mythical",
       "legend:sublegendary",
       "legend:restricted"
@@ -66,12 +68,11 @@
     "speciesFallbackCount": 6,
     "championsSourceIconCount": 358,
     "championsSourcePokemonNameCount": 294,
-    "recognitionCandidateCount": 922,
-    "recognitionCandidatePokemonNameCount": 543,
+    "recognitionCandidateCount": 788,
+    "recognitionCandidatePokemonNameCount": 468,
     "recognitionCandidateReasonCounts": {
-      "champions-source": 358,
-      "final-evolution": 918,
-      "mega": 134,
+      "champions-source": 283,
+      "final-evolution": 784,
       "legend:mythical": 22,
       "legend:sublegendary": 49,
       "legend:restricted": 37
@@ -192,12 +193,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Abomasnow-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "abomasnowmega",
       "isMega": true,
       "legendClass": "normal",
@@ -313,12 +310,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Absol-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "absolmega",
       "isMega": true,
       "legendClass": "normal",
@@ -554,12 +547,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Aerodactyl-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "aerodactylmega",
       "isMega": true,
       "legendClass": "normal",
@@ -675,12 +664,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Aggron-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "aggronmega",
       "isMega": true,
       "legendClass": "normal",
@@ -796,12 +781,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Alakazam-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "alakazammega",
       "isMega": true,
       "legendClass": "normal",
@@ -1457,12 +1438,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Altaria-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "altariamega",
       "isMega": true,
       "legendClass": "normal",
@@ -1578,12 +1555,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Ampharos-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "ampharosmega",
       "isMega": true,
       "legendClass": "normal",
@@ -2302,12 +2275,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Audino-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "audinomega",
       "isMega": true,
       "legendClass": "normal",
@@ -2663,12 +2632,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Banette-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "banettemega",
       "isMega": true,
       "legendClass": "normal",
@@ -2784,12 +2749,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Barbaracle-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "barbaraclemega",
       "isMega": true,
       "legendClass": "normal",
@@ -3145,12 +3106,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Beedrill-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "beedrillmega",
       "isMega": true,
       "legendClass": "normal",
@@ -3326,12 +3283,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Blastoise-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "blastoisemega",
       "isMega": true,
       "legendClass": "normal",
@@ -3450,12 +3403,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Blaziken-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "blazikenmega",
       "isMega": true,
       "legendClass": "normal",
@@ -3571,12 +3520,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Camerupt-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "cameruptmega",
       "isMega": true,
       "legendClass": "normal",
@@ -3992,12 +3937,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Chandelure-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chandeluremega",
       "isMega": true,
       "legendClass": "normal",
@@ -4113,12 +4054,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Charizard-Mega-X.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "charizardmegax",
       "isMega": true,
       "legendClass": "normal",
@@ -4174,12 +4111,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Charizard-Mega-Y.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "charizardmegay",
       "isMega": true,
       "legendClass": "normal",
@@ -4295,12 +4228,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Chesnaught-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chesnaughtmega",
       "isMega": true,
       "legendClass": "normal",
@@ -4416,12 +4345,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Chimecho-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chimechomega",
       "isMega": true,
       "legendClass": "normal",
@@ -4597,12 +4522,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Clefable-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "clefablemega",
       "isMega": true,
       "legendClass": "normal",
@@ -4898,12 +4819,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Crabominable-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "crabominablemega",
       "isMega": true,
       "legendClass": "normal",
@@ -5199,12 +5116,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Delphox-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "delphoxmega",
       "isMega": true,
       "legendClass": "normal",
@@ -5443,12 +5356,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Dragalge-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "dragalgemega",
       "isMega": true,
       "legendClass": "normal",
@@ -5624,12 +5533,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Dragonite-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "dragonitemega",
       "isMega": true,
       "legendClass": "normal",
@@ -5745,12 +5650,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Drampa-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "drampamega",
       "isMega": true,
       "legendClass": "normal",
@@ -5869,12 +5770,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Eelektross-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "eelektrossmega",
       "isMega": true,
       "legendClass": "normal",
@@ -5990,12 +5887,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Emboar-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "emboarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -6351,12 +6244,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Excadrill-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "excadrillmega",
       "isMega": true,
       "legendClass": "normal",
@@ -6475,12 +6364,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Falinks-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "falinksmega",
       "isMega": true,
       "legendClass": "normal",
@@ -6656,12 +6541,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Feraligatr-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "feraligatrmega",
       "isMega": true,
       "legendClass": "normal",
@@ -6897,12 +6778,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Floette-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "floettemega",
       "isMega": true,
       "legendClass": "normal",
@@ -7378,12 +7255,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Froslass-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "froslassmega",
       "isMega": true,
       "legendClass": "normal",
@@ -8099,12 +7972,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Gallade-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gallademega",
       "isMega": true,
       "legendClass": "normal",
@@ -8280,12 +8149,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Garchomp-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "garchompmega",
       "isMega": true,
       "legendClass": "normal",
@@ -8401,12 +8266,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Gardevoir-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gardevoirmega",
       "isMega": true,
       "legendClass": "normal",
@@ -8582,12 +8443,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Gengar-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gengarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -8826,12 +8683,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Glalie-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "glaliemega",
       "isMega": true,
       "legendClass": "normal",
@@ -8947,12 +8800,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Glimmora-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "glimmoramega",
       "isMega": true,
       "legendClass": "normal",
@@ -9128,12 +8977,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Golurk-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "golurkmega",
       "isMega": true,
       "legendClass": "normal",
@@ -9609,12 +9454,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Greninja-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "greninjamega",
       "isMega": true,
       "legendClass": "normal",
@@ -9793,12 +9634,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Gyarados-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gyaradosmega",
       "isMega": true,
       "legendClass": "normal",
@@ -9974,12 +9811,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Hawlucha-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "hawluchamega",
       "isMega": true,
       "legendClass": "normal",
@@ -10155,12 +9988,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Heracross-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "heracrossmega",
       "isMega": true,
       "legendClass": "normal",
@@ -10336,12 +10165,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Houndoom-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "houndoommega",
       "isMega": true,
       "legendClass": "normal",
@@ -10820,12 +10645,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Kangaskhan-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "kangaskhanmega",
       "isMega": true,
       "legendClass": "normal",
@@ -11361,12 +11182,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Lopunny-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "lopunnymega",
       "isMega": true,
       "legendClass": "normal",
@@ -11482,12 +11299,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Lucario-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "lucariomega",
       "isMega": true,
       "legendClass": "normal",
@@ -11906,12 +11719,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Malamar-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "malamarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -12087,12 +11896,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Manectric-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "manectricmega",
       "isMega": true,
       "legendClass": "normal",
@@ -12328,12 +12133,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Mawile-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "mawilemega",
       "isMega": true,
       "legendClass": "normal",
@@ -12449,12 +12250,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Medicham-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "medichammega",
       "isMega": true,
       "legendClass": "normal",
@@ -12570,12 +12367,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Meganium-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "meganiummega",
       "isMega": true,
       "legendClass": "normal",
@@ -12811,12 +12604,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Meowstic-F-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "meowsticfmega",
       "isMega": true,
       "legendClass": "normal",
@@ -12941,12 +12730,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Metagross-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "metagrossmega",
       "isMega": true,
       "legendClass": "normal",
@@ -14205,12 +13990,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Pidgeot-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "pidgeotmega",
       "isMega": true,
       "legendClass": "normal",
@@ -14388,12 +14169,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Pinsir-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "pinsirmega",
       "isMega": true,
       "legendClass": "normal",
@@ -14692,12 +14469,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Pyroar-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "pyroarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -14996,12 +14769,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Raichu-Mega-X.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "raichumegax",
       "isMega": true,
       "legendClass": "normal",
@@ -15057,12 +14826,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Raichu-Mega-Y.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "raichumegay",
       "isMega": true,
       "legendClass": "normal",
@@ -15838,12 +15603,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Sableye-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "sableyemega",
       "isMega": true,
       "legendClass": "normal",
@@ -16202,12 +15963,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Sceptile-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "sceptilemega",
       "isMega": true,
       "legendClass": "normal",
@@ -16323,12 +16080,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Scizor-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scizormega",
       "isMega": true,
       "legendClass": "normal",
@@ -16444,12 +16197,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Scolipede-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scolipedemega",
       "isMega": true,
       "legendClass": "normal",
@@ -16565,12 +16314,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Scovillain-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scovillainmega",
       "isMega": true,
       "legendClass": "normal",
@@ -16689,12 +16434,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Scrafty-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scraftymega",
       "isMega": true,
       "legendClass": "normal",
@@ -16870,12 +16611,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Sharpedo-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "sharpedomega",
       "isMega": true,
       "legendClass": "normal",
@@ -17231,12 +16968,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Skarmory-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "skarmorymega",
       "isMega": true,
       "legendClass": "normal",
@@ -17472,12 +17205,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Slowbro-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "slowbromega",
       "isMega": true,
       "legendClass": "normal",
@@ -17956,12 +17685,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Staraptor-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "staraptormega",
       "isMega": true,
       "legendClass": "normal",
@@ -18077,12 +17802,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Starmie-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "starmiemega",
       "isMega": true,
       "legendClass": "normal",
@@ -18198,12 +17919,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Steelix-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "steelixmega",
       "isMega": true,
       "legendClass": "normal",
@@ -18442,12 +18159,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Swampert-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "swampertmega",
       "isMega": true,
       "legendClass": "normal",
@@ -19523,12 +19236,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Tyranitar-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "tyranitarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -19884,12 +19593,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Venusaur-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "venusaurmega",
       "isMega": true,
       "legendClass": "normal",
@@ -20005,12 +19710,8 @@
       "source": "champions",
       "path": "./assets/pokemon-icons/champions/Victreebel-Mega.webp",
       "hasChampionsSource": true,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "champions-source",
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "victreebelmega",
       "isMega": true,
       "legendClass": "normal",
@@ -21808,11 +21509,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Abomasnow-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "abomasnowmega",
       "isMega": true,
       "legendClass": "normal",
@@ -21927,11 +21625,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Absol-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "absolmega",
       "isMega": true,
       "legendClass": "normal",
@@ -22164,11 +21859,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Aerodactyl-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "aerodactylmega",
       "isMega": true,
       "legendClass": "normal",
@@ -22283,11 +21975,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Aggron-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "aggronmega",
       "isMega": true,
       "legendClass": "normal",
@@ -22461,11 +22150,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Alakazam-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "alakazammega",
       "isMega": true,
       "legendClass": "normal",
@@ -22698,11 +22384,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Altaria-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "altariamega",
       "isMega": true,
       "legendClass": "normal",
@@ -22935,11 +22618,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Ampharos-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "ampharosmega",
       "isMega": true,
       "legendClass": "normal",
@@ -24009,11 +23689,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Audino-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "audinomega",
       "isMega": true,
       "legendClass": "normal",
@@ -24603,11 +24280,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Banette-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "banettemega",
       "isMega": true,
       "legendClass": "normal",
@@ -25253,11 +24927,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Beedrill-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "beedrillmega",
       "isMega": true,
       "legendClass": "normal",
@@ -25727,11 +25398,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Blastoise-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "blastoisemega",
       "isMega": true,
       "legendClass": "normal",
@@ -27214,11 +26882,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Camerupt-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "cameruptmega",
       "isMega": true,
       "legendClass": "normal",
@@ -27746,11 +27411,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Chandelure-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chandeluremega",
       "isMega": true,
       "legendClass": "normal",
@@ -27984,11 +27646,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Charizard-Mega-X.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "charizardmegax",
       "isMega": true,
       "legendClass": "normal",
@@ -28044,11 +27703,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Charizard-Mega-Y.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "charizardmegay",
       "isMega": true,
       "legendClass": "normal",
@@ -28340,11 +27996,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Chesnaught-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chesnaughtmega",
       "isMega": true,
       "legendClass": "normal",
@@ -28819,11 +28472,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Chimecho-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "chimechomega",
       "isMega": true,
       "legendClass": "normal",
@@ -29292,11 +28942,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Clefable-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "clefablemega",
       "isMega": true,
       "legendClass": "normal",
@@ -30485,11 +30132,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Crabominable-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "crabominablemega",
       "isMega": true,
       "legendClass": "normal",
@@ -31968,11 +31612,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Delphox-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "delphoxmega",
       "isMega": true,
       "legendClass": "normal",
@@ -33407,11 +33048,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Dragonite-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "dragonitemega",
       "isMega": true,
       "legendClass": "normal",
@@ -33585,11 +33223,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Drampa-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "drampamega",
       "isMega": true,
       "legendClass": "normal",
@@ -35364,11 +34999,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Emboar-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "emboarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -36027,11 +35659,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Excadrill-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "excadrillmega",
       "isMega": true,
       "legendClass": "normal",
@@ -36501,11 +36130,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Feraligatr-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "feraligatrmega",
       "isMega": true,
       "legendClass": "normal",
@@ -37449,11 +37075,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Floette-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "floettemega",
       "isMega": true,
       "legendClass": "normal",
@@ -38219,11 +37842,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Froslass-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "froslassmega",
       "isMega": true,
       "legendClass": "normal",
@@ -38633,11 +38253,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Gallade-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gallademega",
       "isMega": true,
       "legendClass": "normal",
@@ -38870,11 +38487,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Garchomp-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "garchompmega",
       "isMega": true,
       "legendClass": "normal",
@@ -38989,11 +38603,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Gardevoir-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gardevoirmega",
       "isMega": true,
       "legendClass": "normal",
@@ -39285,11 +38896,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Gengar-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gengarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -39941,11 +39549,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Glalie-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "glaliemega",
       "isMega": true,
       "legendClass": "normal",
@@ -40240,11 +39845,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Glimmora-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "glimmoramega",
       "isMega": true,
       "legendClass": "normal",
@@ -40773,11 +40375,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Golurk-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "golurkmega",
       "isMega": true,
       "legendClass": "normal",
@@ -41780,11 +41379,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Greninja-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "greninjamega",
       "isMega": true,
       "legendClass": "normal",
@@ -42669,11 +42265,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Gyarados-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "gyaradosmega",
       "isMega": true,
       "legendClass": "normal",
@@ -43201,11 +42794,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Hawlucha-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "hawluchamega",
       "isMega": true,
       "legendClass": "normal",
@@ -43500,11 +43090,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Heracross-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "heracrossmega",
       "isMega": true,
       "legendClass": "normal",
@@ -44336,11 +43923,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Houndoom-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "houndoommega",
       "isMega": true,
       "legendClass": "normal",
@@ -46244,11 +45828,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Kangaskhan-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "kangaskhanmega",
       "isMega": true,
       "legendClass": "normal",
@@ -48820,11 +48401,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Lopunny-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "lopunnymega",
       "isMega": true,
       "legendClass": "normal",
@@ -48998,11 +48576,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Lucario-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "lucariomega",
       "isMega": true,
       "legendClass": "normal",
@@ -50663,11 +50238,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Manectric-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "manectricmega",
       "isMega": true,
       "legendClass": "normal",
@@ -51254,11 +50826,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Medicham-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "medichammega",
       "isMega": true,
       "legendClass": "normal",
@@ -51432,11 +51001,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Meganium-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "meganiummega",
       "isMega": true,
       "legendClass": "normal",
@@ -51793,11 +51359,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Meowstic-F-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "meowsticfmega",
       "isMega": true,
       "legendClass": "normal",
@@ -56932,11 +56495,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Pidgeot-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "pidgeotmega",
       "isMega": true,
       "legendClass": "normal",
@@ -57406,11 +56966,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Pinsir-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "pinsirmega",
       "isMega": true,
       "legendClass": "normal",
@@ -61393,11 +60950,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Sableye-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "sableyemega",
       "isMega": true,
       "legendClass": "normal",
@@ -62399,11 +61953,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Scizor-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scizormega",
       "isMega": true,
       "legendClass": "normal",
@@ -62577,11 +62128,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Scovillain-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "scovillainmega",
       "isMega": true,
       "legendClass": "normal",
@@ -63348,11 +62896,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Sharpedo-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "sharpedomega",
       "isMega": true,
       "legendClass": "normal",
@@ -64476,11 +64021,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Skarmory-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "skarmorymega",
       "isMega": true,
       "legendClass": "normal",
@@ -65305,11 +64847,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Slowbro-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "slowbromega",
       "isMega": true,
       "legendClass": "normal",
@@ -67322,11 +66861,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Starmie-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "starmiemega",
       "isMega": true,
       "legendClass": "normal",
@@ -67441,11 +66977,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Steelix-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "steelixmega",
       "isMega": true,
       "legendClass": "normal",
@@ -71486,11 +71019,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Tyranitar-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "tyranitarmega",
       "isMega": true,
       "legendClass": "normal",
@@ -72501,11 +72031,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Venusaur-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "venusaurmega",
       "isMega": true,
       "legendClass": "normal",
@@ -72738,11 +72265,8 @@
       "source": "sv",
       "path": "./assets/pokemon-icons/sv/Victreebel-Mega.webp",
       "hasChampionsSource": false,
-      "isRecognitionCandidate": true,
-      "recognitionCandidateReasons": [
-        "final-evolution",
-        "mega"
-      ],
+      "isRecognitionCandidate": false,
+      "recognitionCandidateReasons": [],
       "showdownId": "victreebelmega",
       "isMega": true,
       "legendClass": "normal",

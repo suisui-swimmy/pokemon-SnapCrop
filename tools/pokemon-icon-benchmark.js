@@ -37,13 +37,15 @@ const RECOGNITION_LEGEND_CLASSES = new Set([
 initialize();
 
 function isRecognitionCandidate(entry) {
+  if (entry?.isMega === true) {
+    return false;
+  }
   return Boolean(
     entry?.isRecognitionCandidate === true
     || entry?.hasChampionsSource === true
     || entry?.isChampionsCandidate === true
     || entry?.sources?.includes("champions")
     || entry?.isFinalEvolution === true
-    || entry?.isMega === true
     || RECOGNITION_LEGEND_CLASSES.has(entry?.legendClass)
   );
 }
