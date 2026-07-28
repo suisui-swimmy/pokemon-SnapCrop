@@ -16,6 +16,7 @@ const LOAD_CONCURRENCY = 12;
 const SOURCE_PRIORITY = {
   champions: 0,
   sv: 1,
+  supplemental: 2,
 };
 const LOAD_REASONS = new Set([
   "fetch_error",
@@ -55,6 +56,7 @@ function createWorkerStats() {
     uniqueSpeciesKeyCount: 0,
     championsRawCount: 0,
     svRawCount: 0,
+    supplementalRawCount: 0,
     svOnlyPokemonNameCount: 0,
     fetchedCount: 0,
     decodedCount: 0,
@@ -119,6 +121,7 @@ function manifestStatsToWorkerStats(nextManifest) {
     uniqueSpeciesKeyCount: Number(stats.uniqueSpeciesKeyCount || 0),
     championsRawCount: Number(stats.sourceCounts?.raw?.champions || 0),
     svRawCount: Number(stats.sourceCounts?.raw?.sv || 0),
+    supplementalRawCount: Number(stats.sourceCounts?.raw?.supplemental || 0),
     svOnlyPokemonNameCount: Number(stats.svOnlyPokemonNameCount || 0),
   };
 }

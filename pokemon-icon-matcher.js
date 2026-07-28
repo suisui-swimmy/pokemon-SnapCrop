@@ -1354,6 +1354,7 @@ function compareTemplateResults(left, right) {
   const sourcePriority = {
     champions: 0,
     sv: 1,
+    supplemental: 2,
   };
   const sourceDifference = (sourcePriority[left.source] ?? 99) - (sourcePriority[right.source] ?? 99);
   if (sourceDifference !== 0) {

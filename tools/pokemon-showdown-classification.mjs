@@ -17,6 +17,7 @@ const LEGEND_CLASS_BY_TAG = Object.freeze({
 
 const EXPLICIT_ID_ALIASES = Object.freeze({
   gourgeistjumbo: "gourgeistsuper",
+  pyroarf: "pyroar",
 });
 
 export function toShowdownId(value) {

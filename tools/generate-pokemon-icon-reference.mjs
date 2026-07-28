@@ -28,6 +28,12 @@ const ICON_SOURCES = [
     outputDir: path.join(ROOT, "assets", "pokemon-icons", "sv"),
     outputPathPrefix: "./assets/pokemon-icons/sv/",
   },
+  {
+    source: "supplemental",
+    inputDir: path.join(ROOT, "tools", "pokemon-icon-sources", "supplemental"),
+    outputDir: path.join(ROOT, "assets", "pokemon-icons", "supplemental"),
+    outputPathPrefix: "./assets/pokemon-icons/supplemental/",
+  },
 ];
 const POKEMON_DATA_TSV_PATH = path.join(ROOT, "others", "pokemon-data", "POKEMON_ALL.tsv");
 const POKEAPI_CSV_DIR = path.join(ROOT, "others", "pokeapi", "data", "v2", "csv");
@@ -435,6 +441,7 @@ function createManualNameMap(resolver) {
     ["Gourgeist-Jumbo", "パンプジン(とくだいサイズ)"],
     ["Meowstic-F-Mega", "メガニャオニクス"],
     ["Meowstic-M-Mega", "メガニャオニクス"],
+    ["Pyroar-F", "カエンジシ"],
   ];
   return new Map(
     entries
@@ -631,7 +638,9 @@ function main() {
   fs.writeFileSync(`${OUTPUT_PATH}.tmp`, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   fs.renameSync(`${OUTPUT_PATH}.tmp`, OUTPUT_PATH);
 
-  console.log(`Copied champions=${copied.champions || 0} sv=${copied.sv || 0}`);
+  console.log(
+    `Copied champions=${copied.champions || 0} sv=${copied.sv || 0} supplemental=${copied.supplemental || 0}`,
+  );
   console.log(
     `Candidates raw=${stats.rawCandidateCount} canonical=${stats.canonicalCandidateCount} merged=${stats.mergedDuplicateCount} collisions=${stats.visualCollisionGroupCount} unresolved=${stats.unresolvedCount}`,
   );

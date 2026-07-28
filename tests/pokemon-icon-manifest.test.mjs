@@ -231,7 +231,7 @@ test("generated manifest carries Showdown classification and general recognition
   assert.equal(manifest.classification.name, "pokemon-showdown");
   assert.match(manifest.classification.revision, /^[0-9a-f]{40}$/u);
   assert.equal(manifest.stats.championsSourceIconCount, 358);
-  assert.equal(manifest.stats.recognitionCandidateCount, 788);
+  assert.equal(manifest.stats.recognitionCandidateCount, 789);
   assert.equal(manifest.stats.recognitionCandidatePokemonNameCount, 496);
   assert.equal(manifest.stats.classificationUnresolvedCount, 0);
 
@@ -273,6 +273,15 @@ test("generated manifest carries Showdown classification and general recognition
   assert.equal(icon("Mewtwo").legendClass, "restricted");
   assert.equal(icon("Mew").legendClass, "mythical");
   assert.ok(icon("Mewtwo").recognitionCandidateReasons.includes("legend:restricted"));
+
+  const pyroarFemale = icon("Pyroar-F");
+  assert.equal(pyroarFemale.pokemonName, "カエンジシ");
+  assert.equal(pyroarFemale.speciesKey, "species:pyroar");
+  assert.equal(pyroarFemale.variantKey, "variant:pyroar-f");
+  assert.equal(pyroarFemale.source, "supplemental");
+  assert.equal(pyroarFemale.path, "./assets/pokemon-icons/supplemental/Pyroar-F.webp");
+  assert.equal(pyroarFemale.showdownId, "pyroar");
+  assert.deepEqual(pyroarFemale.recognitionCandidateReasons, ["final-evolution"]);
 });
 
 test("generated manifest preserves regional form names and base species keys", () => {

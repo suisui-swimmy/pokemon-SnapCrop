@@ -19,6 +19,7 @@ export const RAW_CANDIDATE_STATUSES = Object.freeze([
 export const SOURCE_PRIORITY = Object.freeze({
   champions: 0,
   sv: 1,
+  supplemental: 2,
 });
 const CLASSIFICATION_FIELDS = Object.freeze([
   "showdownId",

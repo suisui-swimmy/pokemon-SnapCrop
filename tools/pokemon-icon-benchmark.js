@@ -3,7 +3,7 @@ import {
   createBenchmarkRunRecord,
 } from "./pokemon-icon-benchmark-metadata.mjs";
 
-const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.6";
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.7";
 
 const elements = {
   files: document.getElementById("bundle-files"),
@@ -724,6 +724,7 @@ function renderMetrics() {
       loadFailures: state.candidateFailures.length,
       champions: state.candidateStats?.championsRawCount || 0,
       sv: state.candidateStats?.svRawCount || 0,
+      supplemental: state.candidateStats?.supplementalRawCount || 0,
       svOnlyNames: state.candidateStats?.svOnlyPokemonNameCount || 0,
     },
     manifestFetchMs: state.manifestFetchMs,
@@ -767,6 +768,7 @@ function renderCandidateStatus() {
     ["unique speciesKey", stats.uniqueSpeciesKeyCount],
     ["Champions source raw", stats.championsRawCount],
     ["SV raw", stats.svRawCount],
+    ["Supplemental raw", stats.supplementalRawCount],
     ["SV-only pokemonName", stats.svOnlyPokemonNameCount],
     ["manifest fetch + parse", formatMs(state.manifestFetchMs)],
     ["candidate fetch (sum)", formatMs(stats.timings?.candidateFetchMs)],

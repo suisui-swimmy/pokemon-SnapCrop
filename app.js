@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.6";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.7";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -338,6 +338,7 @@
     sourcePriority: {
       champions: 0,
       sv: 1,
+      supplemental: 2,
     },
     workerEnabled: true,
     prewarmIdleTimeoutMs: 1500,
@@ -6781,7 +6782,7 @@
       `[debug] icon recog: status=${recognition.status} engine=${recognition.engine || "pending"} manifest=${manifestState} entries=${state.pokemonIconReferenceEntries.length} legacyCandidates=${candidateState}:${state.pokemonIconCandidates.length}`,
       `[debug] icon recog summary: ${recognition.lastSummary || recognition.reason || "未評価"}`,
       `[debug] icon manifest: raw=${manifestStats.rawCandidateCount || 0} canonical=${manifestStats.canonicalCandidateCount || state.pokemonIconReferenceEntries.length} buildMerged=${manifestStats.mergedDuplicateCount || 0} names=${manifestStats.uniquePokemonNameCount || 0} species=${manifestStats.uniqueSpeciesKeyCount || 0}`,
-      `[debug] icon sources: champions=${manifestStats.sourceCounts?.raw?.champions || 0} sv=${manifestStats.sourceCounts?.raw?.sv || 0} svOnlyNames=${manifestStats.svOnlyPokemonNameCount || 0} buildCollisions=${manifestStats.visualCollisionGroupCount || 0} invalid=${manifestStats.invalidCount || 0}`,
+      `[debug] icon sources: champions=${manifestStats.sourceCounts?.raw?.champions || 0} sv=${manifestStats.sourceCounts?.raw?.sv || 0} supplemental=${manifestStats.sourceCounts?.raw?.supplemental || 0} svOnlyNames=${manifestStats.svOnlyPokemonNameCount || 0} buildCollisions=${manifestStats.visualCollisionGroupCount || 0} invalid=${manifestStats.invalidCount || 0}`,
       `[debug] icon classification: eligible=${manifestStats.recognitionCandidateCount || state.pokemonIconReferenceEntries.length} championsSource=${manifestStats.championsSourceIconCount || manifestStats.championsCandidateCount || 0} fallback=${manifestStats.classificationFallbackCount || 0} unresolved=${manifestStats.classificationUnresolvedCount || 0} revision=${state.pokemonIconManifest?.classification?.revision?.slice(0, 12) || "unknown"}`,
       `[debug] icon worker: status=${workerState.status} prewarm=${workerState.prewarmStatus} loaded=${workerStats.loadedCount || 0}/${workerStats.canonicalManifestCount || manifestStats.canonicalCandidateCount || 0} runtimeMerged=${workerStats.runtimeNormalizedDuplicateCount || 0} collisions=${workerStats.runtimeVisualCollisionGroupCount || 0} failures=${workerStats.loadFailureCount || workerState.failures.length}`,
       `[debug] icon manifest perf: fetch+parse=${formatPerformanceMs(state.pokemonIconManifestFetchMs)}`,

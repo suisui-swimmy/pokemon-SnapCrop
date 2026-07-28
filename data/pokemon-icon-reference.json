@@ -1,6 +1,6 @@
 {
   "schemaVersion": 5,
-  "generatedAt": "2026-07-28T15:43:36.957Z",
+  "generatedAt": "2026-07-28T16:40:50.736Z",
   "sample": {
     "width": 64,
     "height": 64
@@ -47,17 +47,19 @@
   "sources": {
     "raw": {
       "champions": 359,
-      "sv": 925
+      "sv": 925,
+      "supplemental": 1
     },
     "canonicalPrimary": {
       "champions": 358,
-      "sv": 906
+      "sv": 906,
+      "supplemental": 1
     },
     "unresolved": 0
   },
   "stats": {
-    "rawCandidateCount": 1284,
-    "canonicalCandidateCount": 1264,
+    "rawCandidateCount": 1285,
+    "canonicalCandidateCount": 1265,
     "mergedDuplicateCount": 20,
     "visualCollisionGroupCount": 0,
     "visualCollisionEntryCount": 0,
@@ -65,14 +67,14 @@
     "unresolvedCount": 0,
     "uniquePokemonNameCount": 911,
     "uniqueSpeciesKeyCount": 777,
-    "speciesFallbackCount": 6,
+    "speciesFallbackCount": 7,
     "championsSourceIconCount": 358,
     "championsSourcePokemonNameCount": 309,
-    "recognitionCandidateCount": 788,
+    "recognitionCandidateCount": 789,
     "recognitionCandidatePokemonNameCount": 496,
     "recognitionCandidateReasonCounts": {
       "champions-source": 283,
-      "final-evolution": 784,
+      "final-evolution": 785,
       "legend:mythical": 22,
       "legend:sublegendary": 49,
       "legend:restricted": 37
@@ -83,38 +85,41 @@
       "exact-form": 1246,
       "base-form-alias": 3,
       "cosmetic-fallback": 14,
-      "id-alias": 1
+      "id-alias": 2
     },
     "legendClassCounts": {
-      "normal": 1156,
+      "normal": 1157,
       "mythical": 22,
       "sublegendary": 49,
       "restricted": 37
     },
     "evolutionDepthCounts": {
       "0": 550,
-      "1": 469,
+      "1": 470,
       "2": 245
     },
     "sourceCounts": {
       "raw": {
         "champions": 359,
-        "sv": 925
+        "sv": 925,
+        "supplemental": 1
       },
       "canonicalPrimary": {
         "champions": 358,
-        "sv": 906
+        "sv": 906,
+        "supplemental": 1
       }
     },
     "sourceNameCounts": {
       "champions": 309,
+      "supplemental": 1,
       "sv": 888
     },
     "svOnlyPokemonNameCount": 602,
     "pokemonNameSetSha256": "42dc7ee252b7e7bb9852d0a491b51e374eb900d522244c142a43f59619c51b60",
     "svOnlyPokemonNameSetSha256": "61dd6eca47dba7864e5c2af1ddf5a4a81cfb788a3d4eaf48e7a243e550112b19",
     "rawAccounting": {
-      "canonical": 1264,
+      "canonical": 1265,
       "merged_duplicate": 20,
       "visual_collision": 0,
       "invalid": 0
@@ -75176,6 +75181,65 @@
         "path": "./assets/pokemon-icons/sv/Zweilous.webp"
       },
       "visualCollisionId": null
+    },
+    {
+      "id": "Pyroar-F",
+      "pokemonName": "カエンジシ",
+      "speciesKey": "species:pyroar",
+      "variantKey": "variant:pyroar-f",
+      "speciesResolution": {
+        "method": "base_id_fallback",
+        "fallback": true
+      },
+      "source": "supplemental",
+      "path": "./assets/pokemon-icons/supplemental/Pyroar-F.webp",
+      "hasChampionsSource": false,
+      "isRecognitionCandidate": true,
+      "recognitionCandidateReasons": [
+        "final-evolution"
+      ],
+      "showdownId": "pyroar",
+      "isMega": false,
+      "legendClass": "normal",
+      "showdownTags": [],
+      "evolutionDepth": 1,
+      "hasPreEvolution": true,
+      "canEvolve": false,
+      "isFinalEvolution": true,
+      "baseSpeciesId": "pyroar",
+      "battleOnlySourceId": null,
+      "evolutionSourceId": "pyroar",
+      "prevoId": "litleo",
+      "evoIds": [],
+      "classificationSource": "pokemon-showdown",
+      "classificationMethod": "id-alias",
+      "classificationFallback": false,
+      "aliases": [],
+      "mergedIds": [
+        "Pyroar-F"
+      ],
+      "sources": [
+        "supplemental"
+      ],
+      "paths": [
+        "./assets/pokemon-icons/supplemental/Pyroar-F.webp"
+      ],
+      "speciesKeys": [
+        "species:pyroar"
+      ],
+      "variantKeys": [
+        "variant:pyroar-f"
+      ],
+      "showdownIds": [
+        "pyroar"
+      ],
+      "fileHash": "8aff0f03f665e853f721e84576732d37c252869ad5e7efc67fa66c4c7239b92a",
+      "canonical": {
+        "id": "Pyroar-F",
+        "source": "supplemental",
+        "path": "./assets/pokemon-icons/supplemental/Pyroar-F.webp"
+      },
+      "visualCollisionId": null
     }
   ],
   "rawCandidates": [
@@ -91849,6 +91913,19 @@
       "status": "canonical",
       "canonicalId": "Zweilous",
       "canonicalPath": "./assets/pokemon-icons/sv/Zweilous.webp",
+      "visualCollisionId": null
+    },
+    {
+      "id": "Pyroar-F",
+      "pokemonName": "カエンジシ",
+      "speciesKey": "species:pyroar",
+      "variantKey": "variant:pyroar-f",
+      "source": "supplemental",
+      "path": "./assets/pokemon-icons/supplemental/Pyroar-F.webp",
+      "fileHash": "8aff0f03f665e853f721e84576732d37c252869ad5e7efc67fa66c4c7239b92a",
+      "status": "canonical",
+      "canonicalId": "Pyroar-F",
+      "canonicalPath": "./assets/pokemon-icons/supplemental/Pyroar-F.webp",
       "visualCollisionId": null
     }
   ],
