@@ -1,4 +1,4 @@
-export const POKEMON_ICON_MATCHER_VERSION = 3;
+export const POKEMON_ICON_MATCHER_VERSION = 4;
 
 export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   sampleWidth: 64,
@@ -44,6 +44,7 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   coarsePixelStride: 4,
   coarseNameLimit: 24,
   templatesPerName: 2,
+  refineAlternateInputVariantNameLimit: 1,
   refinedResultLimit: 12,
   globalSeedNamesPerSlot: 4,
   globalTransforms: {
@@ -59,6 +60,7 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     beamWidth: 72,
     speciesDuplicatePenalty: 0.18,
     unresolvedScore: 0.70,
+    stableLowScoreBonus: 0.01,
   },
   confidence: {
     scoreMin: 0.68,
@@ -67,6 +69,13 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     silhouetteMin: 0.34,
     spillMax: 0.62,
     missingMax: 0.62,
+    stableLowScore: {
+      enabled: true,
+      scoreMin: 0.64,
+      marginMin: 0.05,
+      sourceAgreementMin: 1,
+      supportingTemplateCountMin: 2,
+    },
   },
   yieldEveryCandidates: 32,
 });
@@ -159,6 +168,10 @@ function mergeConfig(base, override = {}) {
     confidence: {
       ...base.confidence,
       ...(override.confidence || {}),
+      stableLowScore: {
+        ...base.confidence.stableLowScore,
+        ...(override.confidence?.stableLowScore || {}),
+      },
     },
   };
   resolvedMatcherConfigs.add(merged);
@@ -1536,30 +1549,42 @@ function getLocalTransformGrid(globalTransform, config) {
 
 async function refineSlot(inputFeature, coarseRanking, globalTransform, config, context) {
   const transforms = getLocalTransformGrid(globalTransform, config);
+  const inputVariants = [inputFeature, ...(inputFeature.alternates || [])];
+  const alternateVariantNameLimit = Math.max(
+    0,
+    Math.floor(Number(config.refineAlternateInputVariantNameLimit) || 0),
+  );
   const refinedNames = [];
   let comparisonCount = 0;
-  for (const coarseName of coarseRanking.slice(0, config.coarseNameLimit)) {
+  for (const [coarseNameIndex, coarseName] of coarseRanking
+    .slice(0, config.coarseNameLimit)
+    .entries()) {
     const templateResults = [];
     for (const template of coarseName.templates.slice(0, config.templatesPerName)) {
       let best = null;
-      const variantIndex = template.inputVariantIndex || 0;
-      const selectedInputFeature = getInputFeatureVariant(inputFeature, variantIndex);
-      for (const transform of transforms) {
-        const score = withInputVariantPenalty(
-          scoreFeaturePair(selectedInputFeature, template.feature, transform, config),
-          variantIndex,
-          config,
-        );
-        const result = {
-          ...template,
-          ...score,
-          localCorrection: transform.localCorrection,
-        };
-        if (!best || compareTemplateResults(result, best) < 0) {
-          best = result;
+      const coarseVariantIndex = template.inputVariantIndex || 0;
+      const variantIndexes = coarseNameIndex < alternateVariantNameLimit
+        ? inputVariants.map((_, variantIndex) => variantIndex)
+        : [coarseVariantIndex];
+      for (const variantIndex of variantIndexes) {
+        const selectedInputFeature = inputVariants[variantIndex];
+        for (const transform of transforms) {
+          const score = withInputVariantPenalty(
+            scoreFeaturePair(selectedInputFeature, template.feature, transform, config),
+            variantIndex,
+            config,
+          );
+          const result = {
+            ...template,
+            ...score,
+            localCorrection: transform.localCorrection,
+          };
+          if (!best || compareTemplateResults(result, best) < 0) {
+            best = result;
+          }
+          comparisonCount += 1;
+          await maybeYield(context, comparisonCount);
         }
-        comparisonCount += 1;
-        await maybeYield(context, comparisonCount);
       }
       if (best) {
         templateResults.push(best);
@@ -1604,7 +1629,25 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
   slotRankings.forEach((ranking) => {
     const credible = ranking
       .slice(0, config.assignment.candidatesPerSlot)
-      .filter((candidate) => !candidate.visualCollisionId && !candidate.runtimeVisualCollisionId);
+      .filter((candidate) => !candidate.visualCollisionId && !candidate.runtimeVisualCollisionId)
+      .map((candidate) => {
+        const alternative = ranking.find(
+          (entry) => entry.pokemonName !== candidate.pokemonName,
+        );
+        const localMargin = candidate.score - (alternative?.score || 0);
+        const stableLowScore = candidate.score < config.confidence.scoreMin
+          && meetsStableLowScoreConfidence(candidate, localMargin, config);
+        return stableLowScore
+          ? {
+              ...candidate,
+              assignmentScore: Math.max(
+                candidate.score,
+                config.assignment.unresolvedScore
+                  + config.assignment.stableLowScoreBonus,
+              ),
+            }
+          : candidate;
+      });
     const options = [
       ...credible,
       {
@@ -1627,7 +1670,9 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
         }
         nextBeam.push({
           choices: [...state.choices, option],
-          totalScore: state.totalScore + option.score - duplicatePenalty,
+          totalScore: state.totalScore
+            + (option.assignmentScore ?? option.score)
+            - duplicatePenalty,
           speciesCounts,
           duplicatePenalty: state.duplicatePenalty + duplicatePenalty,
         });
@@ -1691,7 +1736,10 @@ function getRejectionReason({
     }
     return "low_score";
   }
-  if (selected.score < config.confidence.scoreMin) {
+  if (
+    selected.score < config.confidence.scoreMin
+    && !meetsStableLowScoreConfidence(selected, localMargin, config)
+  ) {
     return "low_score";
   }
   if (selected.silhouette < config.confidence.silhouetteMin) {
@@ -1710,6 +1758,25 @@ function getRejectionReason({
     return "low_assignment_margin";
   }
   return "";
+}
+
+export function meetsStableLowScoreConfidence(
+  selected,
+  localMargin,
+  configOverride = {},
+) {
+  if (!selected) {
+    return false;
+  }
+  const config = mergeConfig(DEFAULT_MATCHER_CONFIG, configOverride);
+  const stable = config.confidence.stableLowScore;
+  return Boolean(
+    stable.enabled
+    && selected.score >= stable.scoreMin
+    && localMargin >= stable.marginMin
+    && selected.sourceAgreement >= stable.sourceAgreementMin
+    && selected.supportingTemplateCount >= stable.supportingTemplateCountMin
+  );
 }
 
 export function encodeMaskRle(mask) {
@@ -1831,6 +1898,9 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       config,
     });
     const matched = Boolean(selectedResult?.pokemonName && !rejectionReason);
+    const confidenceRoute = matched && selectedResult.score < config.confidence.scoreMin
+      ? "stable_low_score"
+      : (matched ? "standard" : "");
     const display = selectedResult || bestLocal;
     const displayInputFeature = getInputFeatureVariant(
       inputFeatures[slotIndex],
@@ -1861,6 +1931,7 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       localMargin,
       assignmentMargin,
       globalAssignmentMargin: assignment.margin,
+      confidenceRoute,
       globalTransform: globalTransform.best,
       localCorrection: display?.localCorrection || {
         scaleDelta: 0,

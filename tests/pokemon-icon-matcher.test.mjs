@@ -10,7 +10,9 @@ import {
   findAlphaBoundingBox,
   findForegroundBoundingBox,
   groupTemplateScoresByPokemonName,
+  meetsStableLowScoreConfidence,
   normalizeCandidateRgba,
+  POKEMON_ICON_MATCHER_VERSION,
   recognizePokemonIconParty,
   scoreFeaturePair,
 } from "../pokemon-icon-matcher.js";
@@ -355,6 +357,101 @@ test("beam assignment leaves a weak duplicate slot unresolved instead of forcing
   assert.equal(assignment.best.choices[1].pokemonName, "");
 });
 
+test("stable low-score confidence requires score, margin, source, and template agreement", () => {
+  const stableCandidate = {
+    score: 0.64,
+    sourceAgreement: 1,
+    supportingTemplateCount: 2,
+  };
+  assert.equal(meetsStableLowScoreConfidence(stableCandidate, 0.05), true);
+  assert.equal(meetsStableLowScoreConfidence({ ...stableCandidate, score: 0.639 }, 0.05), false);
+  assert.equal(meetsStableLowScoreConfidence(stableCandidate, 0.049), false);
+  assert.equal(meetsStableLowScoreConfidence({
+    ...stableCandidate,
+    sourceAgreement: 0.5,
+  }, 0.05), false);
+  assert.equal(meetsStableLowScoreConfidence({
+    ...stableCandidate,
+    supportingTemplateCount: 1,
+  }, 0.05), false);
+});
+
+test("stable low-score confidence accepts only candidates supported by two close sources", async () => {
+  const shapes = ["circle", "square", "diamond", "plus", "triangle", "bars"];
+  const colors = [
+    [230, 70, 70, 255],
+    [70, 190, 100, 255],
+    [75, 125, 235, 255],
+    [220, 180, 55, 255],
+    [185, 80, 210, 255],
+    [75, 200, 205, 255],
+  ];
+  const primaryCandidates = shapes.map((shape, index) => candidateRecord(
+    index * 2,
+    shape,
+    colors[index],
+    {
+      id: `primary-${index}`,
+      pokemonName: `検証ポケモン${index}`,
+      speciesKey: `species:stable-${index}`,
+      source: "champions",
+    },
+  ));
+  const candidates = primaryCandidates.flatMap((primary, index) => {
+    if (index === 0) {
+      return [primary];
+    }
+    return [
+      primary,
+      {
+        ...primary,
+        id: `secondary-${index}`,
+        source: "sv",
+      },
+    ];
+  });
+  const inputs = primaryCandidates.map((candidate) => compositeCandidate(candidate.normalized));
+  const result = await recognizePokemonIconParty(inputs, candidates, {
+    yieldControl: () => Promise.resolve(),
+    config: {
+      assignment: {
+        unresolvedScore: 0.95,
+      },
+      confidence: {
+        scoreMin: 1.01,
+        marginMin: 0.01,
+        assignmentMarginMin: 0.001,
+        stableLowScore: {
+          enabled: true,
+          scoreMin: 0.50,
+          marginMin: 0.01,
+          sourceAgreementMin: 1,
+          supportingTemplateCountMin: 2,
+        },
+      },
+    },
+  });
+  assert.equal(result.results[0].matched, false);
+  assert.equal(result.results[0].rejectionReason, "low_score");
+  assert.equal(result.results[0].confidenceRoute, "");
+  assert.ok(
+    result.results.slice(1).every((entry) => entry.matched),
+    JSON.stringify(result.results.map((entry) => ({
+      name: entry.bestPokemonName,
+      matched: entry.matched,
+      reason: entry.rejectionReason,
+      score: entry.score,
+      margin: entry.margin,
+      sourceAgreement: entry.sourceAgreement,
+      supportingTemplateCount: entry.supportingTemplateCount,
+      confidenceRoute: entry.confidenceRoute,
+    }))),
+  );
+  assert.ok(result.results.slice(1).every(
+    (entry) => entry.confidenceRoute === "stable_low_score",
+  ));
+});
+
 test("six-slot recognition shares a global transform and accepts distinct strong candidates", async () => {
   const shapes = ["circle", "square", "diamond", "plus", "triangle", "bars"];
   const colors = [
@@ -429,7 +526,22 @@ test("noise and visual collisions are not accepted", async () => {
 });
 
 test("default thresholds remain conservative", () => {
+  assert.equal(POKEMON_ICON_MATCHER_VERSION, 4);
   assert.equal(DEFAULT_MATCHER_CONFIG.confidence.scoreMin, 0.68);
   assert.ok(DEFAULT_MATCHER_CONFIG.confidence.marginMin >= 0.025);
+  assert.equal(DEFAULT_MATCHER_CONFIG.refineAlternateInputVariantNameLimit, 1);
+  assert.ok(
+    DEFAULT_MATCHER_CONFIG.assignment.stableLowScoreBonus
+      > DEFAULT_MATCHER_CONFIG.confidence.assignmentMarginMin,
+  );
+  assert.equal(DEFAULT_MATCHER_CONFIG.confidence.stableLowScore.scoreMin, 0.64);
+  assert.ok(
+    DEFAULT_MATCHER_CONFIG.confidence.stableLowScore.marginMin
+      > DEFAULT_MATCHER_CONFIG.confidence.marginMin,
+  );
+  assert.equal(
+    DEFAULT_MATCHER_CONFIG.confidence.stableLowScore.supportingTemplateCountMin,
+    2,
+  );
   assert.ok(DEFAULT_MATCHER_CONFIG.scoring.colorWeight <= 0.10);
 });

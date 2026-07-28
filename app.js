@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.2";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.3";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -3895,7 +3895,7 @@
 
   function getDebugStatusLines() {
     const lines = [
-      `[debug] ${state.debugMode ? "ON" : "OFF"}`,
+      `[debug] ${state.debugMode ? "ON" : "OFF"} app=${APP_VERSION}`,
       `[debug] 認識範囲表示: ${shouldShowAutoDebugOverlays() ? "表示中" : "非表示"}`,
     ];
 
@@ -6402,7 +6402,7 @@
     const sourceLabel = result.bestSource || "unknown";
     if ("silhouette" in result || result.rejectionReason) {
       const pokemonLabel = result.pokemonName || result.bestPokemonName || "unresolved";
-      const metrics = `score=${formatPokemonIconScore(result.bestScore ?? result.score)} silhouette=${formatPokemonIconScore(result.silhouette)} coverage=${formatPokemonIconScore(result.candidateCoverage ?? result.coverage)} input=${formatPokemonIconScore(result.inputCoverage)} spill=${formatPokemonIconScore(result.spill)} missing=${formatPokemonIconScore(result.missing)} gray=${formatPokemonIconScore(result.gray)} edge=${formatPokemonIconScore(result.edge)} color=${formatPokemonIconScore(result.color)} margin=${formatPokemonIconScore(result.localMargin ?? result.margin)} assignment=${formatPokemonIconScore(result.assignmentMargin)} globalAssignment=${formatPokemonIconScore(result.globalAssignmentMargin)} sourceAgree=${formatPokemonIconScore(result.sourceAgreement)} support=${result.supportingTemplateCount || 0}`;
+      const metrics = `score=${formatPokemonIconScore(result.bestScore ?? result.score)} silhouette=${formatPokemonIconScore(result.silhouette)} coverage=${formatPokemonIconScore(result.candidateCoverage ?? result.coverage)} input=${formatPokemonIconScore(result.inputCoverage)} spill=${formatPokemonIconScore(result.spill)} missing=${formatPokemonIconScore(result.missing)} gray=${formatPokemonIconScore(result.gray)} edge=${formatPokemonIconScore(result.edge)} color=${formatPokemonIconScore(result.color)} margin=${formatPokemonIconScore(result.localMargin ?? result.margin)} assignment=${formatPokemonIconScore(result.assignmentMargin)} globalAssignment=${formatPokemonIconScore(result.globalAssignmentMargin)} sourceAgree=${formatPokemonIconScore(result.sourceAgreement)} support=${result.supportingTemplateCount || 0} route=${result.confidenceRoute || "none"}`;
       const globalTransform = result.globalTransform || {};
       const localCorrection = result.localCorrection || {};
       const transform = `global=${formatPokemonIconScore(globalTransform.scale || 1)}@${Math.round(globalTransform.offsetX || 0)},${Math.round(globalTransform.offsetY || 0)} local=${formatPokemonIconScore(localCorrection.scaleDelta || 0)}@${Math.round(localCorrection.offsetX || 0)},${Math.round(localCorrection.offsetY || 0)}`;

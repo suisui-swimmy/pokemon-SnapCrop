@@ -1,3 +1,10 @@
+import {
+  createBenchmarkEnvironment,
+  createBenchmarkRunRecord,
+} from "./pokemon-icon-benchmark-metadata.mjs";
+
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.3";
+
 const elements = {
   files: document.getElementById("bundle-files"),
   coarseLimit: document.getElementById("coarse-limit"),
@@ -558,6 +565,11 @@ function calculateMetrics(mode) {
     const key = `${row.label} → ${row.result.pokemonName}`;
     confusionPairs[key] = (confusionPairs[key] || 0) + 1;
   });
+  const confidenceRoutes = {};
+  accepted.forEach((row) => {
+    const route = row.result.confidenceRoute || "unknown";
+    confidenceRoutes[route] = (confidenceRoutes[route] || 0) + 1;
+  });
   const bundleTimes = state.bundles
     .map((entry) => entry.runs[mode]?.message?.result?.timings?.totalMs)
     .filter(Number.isFinite)
@@ -591,6 +603,7 @@ function calculateMetrics(mode) {
     coverage: ratio(accepted.length, labeled.length),
     rejectedCount: rows.filter((row) => !row.result.matched).length,
     confusionPairs,
+    confidenceRoutes,
     rejectionReasons,
     totalP50: percentile(bundleTimes, 0.50),
     totalP95: percentile(bundleTimes, 0.95),
@@ -698,6 +711,7 @@ function renderMetrics() {
       mode: metrics.mode,
       rejectionReasons: metrics.rejectionReasons,
       confusionPairs: metrics.confusionPairs,
+      confidenceRoutes: metrics.confidenceRoutes,
       phaseP50: metrics.phaseP50,
     })),
     legacyRecordedBaseline: {
@@ -717,6 +731,8 @@ function renderCandidateStatus() {
   const stats = state.candidateStats;
   const table = document.createElement("table");
   const values = [
+    ["app version", BENCHMARK_APP_VERSION],
+    ["manifest schema", state.manifest?.schemaVersion || 0],
     ["raw", stats.rawManifestCount],
     ["canonical", stats.canonicalManifestCount],
     ["loaded", stats.loadedCount],
@@ -762,13 +778,16 @@ function saveLabeledBundles() {
     }));
     bundle.benchmark = {
       savedAt: new Date().toISOString(),
+      environment: createBenchmarkEnvironment({
+        appVersion: BENCHMARK_APP_VERSION,
+        manifest: state.manifest,
+        candidateStats: state.candidateStats,
+      }),
       settings: getMatcherConfig(),
       runs: Object.fromEntries(
-        Object.entries(entry.runs).map(([mode, run]) => [mode, {
-          completedAt: run.completedAt,
-          result: run.message.result,
-          workerTiming: run.message.workerTiming,
-        }]),
+        Object.entries(entry.runs).map(
+          ([mode, run]) => [mode, createBenchmarkRunRecord(run)],
+        ),
       ),
     };
     downloadJson(bundle, entry.fileName.replace(/\.json$/iu, "-labeled.json"));
