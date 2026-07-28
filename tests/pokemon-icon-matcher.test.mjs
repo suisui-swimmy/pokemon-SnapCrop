@@ -10,6 +10,7 @@ import {
   findAlphaBoundingBox,
   findForegroundBoundingBox,
   groupTemplateScoresByPokemonName,
+  meetsStandardLocalConfidence,
   meetsStableLowScoreConfidence,
   normalizeCandidateRgba,
   POKEMON_ICON_MATCHER_VERSION,
@@ -357,6 +358,57 @@ test("beam assignment leaves a weak duplicate slot unresolved instead of forcing
   assert.equal(assignment.best.choices[1].pokemonName, "");
 });
 
+test("beam assignment prefers a locally confident standard candidate over unresolved", () => {
+  const confident = {
+    pokemonName: "オオニューラ",
+    speciesKey: "species:sneasler",
+    score: 0.6819,
+    silhouette: 0.754,
+    spill: 0.283,
+    missing: 0.204,
+  };
+  const alternative = {
+    pokemonName: "ポワルン",
+    speciesKey: "species:castform",
+    score: 0.6307,
+    silhouette: 0.70,
+    spill: 0.25,
+    missing: 0.30,
+  };
+  assert.equal(
+    meetsStandardLocalConfidence(confident, confident.score - alternative.score),
+    true,
+  );
+  const assignment = assignPartyCandidates([[confident, alternative]]);
+  assert.equal(assignment.best.choices[0].pokemonName, "オオニューラ");
+  assert.ok(assignment.slotMargins[0] > 0);
+});
+
+test("beam assignment keeps a low-margin standard-score candidate unresolved", () => {
+  const ambiguous = {
+    pokemonName: "候補A",
+    speciesKey: "species:a",
+    score: 0.681,
+    silhouette: 0.75,
+    spill: 0.20,
+    missing: 0.25,
+  };
+  const alternative = {
+    pokemonName: "候補B",
+    speciesKey: "species:b",
+    score: 0.66,
+    silhouette: 0.72,
+    spill: 0.22,
+    missing: 0.28,
+  };
+  assert.equal(
+    meetsStandardLocalConfidence(ambiguous, ambiguous.score - alternative.score),
+    false,
+  );
+  const assignment = assignPartyCandidates([[ambiguous, alternative]]);
+  assert.equal(assignment.best.choices[0].pokemonName, "");
+});
+
 test("stable low-score confidence requires score, margin, source, and template agreement", () => {
   const stableCandidate = {
     score: 0.64,
@@ -490,6 +542,7 @@ test("six-slot recognition shares a global transform and accepts distinct strong
     }))),
   );
   assert.ok(result.results.every((entry) => entry.matched));
+  assert.equal(result.rejectFallback.attemptedSlotCount, 0);
   assert.equal(result.globalTransform.offsetX, 0);
   assert.equal(result.globalTransform.offsetY, 0);
   assert.ok(result.timings.totalMs > 0);
@@ -523,16 +576,25 @@ test("noise and visual collisions are not accepted", async () => {
   assert.equal(result.results[0].rejectionReason, "visual_collision");
   assert.equal(result.results[1].matched, false);
   assert.ok(["poor_foreground", "low_score", "excessive_spill"].includes(result.results[1].rejectionReason));
+  assert.ok(result.rejectFallback.attemptedSlotCount >= 2);
+  assert.ok(result.results.slice(0, 2).every((entry) => entry.fallbackAttempted));
 });
 
 test("default thresholds remain conservative", () => {
-  assert.equal(POKEMON_ICON_MATCHER_VERSION, 4);
+  assert.equal(POKEMON_ICON_MATCHER_VERSION, 5);
   assert.equal(DEFAULT_MATCHER_CONFIG.confidence.scoreMin, 0.68);
   assert.ok(DEFAULT_MATCHER_CONFIG.confidence.marginMin >= 0.025);
   assert.equal(DEFAULT_MATCHER_CONFIG.refineAlternateInputVariantNameLimit, 1);
   assert.ok(
-    DEFAULT_MATCHER_CONFIG.assignment.stableLowScoreBonus
+    DEFAULT_MATCHER_CONFIG.assignment.confidentCandidateBonus
       > DEFAULT_MATCHER_CONFIG.confidence.assignmentMarginMin,
+  );
+  assert.equal(DEFAULT_MATCHER_CONFIG.rejectFallback.enabled, true);
+  assert.equal(DEFAULT_MATCHER_CONFIG.rejectFallback.coarseTailNameLimit, 40);
+  assert.equal(DEFAULT_MATCHER_CONFIG.rejectFallback.softForeground.enabled, true);
+  assert.ok(
+    DEFAULT_MATCHER_CONFIG.rejectFallback.softForeground.softLowMultiplier
+      < DEFAULT_MATCHER_CONFIG.foreground.softLowMultiplier,
   );
   assert.equal(DEFAULT_MATCHER_CONFIG.confidence.stableLowScore.scoreMin, 0.64);
   assert.ok(

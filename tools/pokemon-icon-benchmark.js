@@ -3,7 +3,7 @@ import {
   createBenchmarkRunRecord,
 } from "./pokemon-icon-benchmark-metadata.mjs";
 
-const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.3";
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.5.4";
 
 const elements = {
   files: document.getElementById("bundle-files"),
@@ -417,7 +417,7 @@ function formatSlotRuns(entry, slotIndex) {
           bestPokemonName ? `best=${bestPokemonName}` : "",
         ].filter(Boolean).join(" ");
     values.push(
-      `${mode}: ${resultLabel} score=${formatNumber(result.score ?? result.bestScore)} time=${formatMs(result.durationMs)}`,
+      `${mode}: ${resultLabel} score=${formatNumber(result.score ?? result.bestScore)} route=${result.confidenceRoute || "none"} foreground=${result.foregroundVariant || "primary"} fallback=${result.fallbackStage || "none"} time=${formatMs(result.durationMs)}`,
     );
   });
   return values.join("\n") || "未実行";
@@ -570,6 +570,17 @@ function calculateMetrics(mode) {
     const route = row.result.confidenceRoute || "unknown";
     confidenceRoutes[route] = (confidenceRoutes[route] || 0) + 1;
   });
+  const fallback = {
+    attempted: rows.filter((row) => row.result.fallbackAttempted).length,
+    used: rows.filter((row) => row.result.fallbackUsed).length,
+    matched: accepted.filter((row) => row.result.fallbackUsed).length,
+    coarseTailAttempted: rows.filter(
+      (row) => row.result.fallbackStages?.includes("coarse_tail"),
+    ).length,
+    softForegroundAttempted: rows.filter(
+      (row) => row.result.fallbackStages?.includes("soft_foreground"),
+    ).length,
+  };
   const bundleTimes = state.bundles
     .map((entry) => entry.runs[mode]?.message?.result?.timings?.totalMs)
     .filter(Number.isFinite)
@@ -604,6 +615,7 @@ function calculateMetrics(mode) {
     rejectedCount: rows.filter((row) => !row.result.matched).length,
     confusionPairs,
     confidenceRoutes,
+    fallback,
     rejectionReasons,
     totalP50: percentile(bundleTimes, 0.50),
     totalP95: percentile(bundleTimes, 0.95),
@@ -617,7 +629,16 @@ function calculateMetrics(mode) {
       0.50,
     ),
     phaseP50: Object.fromEntries(
-      ["foregroundMs", "coarseMs", "globalTransformMs", "refineMs", "assignmentMs"]
+      [
+        "foregroundMs",
+        "coarseMs",
+        "globalTransformMs",
+        "refineMs",
+        "assignmentMs",
+        "fallbackForegroundMs",
+        "fallbackCoarseMs",
+        "fallbackRefineMs",
+      ]
         .map((field) => [
           field,
           percentile(
@@ -712,6 +733,7 @@ function renderMetrics() {
       rejectionReasons: metrics.rejectionReasons,
       confusionPairs: metrics.confusionPairs,
       confidenceRoutes: metrics.confidenceRoutes,
+      fallback: metrics.fallback,
       phaseP50: metrics.phaseP50,
     })),
     legacyRecordedBaseline: {

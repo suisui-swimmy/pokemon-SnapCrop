@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.3";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.4";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -6402,7 +6402,7 @@
     const sourceLabel = result.bestSource || "unknown";
     if ("silhouette" in result || result.rejectionReason) {
       const pokemonLabel = result.pokemonName || result.bestPokemonName || "unresolved";
-      const metrics = `score=${formatPokemonIconScore(result.bestScore ?? result.score)} silhouette=${formatPokemonIconScore(result.silhouette)} coverage=${formatPokemonIconScore(result.candidateCoverage ?? result.coverage)} input=${formatPokemonIconScore(result.inputCoverage)} spill=${formatPokemonIconScore(result.spill)} missing=${formatPokemonIconScore(result.missing)} gray=${formatPokemonIconScore(result.gray)} edge=${formatPokemonIconScore(result.edge)} color=${formatPokemonIconScore(result.color)} margin=${formatPokemonIconScore(result.localMargin ?? result.margin)} assignment=${formatPokemonIconScore(result.assignmentMargin)} globalAssignment=${formatPokemonIconScore(result.globalAssignmentMargin)} sourceAgree=${formatPokemonIconScore(result.sourceAgreement)} support=${result.supportingTemplateCount || 0} route=${result.confidenceRoute || "none"}`;
+      const metrics = `score=${formatPokemonIconScore(result.bestScore ?? result.score)} silhouette=${formatPokemonIconScore(result.silhouette)} coverage=${formatPokemonIconScore(result.candidateCoverage ?? result.coverage)} input=${formatPokemonIconScore(result.inputCoverage)} spill=${formatPokemonIconScore(result.spill)} missing=${formatPokemonIconScore(result.missing)} gray=${formatPokemonIconScore(result.gray)} edge=${formatPokemonIconScore(result.edge)} color=${formatPokemonIconScore(result.color)} margin=${formatPokemonIconScore(result.localMargin ?? result.margin)} assignment=${formatPokemonIconScore(result.assignmentMargin)} globalAssignment=${formatPokemonIconScore(result.globalAssignmentMargin)} sourceAgree=${formatPokemonIconScore(result.sourceAgreement)} support=${result.supportingTemplateCount || 0} route=${result.confidenceRoute || "none"} foreground=${result.foregroundVariant || "primary"} fallback=${result.fallbackStage || "none"}`;
       const globalTransform = result.globalTransform || {};
       const localCorrection = result.localCorrection || {};
       const transform = `global=${formatPokemonIconScore(globalTransform.scale || 1)}@${Math.round(globalTransform.offsetX || 0)},${Math.round(globalTransform.offsetY || 0)} local=${formatPokemonIconScore(localCorrection.scaleDelta || 0)}@${Math.round(localCorrection.offsetX || 0)},${Math.round(localCorrection.offsetY || 0)}`;
@@ -6800,8 +6800,9 @@
     }
     if (recognition.lastDiagnostics?.timings) {
       const timings = recognition.lastDiagnostics.timings;
+      const fallback = recognition.lastDiagnostics.rejectFallback || {};
       lines.push(
-        `[debug] icon worker perf: foreground=${formatPerformanceMs(timings.foregroundMs)} coarse=${formatPerformanceMs(timings.coarseMs)} global=${formatPerformanceMs(timings.globalTransformMs)} refine=${formatPerformanceMs(timings.refineMs)} assignment=${formatPerformanceMs(timings.assignmentMs)} total=${formatPerformanceMs(timings.totalMs)} mainRT=${formatPerformanceMs(recognition.workerTiming?.totalWorkerMs)}`,
+        `[debug] icon worker perf: foreground=${formatPerformanceMs(timings.foregroundMs)} coarse=${formatPerformanceMs(timings.coarseMs)} global=${formatPerformanceMs(timings.globalTransformMs)} refine=${formatPerformanceMs(timings.refineMs)} assignment=${formatPerformanceMs(timings.assignmentMs)} fallback=${fallback.attemptedSlotCount || 0}/${fallback.softForegroundAttemptedSlotCount || 0}/${fallback.usedSlotCount || 0} fallbackPerf=${formatPerformanceMs(timings.fallbackForegroundMs)}/${formatPerformanceMs(timings.fallbackCoarseMs)}/${formatPerformanceMs(timings.fallbackRefineMs)} total=${formatPerformanceMs(timings.totalMs)} mainRT=${formatPerformanceMs(recognition.workerTiming?.totalWorkerMs)}`,
       );
     }
     if (workerState.failures.length) {

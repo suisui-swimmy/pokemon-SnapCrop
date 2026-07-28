@@ -7,7 +7,7 @@ import {
 
 test("benchmark environment records the rerun app, manifest, and candidate state", () => {
   assert.deepEqual(createBenchmarkEnvironment({
-    appVersion: "pokemon-snapcrop-v1.5.3",
+    appVersion: "pokemon-snapcrop-v1.5.4",
     manifest: {
       schemaVersion: 5,
       icons: Array.from({ length: 788 }),
@@ -17,7 +17,7 @@ test("benchmark environment records the rerun app, manifest, and candidate state
       protocolVersion: 1,
     },
   }), {
-    appVersion: "pokemon-snapcrop-v1.5.3",
+    appVersion: "pokemon-snapcrop-v1.5.4",
     manifestSchemaVersion: 5,
     recognitionCandidateCount: 788,
     loadedCandidateCount: 788,
@@ -27,7 +27,7 @@ test("benchmark environment records the rerun app, manifest, and candidate state
 
 test("benchmark run record keeps the matcher version beside its result", () => {
   const result = {
-    version: 4,
+    version: 5,
     results: [],
   };
   const workerTiming = {
@@ -41,7 +41,7 @@ test("benchmark run record keeps the matcher version beside its result", () => {
     },
   }), {
     completedAt: "2026-07-28T12:34:56.000Z",
-    matcherVersion: 4,
+    matcherVersion: 5,
     result,
     workerTiming,
   });

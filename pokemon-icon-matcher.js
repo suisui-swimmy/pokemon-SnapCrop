@@ -1,4 +1,4 @@
-export const POKEMON_ICON_MATCHER_VERSION = 4;
+export const POKEMON_ICON_MATCHER_VERSION = 5;
 
 export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   sampleWidth: 64,
@@ -46,6 +46,20 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   templatesPerName: 2,
   refineAlternateInputVariantNameLimit: 1,
   refinedResultLimit: 12,
+  rejectFallback: {
+    enabled: true,
+    coarseTailNameLimit: 40,
+    softForeground: {
+      enabled: true,
+      coarseNameLimit: 24,
+      softLowMultiplier: 0.52,
+      softHighMultiplier: 1.35,
+      cleanupWeight: 0.30,
+      componentThreshold: 0.30,
+      componentMinimumNeighbors: 5,
+      scorePenalty: 0.006,
+    },
+  },
   globalSeedNamesPerSlot: 4,
   globalTransforms: {
     scales: [1, 1.04],
@@ -60,7 +74,7 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     beamWidth: 72,
     speciesDuplicatePenalty: 0.18,
     unresolvedScore: 0.70,
-    stableLowScoreBonus: 0.01,
+    confidentCandidateBonus: 0.01,
   },
   confidence: {
     scoreMin: 0.68,
@@ -164,6 +178,14 @@ function mergeConfig(base, override = {}) {
     assignment: {
       ...base.assignment,
       ...(override.assignment || {}),
+    },
+    rejectFallback: {
+      ...base.rejectFallback,
+      ...(override.rejectFallback || {}),
+      softForeground: {
+        ...base.rejectFallback.softForeground,
+        ...(override.rejectFallback?.softForeground || {}),
+      },
     },
     confidence: {
       ...base.confidence,
@@ -1417,6 +1439,8 @@ function simplifyCandidateResult(result) {
     sourceAgreement: result.sourceAgreement,
     supportingTemplateCount: result.supportingTemplateCount,
     inputVariantIndex: result.inputVariantIndex || 0,
+    foregroundVariant: result.foregroundVariant || "primary",
+    fallbackStage: result.fallbackStage || "",
     transform: result.transform,
     visualCollisionId: result.visualCollisionId || result.runtimeVisualCollisionId || null,
   };
@@ -1428,18 +1452,28 @@ function getInputFeatureVariant(inputFeature, variantIndex = 0) {
     : inputFeature;
 }
 
-function withInputVariantPenalty(score, variantIndex, config) {
+function withInputVariantPenalty(score, variantIndex, config, basePenalty = 0) {
   return {
     ...score,
     score: clamp(
       score.score
+      - basePenalty
       - (variantIndex * config.foreground.alternateScorePenalty),
     ),
     inputVariantIndex: variantIndex,
   };
 }
 
-async function coarseRankSlot(inputFeature, candidates, config, context) {
+async function coarseRankSlot(
+  inputFeature,
+  candidates,
+  config,
+  context,
+  options = {},
+) {
+  const foregroundVariant = options.foregroundVariant || "primary";
+  const basePenalty = Math.max(0, Number(options.basePenalty) || 0);
+  const fallbackStage = options.fallbackStage || "";
   const inputVariants = [inputFeature, ...(inputFeature.alternates || [])];
   const templateResults = [];
   for (let index = 0; index < candidates.length; index += 1) {
@@ -1455,6 +1489,7 @@ async function coarseRankSlot(inputFeature, candidates, config, context) {
         }, config),
         variantIndex,
         config,
+        basePenalty,
       );
       if (!score || compareTemplateResults(variantScore, score) < 0) {
         score = variantScore;
@@ -1463,6 +1498,8 @@ async function coarseRankSlot(inputFeature, candidates, config, context) {
     templateResults.push({
       ...candidate,
       ...score,
+      foregroundVariant,
+      fallbackStage,
     });
     await maybeYield(context, index + 1);
   }
@@ -1547,23 +1584,45 @@ function getLocalTransformGrid(globalTransform, config) {
   return transforms;
 }
 
-async function refineSlot(inputFeature, coarseRanking, globalTransform, config, context) {
+async function refineSlot(
+  inputFeature,
+  coarseRanking,
+  globalTransform,
+  config,
+  context,
+  options = {},
+) {
   const transforms = getLocalTransformGrid(globalTransform, config);
   const inputVariants = [inputFeature, ...(inputFeature.alternates || [])];
+  const startNameIndex = Math.max(0, Math.floor(Number(options.startNameIndex) || 0));
+  const endNameIndex = Math.max(
+    startNameIndex,
+    Math.floor(
+      Number(options.endNameIndex)
+      || Number(config.coarseNameLimit)
+      || 0,
+    ),
+  );
+  const requestedAlternateVariantNameLimit = options.alternateVariantNameLimit
+    ?? config.refineAlternateInputVariantNameLimit;
   const alternateVariantNameLimit = Math.max(
     0,
-    Math.floor(Number(config.refineAlternateInputVariantNameLimit) || 0),
+    Math.floor(Number(requestedAlternateVariantNameLimit) || 0),
   );
+  const foregroundVariant = options.foregroundVariant || "primary";
+  const basePenalty = Math.max(0, Number(options.basePenalty) || 0);
+  const fallbackStage = options.fallbackStage || "";
   const refinedNames = [];
   let comparisonCount = 0;
   for (const [coarseNameIndex, coarseName] of coarseRanking
-    .slice(0, config.coarseNameLimit)
+    .slice(startNameIndex, endNameIndex)
     .entries()) {
     const templateResults = [];
     for (const template of coarseName.templates.slice(0, config.templatesPerName)) {
       let best = null;
       const coarseVariantIndex = template.inputVariantIndex || 0;
-      const variantIndexes = coarseNameIndex < alternateVariantNameLimit
+      const absoluteCoarseNameIndex = startNameIndex + coarseNameIndex;
+      const variantIndexes = absoluteCoarseNameIndex < alternateVariantNameLimit
         ? inputVariants.map((_, variantIndex) => variantIndex)
         : [coarseVariantIndex];
       for (const variantIndex of variantIndexes) {
@@ -1573,11 +1632,14 @@ async function refineSlot(inputFeature, coarseRanking, globalTransform, config, 
             scoreFeaturePair(selectedInputFeature, template.feature, transform, config),
             variantIndex,
             config,
+            basePenalty,
           );
           const result = {
             ...template,
             ...score,
             localCorrection: transform.localCorrection,
+            foregroundVariant,
+            fallbackStage,
           };
           if (!best || compareTemplateResults(result, best) < 0) {
             best = result;
@@ -1614,6 +1676,22 @@ async function refineSlot(inputFeature, coarseRanking, globalTransform, config, 
   };
 }
 
+function mergeRefinedRankings(rankings, limit) {
+  const byPokemonName = new Map();
+  rankings.flat().forEach((candidate) => {
+    if (!candidate?.pokemonName) {
+      return;
+    }
+    const current = byPokemonName.get(candidate.pokemonName);
+    if (!current || compareTemplateResults(candidate, current) < 0) {
+      byPokemonName.set(candidate.pokemonName, candidate);
+    }
+  });
+  return [...byPokemonName.values()]
+    .sort(compareTemplateResults)
+    .slice(0, limit);
+}
+
 function assignmentKey(choices) {
   return choices.map((choice) => choice?.pokemonName || "-").join("|");
 }
@@ -1637,13 +1715,18 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
         const localMargin = candidate.score - (alternative?.score || 0);
         const stableLowScore = candidate.score < config.confidence.scoreMin
           && meetsStableLowScoreConfidence(candidate, localMargin, config);
-        return stableLowScore
+        const standardConfidence = meetsStandardLocalConfidence(
+          candidate,
+          localMargin,
+          config,
+        );
+        return standardConfidence || stableLowScore
           ? {
               ...candidate,
               assignmentScore: Math.max(
                 candidate.score,
                 config.assignment.unresolvedScore
-                  + config.assignment.stableLowScoreBonus,
+                  + config.assignment.confidentCandidateBonus,
               ),
             }
           : candidate;
@@ -1711,6 +1794,24 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
     slotMargins,
     evaluatedBeamCount: beam.length,
   };
+}
+
+export function meetsStandardLocalConfidence(
+  selected,
+  localMargin,
+  configOverride = {},
+) {
+  if (!selected) {
+    return false;
+  }
+  const config = mergeConfig(DEFAULT_MATCHER_CONFIG, configOverride);
+  return Boolean(
+    selected.score >= config.confidence.scoreMin
+    && localMargin >= config.confidence.marginMin
+    && selected.silhouette >= config.confidence.silhouetteMin
+    && selected.spill <= config.confidence.spillMax
+    && selected.missing <= config.confidence.missingMax
+  );
 }
 
 function getRejectionReason({
@@ -1815,6 +1916,87 @@ export function decodeMaskRle(encoded, expectedLength = 0) {
   return new Float32Array(output);
 }
 
+function getResultInputFeature(primaryFeature, softFeature, candidate) {
+  const rootFeature = candidate?.foregroundVariant === "soft_foreground" && softFeature
+    ? softFeature
+    : primaryFeature;
+  return getInputFeatureVariant(rootFeature, candidate?.inputVariantIndex || 0);
+}
+
+function evaluatePartyRankings(
+  refinedRankings,
+  inputFeatures,
+  softInputFeatures,
+  config,
+) {
+  const assignment = assignPartyCandidates(refinedRankings, config);
+  const decisions = refinedRankings.map((ranking, slotIndex) => {
+    const selected = assignment.best.choices[slotIndex] || null;
+    const bestLocal = ranking[0] || null;
+    const selectedResult = selected?.pokemonName
+      ? ranking.find((candidate) => candidate.pokemonName === selected.pokemonName) || selected
+      : null;
+    const alternative = ranking.find(
+      (candidate) => candidate.pokemonName !== (selectedResult?.pokemonName || bestLocal?.pokemonName),
+    );
+    const localMargin = selectedResult
+      ? selectedResult.score - (alternative?.score || 0)
+      : (bestLocal?.score || 0) - (ranking[1]?.score || 0);
+    const assignmentMargin = assignment.slotMargins[slotIndex] ?? assignment.margin;
+    const display = selectedResult || bestLocal;
+    const displayInputFeature = getResultInputFeature(
+      inputFeatures[slotIndex],
+      softInputFeatures[slotIndex],
+      display,
+    );
+    const rejectionReason = getRejectionReason({
+      selected: selectedResult,
+      bestLocal,
+      localMargin,
+      assignmentMargin,
+      inputFeature: displayInputFeature,
+      config,
+    });
+    const matched = Boolean(selectedResult?.pokemonName && !rejectionReason);
+    return {
+      selectedResult,
+      bestLocal,
+      display,
+      displayInputFeature,
+      localMargin,
+      assignmentMargin,
+      rejectionReason,
+      matched,
+      confidenceRoute: matched && selectedResult.score < config.confidence.scoreMin
+        ? "stable_low_score"
+        : (matched ? "standard" : ""),
+    };
+  });
+  return {
+    assignment,
+    decisions,
+  };
+}
+
+function createSoftForegroundMatcherConfig(config) {
+  const soft = config.rejectFallback.softForeground;
+  return mergeConfig(config, {
+    foreground: {
+      softLowMultiplier: soft.softLowMultiplier,
+      softHighMultiplier: soft.softHighMultiplier,
+      cleanupWeight: soft.cleanupWeight,
+      componentThreshold: soft.componentThreshold,
+      componentMinimumNeighbors: soft.componentMinimumNeighbors,
+    },
+    rejectFallback: {
+      enabled: false,
+      softForeground: {
+        enabled: false,
+      },
+    },
+  });
+}
+
 export async function recognizePokemonIconParty(slotInputs, candidates, options = {}) {
   const config = mergeConfig(DEFAULT_MATCHER_CONFIG, options.config || {});
   const yieldControl = options.yieldControl || (() => Promise.resolve());
@@ -1871,41 +2053,146 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
     refineComparisonsBySlot.push(refined.comparisonCount);
     refineSlotDurations.push(performanceNow() - slotStartedAt);
   }
-  const refineMs = performanceNow() - refineStartedAt;
-
-  const assignmentStartedAt = performanceNow();
-  const assignment = assignPartyCandidates(refinedRankings, config);
-  const assignmentMs = performanceNow() - assignmentStartedAt;
-  const results = refinedRankings.map((ranking, slotIndex) => {
-    const selected = assignment.best.choices[slotIndex] || null;
-    const bestLocal = ranking[0] || null;
-    const selectedResult = selected?.pokemonName
-      ? ranking.find((candidate) => candidate.pokemonName === selected.pokemonName) || selected
-      : null;
-    const alternative = ranking.find(
-      (candidate) => candidate.pokemonName !== (selectedResult?.pokemonName || bestLocal?.pokemonName),
+  const primaryRefineMs = performanceNow() - refineStartedAt;
+  const softInputFeatures = Array.from({ length: inputFeatures.length }, () => null);
+  const softCoarseRankings = Array.from({ length: inputFeatures.length }, () => []);
+  const fallbackStagesBySlot = Array.from(
+    { length: inputFeatures.length },
+    () => [],
+  );
+  let fallbackForegroundMs = 0;
+  let fallbackCoarseMs = 0;
+  let fallbackRefineMs = 0;
+  let assignmentMs = 0;
+  const evaluateCurrentRankings = () => {
+    const assignmentStartedAt = performanceNow();
+    const evaluation = evaluatePartyRankings(
+      refinedRankings,
+      inputFeatures,
+      softInputFeatures,
+      config,
     );
-    const localMargin = selectedResult
-      ? selectedResult.score - (alternative?.score || 0)
-      : (bestLocal?.score || 0) - (ranking[1]?.score || 0);
-    const assignmentMargin = assignment.slotMargins[slotIndex] ?? assignment.margin;
-    const rejectionReason = getRejectionReason({
-      selected: selectedResult,
-      bestLocal,
+    assignmentMs += performanceNow() - assignmentStartedAt;
+    return evaluation;
+  };
+  let partyDecision = evaluateCurrentRankings();
+
+  if (config.rejectFallback.enabled) {
+    const tailStart = Math.max(0, Math.floor(Number(config.coarseNameLimit) || 0));
+    const tailEnd = Math.max(
+      tailStart,
+      Math.floor(Number(config.rejectFallback.coarseTailNameLimit) || tailStart),
+    );
+    if (tailEnd > tailStart) {
+      for (let slotIndex = 0; slotIndex < inputFeatures.length; slotIndex += 1) {
+        if (partyDecision.decisions[slotIndex].matched) {
+          continue;
+        }
+        const endNameIndex = Math.min(tailEnd, coarseRankings[slotIndex].length);
+        if (endNameIndex <= tailStart) {
+          continue;
+        }
+        const slotStartedAt = performanceNow();
+        const refined = await refineSlot(
+          inputFeatures[slotIndex],
+          coarseRankings[slotIndex],
+          globalTransform.best,
+          config,
+          context,
+          {
+            startNameIndex: tailStart,
+            endNameIndex,
+            alternateVariantNameLimit: 0,
+            fallbackStage: "coarse_tail",
+          },
+        );
+        const durationMs = performanceNow() - slotStartedAt;
+        refinedRankings[slotIndex] = mergeRefinedRankings(
+          [refinedRankings[slotIndex], refined.results],
+          config.refinedResultLimit,
+        );
+        refineComparisonsBySlot[slotIndex] += refined.comparisonCount;
+        refineSlotDurations[slotIndex] += durationMs;
+        fallbackRefineMs += durationMs;
+        fallbackStagesBySlot[slotIndex].push("coarse_tail");
+      }
+      partyDecision = evaluateCurrentRankings();
+    }
+
+    const soft = config.rejectFallback.softForeground;
+    if (soft.enabled) {
+      const softConfig = createSoftForegroundMatcherConfig(config);
+      for (let slotIndex = 0; slotIndex < inputFeatures.length; slotIndex += 1) {
+        if (partyDecision.decisions[slotIndex].matched) {
+          continue;
+        }
+        let phaseStartedAt = performanceNow();
+        const softFeature = buildInputFeature(
+          resizedInputs[slotIndex],
+          sharedBackground,
+          softConfig,
+        );
+        const softForegroundDurationMs = performanceNow() - phaseStartedAt;
+        fallbackForegroundMs += softForegroundDurationMs;
+        softInputFeatures[slotIndex] = softFeature;
+
+        phaseStartedAt = performanceNow();
+        const softCoarseRanking = await coarseRankSlot(
+          softFeature,
+          candidates,
+          softConfig,
+          context,
+          {
+            foregroundVariant: "soft_foreground",
+            basePenalty: soft.scorePenalty,
+            fallbackStage: "soft_foreground",
+          },
+        );
+        const softCoarseDurationMs = performanceNow() - phaseStartedAt;
+        fallbackCoarseMs += softCoarseDurationMs;
+        coarseSlotDurations[slotIndex] += softCoarseDurationMs;
+        softCoarseRankings[slotIndex] = softCoarseRanking;
+
+        phaseStartedAt = performanceNow();
+        const softRefined = await refineSlot(
+          softFeature,
+          softCoarseRanking,
+          globalTransform.best,
+          softConfig,
+          context,
+          {
+            startNameIndex: 0,
+            endNameIndex: soft.coarseNameLimit,
+            foregroundVariant: "soft_foreground",
+            basePenalty: soft.scorePenalty,
+            fallbackStage: "soft_foreground",
+          },
+        );
+        const softRefineDurationMs = performanceNow() - phaseStartedAt;
+        fallbackRefineMs += softRefineDurationMs;
+        refineSlotDurations[slotIndex] += softRefineDurationMs;
+        refineComparisonsBySlot[slotIndex] += softRefined.comparisonCount;
+        refinedRankings[slotIndex] = mergeRefinedRankings(
+          [refinedRankings[slotIndex], softRefined.results],
+          config.refinedResultLimit,
+        );
+        fallbackStagesBySlot[slotIndex].push("soft_foreground");
+      }
+      partyDecision = evaluateCurrentRankings();
+    }
+  }
+
+  const { assignment, decisions } = partyDecision;
+  const results = refinedRankings.map((ranking, slotIndex) => {
+    const {
+      display,
+      displayInputFeature,
       localMargin,
       assignmentMargin,
-      inputFeature: inputFeatures[slotIndex],
-      config,
-    });
-    const matched = Boolean(selectedResult?.pokemonName && !rejectionReason);
-    const confidenceRoute = matched && selectedResult.score < config.confidence.scoreMin
-      ? "stable_low_score"
-      : (matched ? "standard" : "");
-    const display = selectedResult || bestLocal;
-    const displayInputFeature = getInputFeatureVariant(
-      inputFeatures[slotIndex],
-      display?.inputVariantIndex || 0,
-    );
+      rejectionReason,
+      matched,
+      confidenceRoute,
+    } = decisions[slotIndex];
     return {
       matched,
       pokemonName: matched ? display.pokemonName : "",
@@ -1932,6 +2219,7 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       assignmentMargin,
       globalAssignmentMargin: assignment.margin,
       confidenceRoute,
+      foregroundVariant: display?.foregroundVariant || "primary",
       globalTransform: globalTransform.best,
       localCorrection: display?.localCorrection || {
         scaleDelta: 0,
@@ -1946,7 +2234,14 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       foregroundSource: displayInputFeature.background.source,
       foregroundNormalization: displayInputFeature.normalization,
       foregroundMaskRle: encodeMaskRle(displayInputFeature.mask),
+      fallbackAttempted: fallbackStagesBySlot[slotIndex].length > 0,
+      fallbackStages: fallbackStagesBySlot[slotIndex],
+      fallbackUsed: Boolean(display?.fallbackStage),
+      fallbackStage: display?.fallbackStage || "",
       coarseTopCandidates: coarseRankings[slotIndex]
+        .slice(0, 48)
+        .map((entry) => simplifyCandidateResult(entry.bestTemplate)),
+      fallbackCoarseTopCandidates: softCoarseRankings[slotIndex]
         .slice(0, 48)
         .map((entry) => simplifyCandidateResult(entry.bestTemplate)),
       refinedTopCandidates: ranking.map(simplifyCandidateResult),
@@ -1957,10 +2252,26 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       durationMs: coarseSlotDurations[slotIndex] + refineSlotDurations[slotIndex],
     };
   });
+  const fallbackAttemptedSlotCount = fallbackStagesBySlot.filter(
+    (stages) => stages.length > 0,
+  ).length;
+  const softForegroundAttemptedSlotCount = fallbackStagesBySlot.filter(
+    (stages) => stages.includes("soft_foreground"),
+  ).length;
+  const coarseTailAttemptedSlotCount = fallbackStagesBySlot.filter(
+    (stages) => stages.includes("coarse_tail"),
+  ).length;
+  const fallbackUsedSlotCount = results.filter((result) => result.fallbackUsed).length;
 
   return {
     version: POKEMON_ICON_MATCHER_VERSION,
     results,
+    rejectFallback: {
+      attemptedSlotCount: fallbackAttemptedSlotCount,
+      coarseTailAttemptedSlotCount,
+      softForegroundAttemptedSlotCount,
+      usedSlotCount: fallbackUsedSlotCount,
+    },
     assignment: {
       pokemonNames: assignment.best.choices.map((choice) => choice?.pokemonName || ""),
       speciesKeys: assignment.best.choices.map((choice) => choice?.speciesKey || ""),
@@ -1977,11 +2288,14 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       searchCount: globalTransform.comparisonCount,
     },
     timings: {
-      foregroundMs,
-      coarseMs,
+      foregroundMs: foregroundMs + fallbackForegroundMs,
+      coarseMs: coarseMs + fallbackCoarseMs,
       globalTransformMs,
-      refineMs,
+      refineMs: primaryRefineMs + fallbackRefineMs,
       assignmentMs,
+      fallbackForegroundMs,
+      fallbackCoarseMs,
+      fallbackRefineMs,
       slotMs: results.map((result) => result.durationMs),
       totalMs: performanceNow() - startedAt,
     },
