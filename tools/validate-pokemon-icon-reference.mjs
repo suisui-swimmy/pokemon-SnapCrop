@@ -39,12 +39,32 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
   check(Array.isArray(manifest.rawCandidates), "rawCandidates must be an array");
   check(Array.isArray(manifest.visualCollisions), "visualCollisions must be an array");
   check(Array.isArray(manifest.unresolved), "unresolved must be an array");
+  check(manifest.classification?.name === "pokemon-showdown", "classification source must be pokemon-showdown");
+  check(
+    /^[0-9a-f]{40}$/u.test(manifest.classification?.revision || ""),
+    "classification revision must be a Pokemon Showdown commit SHA",
+  );
+  ["pokedex", "tags", "license"].forEach((key) => {
+    check(
+      /^[0-9a-f]{64}$/u.test(manifest.classification?.files?.[key]?.sha256 || ""),
+      `classification file hash missing for ${key}`,
+    );
+  });
 
   const accounting = validateRawAccounting(manifest.stats || {});
   check(accounting.valid, `raw accounting mismatch raw=${accounting.rawCandidateCount} accounted=${accounting.accounted}`);
   check(manifest.rawCandidates.length === manifest.stats?.rawCandidateCount, "rawCandidates length must equal rawCandidateCount");
   check(manifest.icons.length === manifest.stats?.canonicalCandidateCount, "icons length must equal canonicalCandidateCount");
   check(manifest.unresolved.length === manifest.stats?.unresolvedCount, "unresolved length must equal unresolvedCount");
+  check(
+    manifest.icons.filter((icon) => icon.isChampionsCandidate).length
+      === manifest.stats?.championsCandidateCount,
+    "championsCandidateCount mismatch",
+  );
+  check(
+    manifest.stats?.classificationUnresolvedCount === 0,
+    "classification contains unresolved candidates",
+  );
 
   const rawStatusCounts = Object.fromEntries(
     RAW_CANDIDATE_STATUSES.map((status) => [
@@ -94,6 +114,44 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
     check(Array.isArray(icon.mergedIds) && icon.mergedIds.includes(icon.id), `${label}: mergedIds invalid`);
     check(Array.isArray(icon.sources) && icon.sources.includes(icon.source), `${label}: sources invalid`);
     check(icon.canonical?.path === icon.path, `${label}: canonical path mismatch`);
+    check(
+      icon.isChampionsCandidate === icon.sources.includes("champions"),
+      `${label}: isChampionsCandidate mismatch`,
+    );
+    check(Boolean(icon.showdownId), `${label}: showdownId missing`);
+    check(
+      Array.isArray(icon.showdownIds) && icon.showdownIds.includes(icon.showdownId),
+      `${label}: showdownIds invalid`,
+    );
+    check(typeof icon.isMega === "boolean", `${label}: isMega invalid`);
+    check(
+      ["normal", "mythical", "sublegendary", "restricted"].includes(icon.legendClass),
+      `${label}: legendClass invalid`,
+    );
+    check(Array.isArray(icon.showdownTags), `${label}: showdownTags invalid`);
+    check(
+      Number.isInteger(icon.evolutionDepth) && icon.evolutionDepth >= 0,
+      `${label}: evolutionDepth invalid`,
+    );
+    check(typeof icon.hasPreEvolution === "boolean", `${label}: hasPreEvolution invalid`);
+    check(typeof icon.canEvolve === "boolean", `${label}: canEvolve invalid`);
+    check(typeof icon.isFinalEvolution === "boolean", `${label}: isFinalEvolution invalid`);
+    check(
+      icon.isFinalEvolution === !icon.canEvolve,
+      `${label}: final evolution flags disagree`,
+    );
+    check(Boolean(icon.baseSpeciesId), `${label}: baseSpeciesId missing`);
+    check(Boolean(icon.evolutionSourceId), `${label}: evolutionSourceId missing`);
+    check(Array.isArray(icon.evoIds), `${label}: evoIds invalid`);
+    check(
+      icon.classificationSource === "pokemon-showdown",
+      `${label}: classificationSource invalid`,
+    );
+    check(Boolean(icon.classificationMethod), `${label}: classificationMethod missing`);
+    check(
+      typeof icon.classificationFallback === "boolean",
+      `${label}: classificationFallback invalid`,
+    );
     if (verifyFiles && icon.path) {
       const assetPath = resolveAssetPath(icon.path);
       check(fs.existsSync(assetPath), `${label}: asset missing ${icon.path}`);
@@ -123,6 +181,10 @@ export function validatePokemonIconManifest(manifest, baseline, options = {}) {
       uniquePokemonNameCount: manifest.stats?.uniquePokemonNameCount || 0,
       uniqueSpeciesKeyCount: manifest.stats?.uniqueSpeciesKeyCount || 0,
       svOnlyPokemonNameCount: manifest.stats?.svOnlyPokemonNameCount || 0,
+      championsCandidateCount: manifest.stats?.championsCandidateCount || 0,
+      championsCandidatePokemonNameCount: manifest.stats?.championsCandidatePokemonNameCount || 0,
+      classificationFallbackCount: manifest.stats?.classificationFallbackCount || 0,
+      classificationUnresolvedCount: manifest.stats?.classificationUnresolvedCount || 0,
       pokemonNameSetPreserved: hashStringSet(names) === baseline.pokemonNameSetSha256,
       svOnlyPokemonNameSetPreserved: hashStringSet(svOnlyNames) === baseline.svOnlyPokemonNameSetSha256,
     },

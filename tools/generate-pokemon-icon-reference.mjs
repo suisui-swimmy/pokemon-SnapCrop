@@ -9,6 +9,10 @@ import {
   sha256Buffer,
   validateRawAccounting,
 } from "./pokemon-icon-manifest.mjs";
+import {
+  createShowdownClassificationResolver,
+  loadShowdownClassificationData,
+} from "./pokemon-showdown-classification.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const ICON_SOURCES = [
@@ -30,6 +34,13 @@ const POKEAPI_CSV_DIR = path.join(ROOT, "others", "pokeapi", "data", "v2", "csv"
 const POKEMON_REFERENCE_PATH = path.join(ROOT, "data", "pokemon-reference.csv");
 const OUTPUT_PATH = path.join(ROOT, "data", "pokemon-icon-reference.json");
 const BASELINE_PATH = path.join(ROOT, "tests", "fixtures", "pokemon-icon-baseline.json");
+const SHOWDOWN_ROOT_CANDIDATES = [
+  process.env.POKEMON_SHOWDOWN_DIR
+    ? path.resolve(process.env.POKEMON_SHOWDOWN_DIR)
+    : "",
+  path.join(ROOT, "others", "pokemon-showdown"),
+  path.resolve(ROOT, "..", "others", "pokemon-showdown"),
+].filter(Boolean);
 const JA_LANGUAGE_ID = "1";
 
 function parseCsv(text, delimiter = ",") {
@@ -481,6 +492,8 @@ function validateBaselineCoverage(manifest, baseline) {
 function main() {
   const resolver = createReferenceNameResolver();
   const speciesResolver = createSpeciesMetadataResolver();
+  const showdown = loadShowdownClassificationData(SHOWDOWN_ROOT_CANDIDATES);
+  const classificationResolver = createShowdownClassificationResolver(showdown.pokedex);
   const maps = [
     createManualNameMap(resolver),
     createPokemonDataNameMap(resolver),
@@ -498,6 +511,13 @@ function main() {
       const stem = path.basename(fileName, ".webp");
       const pokemonName = resolveIconName(stem, maps);
       const speciesResolution = speciesResolver.resolve(stem, pokemonName);
+      const classification = classificationResolver.resolve(stem, {
+        speciesKey: speciesResolution.speciesKey,
+        variantKey: speciesResolution.variantKey,
+      });
+      if (!classification) {
+        throw new Error(`Pokemon Showdown classification unresolved: ${stem}`);
+      }
       const copiedPath = path.join(sourceConfig.outputDir, fileName);
       const entry = {
         id: decodeStem(stem),
@@ -510,6 +530,8 @@ function main() {
           method: speciesResolution.method,
           fallback: speciesResolution.fallback,
         },
+        isChampionsCandidate: sourceConfig.source === "champions",
+        ...classification,
         fileHash: sha256Buffer(fs.readFileSync(copiedPath)),
       };
       rawEntries.push(entry);
@@ -548,6 +570,7 @@ function main() {
       alphaThreshold: 24,
       paddingRatio: 0.18,
     },
+    classification: showdown.source,
     sources: {
       raw: copied,
       canonicalPrimary: stats.sourceCounts.canonicalPrimary,
@@ -571,6 +594,9 @@ function main() {
   console.log(
     `Coverage names=${stats.uniquePokemonNameCount} species=${stats.uniqueSpeciesKeyCount} svOnlyNames=${stats.svOnlyPokemonNameCount} fallbackSpecies=${stats.speciesFallbackCount}`,
   );
+  console.log(
+    `Classification champions=${stats.championsCandidateCount} fallback=${stats.classificationFallbackCount} revision=${showdown.source.revision || "unversioned"}`,
+  );
 }
 
 if (path.resolve(process.argv[1] || "") === path.resolve(import.meta.filename)) {
@@ -580,5 +606,6 @@ if (path.resolve(process.argv[1] || "") === path.resolve(import.meta.filename)) 
 export {
   createSpeciesMetadataResolver,
   main,
+  SHOWDOWN_ROOT_CANDIDATES,
   validateBaselineCoverage,
 };

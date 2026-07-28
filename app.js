@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.4.1";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.0";
   const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
   const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
@@ -648,7 +648,7 @@
       }
 
       const manifest = await response.json();
-      const entries = Array.isArray(manifest?.icons)
+      const manifestEntries = Array.isArray(manifest?.icons)
         ? manifest.icons
           .filter((entry) => entry?.path && entry?.pokemonName)
           .map((entry) => ({
@@ -661,19 +661,22 @@
             variantKey: String(entry.variantKey || ""),
           }))
         : [];
+      const entries = manifestEntries.filter((entry) =>
+        entry.isChampionsCandidate === true
+        || entry.sources?.includes("champions"));
 
       if (!entries.length) {
-        throw new Error("ポケモンアイコン参照データが空です。");
+        throw new Error("Pokémon Championsのアイコン参照データが空です。");
       }
 
       state.pokemonIconManifest = manifest;
       state.pokemonIconReferenceEntries = entries;
       state.pokemonIconReferenceReady = true;
       state.pokemonIconReferenceLoadFailed = false;
-      state.pokemonIconRecognition.lastSummary = `manifest ready entries=${entries.length}`;
+      state.pokemonIconRecognition.lastSummary = `manifest ready champions=${entries.length}/${manifestEntries.length}`;
       appendPokemonIconDebugLogIfChanged(
-        `manifest-ready:${entries.length}`,
-        [`[debug] icon recog: manifest ready entries=${entries.length}`],
+        `manifest-ready:${entries.length}:${manifestEntries.length}`,
+        [`[debug] icon recog: manifest ready champions=${entries.length}/${manifestEntries.length}`],
       );
       schedulePokemonIconWorkerPrewarm();
       if (state.references.enemy) {
@@ -5641,10 +5644,14 @@
       worker.addEventListener("messageerror", handlePokemonIconWorkerMessageError);
       worker.postMessage({
         type: "init",
-        manifest: {
-          ...state.pokemonIconManifest,
-          icons: state.pokemonIconReferenceEntries,
-        },
+         manifest: {
+           ...state.pokemonIconManifest,
+           icons: state.pokemonIconReferenceEntries,
+           stats: {
+             ...state.pokemonIconManifest?.stats,
+             canonicalCandidateCount: state.pokemonIconReferenceEntries.length,
+           },
+         },
         prewarm,
       });
       return true;
@@ -6757,6 +6764,7 @@
       `[debug] icon recog summary: ${recognition.lastSummary || recognition.reason || "未評価"}`,
       `[debug] icon manifest: raw=${manifestStats.rawCandidateCount || 0} canonical=${manifestStats.canonicalCandidateCount || state.pokemonIconReferenceEntries.length} buildMerged=${manifestStats.mergedDuplicateCount || 0} names=${manifestStats.uniquePokemonNameCount || 0} species=${manifestStats.uniqueSpeciesKeyCount || 0}`,
       `[debug] icon sources: champions=${manifestStats.sourceCounts?.raw?.champions || 0} sv=${manifestStats.sourceCounts?.raw?.sv || 0} svOnlyNames=${manifestStats.svOnlyPokemonNameCount || 0} buildCollisions=${manifestStats.visualCollisionGroupCount || 0} invalid=${manifestStats.invalidCount || 0}`,
+      `[debug] icon classification: eligible=${manifestStats.championsCandidateCount || state.pokemonIconReferenceEntries.length} fallback=${manifestStats.classificationFallbackCount || 0} unresolved=${manifestStats.classificationUnresolvedCount || 0} revision=${state.pokemonIconManifest?.classification?.revision?.slice(0, 12) || "unknown"}`,
       `[debug] icon worker: status=${workerState.status} prewarm=${workerState.prewarmStatus} loaded=${workerStats.loadedCount || 0}/${workerStats.canonicalManifestCount || manifestStats.canonicalCandidateCount || 0} runtimeMerged=${workerStats.runtimeNormalizedDuplicateCount || 0} collisions=${workerStats.runtimeVisualCollisionGroupCount || 0} failures=${workerStats.loadFailureCount || workerState.failures.length}`,
       `[debug] icon manifest perf: fetch+parse=${formatPerformanceMs(state.pokemonIconManifestFetchMs)}`,
     ];

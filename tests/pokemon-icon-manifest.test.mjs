@@ -137,3 +137,39 @@ test("generated manifest preserves Champions, SV-only names, and baseline covera
   assert.ok(manifest.rawCandidates.some((entry) => entry.source === "champions"));
   assert.ok(manifest.rawCandidates.some((entry) => entry.source === "sv"));
 });
+
+test("generated manifest carries Showdown classification for Champions exceptions", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "pokemon-icon-reference.json"), "utf8"));
+  const icon = (id) => manifest.icons.find((entry) => entry.mergedIds?.includes(id));
+
+  assert.equal(manifest.classification.name, "pokemon-showdown");
+  assert.match(manifest.classification.revision, /^[0-9a-f]{40}$/u);
+  assert.equal(manifest.stats.championsCandidateCount, 358);
+  assert.equal(manifest.stats.classificationUnresolvedCount, 0);
+
+  assert.equal(icon("Pikachu").isChampionsCandidate, true);
+  assert.equal(icon("Pikachu").canEvolve, true);
+  assert.equal(icon("Pikachu").evolutionDepth, 1);
+
+  assert.equal(icon("Qwilfish").canEvolve, false);
+  assert.deepEqual(icon("Qwilfish").evoIds, []);
+  assert.equal(icon("Qwilfish-Hisui").canEvolve, true);
+  assert.deepEqual(icon("Qwilfish-Hisui").evoIds, ["overqwil"]);
+
+  assert.equal(icon("Floette-Eternal").canEvolve, false);
+  assert.equal(icon("Floette-Mega").battleOnlySourceId, "floetteeternal");
+  assert.equal(icon("Floette-Mega").evolutionSourceId, "floetteeternal");
+
+  const meowsticMega = icon("Meowstic-F-Mega");
+  assert.ok(meowsticMega.mergedIds.includes("Meowstic-M-Mega"));
+  assert.equal(meowsticMega.evolutionDepth, 1);
+  assert.equal(meowsticMega.isMega, true);
+  assert.deepEqual(
+    meowsticMega.showdownIds,
+    ["meowsticfmega", "meowsticmmega"],
+  );
+
+  assert.equal(icon("Articuno").legendClass, "sublegendary");
+  assert.equal(icon("Mewtwo").legendClass, "restricted");
+  assert.equal(icon("Mew").legendClass, "mythical");
+});

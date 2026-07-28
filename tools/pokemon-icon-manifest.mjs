@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-export const ICON_MANIFEST_SCHEMA_VERSION = 2;
+export const ICON_MANIFEST_SCHEMA_VERSION = 3;
 export const ICON_SAMPLE_SIZE = Object.freeze({
   width: 64,
   height: 64,
@@ -15,6 +15,24 @@ export const SOURCE_PRIORITY = Object.freeze({
   champions: 0,
   sv: 1,
 });
+const CLASSIFICATION_FIELDS = Object.freeze([
+  "showdownId",
+  "isMega",
+  "legendClass",
+  "showdownTags",
+  "evolutionDepth",
+  "hasPreEvolution",
+  "canEvolve",
+  "isFinalEvolution",
+  "baseSpeciesId",
+  "battleOnlySourceId",
+  "evolutionSourceId",
+  "prevoId",
+  "evoIds",
+  "classificationSource",
+  "classificationMethod",
+  "classificationFallback",
+]);
 
 function compareSource(left, right) {
   const priorityDifference = (SOURCE_PRIORITY[left.source] ?? 99) - (SOURCE_PRIORITY[right.source] ?? 99);
@@ -38,6 +56,12 @@ export function sha256Buffer(value) {
 
 export function hashStringSet(values, locale = "ja") {
   return sha256Buffer(uniqueSorted(values, locale).join("\n"));
+}
+
+function classificationMetadata(entry) {
+  return Object.fromEntries(
+    CLASSIFICATION_FIELDS.map((field) => [field, entry[field] ?? null]),
+  );
 }
 
 export function createRawAuditEntry(entry, status, details = {}) {
@@ -109,6 +133,8 @@ export function groupExactIconCandidates(rawEntries) {
           const paths = ordered.map((entry) => entry.path);
           const speciesKeys = uniqueSorted(ordered.map((entry) => entry.speciesKey));
           const variantKeys = uniqueSorted(ordered.map((entry) => entry.variantKey));
+          const showdownIds = uniqueSorted(ordered.map((entry) => entry.showdownId));
+          const isChampionsCandidate = ordered.some((entry) => entry.isChampionsCandidate);
 
           icons.push({
             id: canonical.id,
@@ -118,12 +144,15 @@ export function groupExactIconCandidates(rawEntries) {
             speciesResolution: canonical.speciesResolution,
             source: canonical.source,
             path: canonical.path,
+            isChampionsCandidate,
+            ...classificationMetadata(canonical),
             aliases: mergedIds.filter((id) => id !== canonical.id),
             mergedIds,
             sources,
             paths,
             speciesKeys,
             variantKeys,
+            showdownIds,
             fileHash,
             canonical: {
               id: canonical.id,
@@ -221,6 +250,20 @@ export function buildIconManifestStats({
     ]),
   );
   const speciesFallbackCount = rawEntries.filter((entry) => entry.speciesResolution?.fallback).length;
+  const championsCandidates = icons.filter((entry) => entry.isChampionsCandidate);
+  const classificationMethodCounts = {};
+  const legendClassCounts = {};
+  const evolutionDepthCounts = {};
+  icons.forEach((entry) => {
+    const method = entry.classificationMethod || "unresolved";
+    classificationMethodCounts[method] = (classificationMethodCounts[method] || 0) + 1;
+    const legendClass = entry.legendClass || "unresolved";
+    legendClassCounts[legendClass] = (legendClassCounts[legendClass] || 0) + 1;
+    const depth = Number.isInteger(entry.evolutionDepth)
+      ? String(entry.evolutionDepth)
+      : "unresolved";
+    evolutionDepthCounts[depth] = (evolutionDepthCounts[depth] || 0) + 1;
+  });
 
   return {
     rawCandidateCount: rawEntries.length,
@@ -233,6 +276,15 @@ export function buildIconManifestStats({
     uniquePokemonNameCount: allNames.length,
     uniqueSpeciesKeyCount: allSpeciesKeys.length,
     speciesFallbackCount,
+    championsCandidateCount: championsCandidates.length,
+    championsCandidatePokemonNameCount: new Set(
+      championsCandidates.map((entry) => entry.pokemonName),
+    ).size,
+    classificationFallbackCount: icons.filter((entry) => entry.classificationFallback).length,
+    classificationUnresolvedCount: icons.filter((entry) => !entry.classificationSource).length,
+    classificationMethodCounts,
+    legendClassCounts,
+    evolutionDepthCounts,
     sourceCounts: {
       raw: rawBySource,
       canonicalPrimary: canonicalPrimaryBySource,

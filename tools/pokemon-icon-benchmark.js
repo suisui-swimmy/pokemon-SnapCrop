@@ -42,7 +42,21 @@ async function initialize() {
     }
     const manifest = await response.json();
     state.manifestFetchMs = performance.now() - manifestStartedAt;
-    state.manifest = manifest;
+    const eligibleIcons = (manifest.icons || []).filter((entry) =>
+      entry.isChampionsCandidate === true
+      || entry.sources?.includes("champions"));
+    if (!eligibleIcons.length) {
+      throw new Error("Pokémon Champions候補がmanifestにありません");
+    }
+    const recognitionManifest = {
+      ...manifest,
+      icons: eligibleIcons,
+      stats: {
+        ...manifest.stats,
+        canonicalCandidateCount: eligibleIcons.length,
+      },
+    };
+    state.manifest = recognitionManifest;
     const worker = new Worker(new URL("../pokemon-icon-worker.js", window.location.href), {
       type: "module",
       name: "pokemon-icon-benchmark",
@@ -55,10 +69,12 @@ async function initialize() {
     });
     worker.postMessage({
       type: "init",
-      manifest,
+      manifest: recognitionManifest,
       prewarm: true,
     });
-    setStatus(`manifest ${manifest.stats?.canonicalCandidateCount || manifest.icons.length}件をprewarmしています…`);
+    setStatus(
+      `Champions候補 ${eligibleIcons.length}/${manifest.icons.length}件をprewarmしています…`,
+    );
   } catch (error) {
     setStatus(`初期化に失敗しました: ${error.message}`, true);
   }
