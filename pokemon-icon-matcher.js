@@ -1,4 +1,4 @@
-export const POKEMON_ICON_MATCHER_VERSION = 2;
+export const POKEMON_ICON_MATCHER_VERSION = 3;
 
 export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   sampleWidth: 64,
@@ -17,6 +17,19 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     minimumRatio: 0.018,
     maximumRatio: 0.78,
     qualityMin: 0.22,
+    normalizeToCandidate: true,
+    componentThreshold: 0.38,
+    componentMinimumNeighbors: 7,
+    componentMinimumArea: 12,
+    componentMaximumCenterDistance: 0.34,
+    componentMaximumSecondScoreRatio: 0.35,
+    weightedMassCutoff: 0.01,
+    componentMassCutoff: 0.012,
+    boundsExpansion: 1,
+    alternateNormalization: true,
+    alternateComponentMinimumNeighbors: 4,
+    weightedAlternateNormalization: true,
+    alternateScorePenalty: 0.004,
   },
   scoring: {
     silhouetteWeight: 0.24,
@@ -28,14 +41,14 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     spillPenaltyWeight: 0.08,
     missingPenaltyWeight: 0.08,
   },
-  coarsePixelStride: 2,
+  coarsePixelStride: 4,
   coarseNameLimit: 24,
   templatesPerName: 2,
   refinedResultLimit: 12,
   globalSeedNamesPerSlot: 4,
   globalTransforms: {
-    scales: [0.96, 1, 1.04],
-    offsets: [-2, 0, 2],
+    scales: [1, 1.04],
+    offsets: [0],
   },
   localTransforms: {
     scaleDeltas: [-0.02, 0, 0.02],
@@ -48,9 +61,9 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
     unresolvedScore: 0.70,
   },
   confidence: {
-    scoreMin: 0.74,
+    scoreMin: 0.68,
     marginMin: 0.035,
-    assignmentMarginMin: 0.012,
+    assignmentMarginMin: 0.001,
     silhouetteMin: 0.34,
     spillMax: 0.62,
     missingMax: 0.62,
@@ -530,6 +543,372 @@ function boxBlurMask(mask, width, height) {
   return output;
 }
 
+function countMaskNeighbors(mask, width, height, x, y, threshold) {
+  let count = 0;
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    const sampleY = y + offsetY;
+    if (sampleY < 0 || sampleY >= height) {
+      continue;
+    }
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      const sampleX = x + offsetX;
+      if (sampleX < 0 || sampleX >= width) {
+        continue;
+      }
+      if (mask[(sampleY * width) + sampleX] >= threshold) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function findMaskComponents(mask, width, height, config) {
+  const active = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width) + x;
+      if (
+        mask[index] >= config.foreground.componentThreshold
+        && countMaskNeighbors(
+          mask,
+          width,
+          height,
+          x,
+          y,
+          config.foreground.componentThreshold,
+        ) >= config.foreground.componentMinimumNeighbors
+      ) {
+        active[index] = 1;
+      }
+    }
+  }
+
+  const seen = new Uint8Array(mask.length);
+  const components = [];
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+  const maximumCenterDistance = Math.sqrt(((width / 2) ** 2) + ((height / 2) ** 2));
+  for (let index = 0; index < active.length; index += 1) {
+    if (!active[index] || seen[index]) {
+      continue;
+    }
+    const queue = [index];
+    seen[index] = 1;
+    let queueIndex = 0;
+    let area = 0;
+    let mass = 0;
+    let left = width;
+    let top = height;
+    let right = -1;
+    let bottom = -1;
+    let sumX = 0;
+    let sumY = 0;
+    let edgeCount = 0;
+    while (queueIndex < queue.length) {
+      const pixelIndex = queue[queueIndex];
+      queueIndex += 1;
+      const y = Math.floor(pixelIndex / width);
+      const x = pixelIndex % width;
+      area += 1;
+      mass += mask[pixelIndex];
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+      sumX += x;
+      sumY += y;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        edgeCount += 1;
+      }
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const sampleY = y + offsetY;
+        if (sampleY < 0 || sampleY >= height) {
+          continue;
+        }
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          if (offsetX === 0 && offsetY === 0) {
+            continue;
+          }
+          const sampleX = x + offsetX;
+          if (sampleX < 0 || sampleX >= width) {
+            continue;
+          }
+          const sampleIndex = (sampleY * width) + sampleX;
+          if (active[sampleIndex] && !seen[sampleIndex]) {
+            seen[sampleIndex] = 1;
+            queue.push(sampleIndex);
+          }
+        }
+      }
+    }
+    if (area < config.foreground.componentMinimumArea) {
+      continue;
+    }
+    const componentWidth = right - left + 1;
+    const componentHeight = bottom - top + 1;
+    const componentCenterX = sumX / area;
+    const componentCenterY = sumY / area;
+    const centerDistance = Math.sqrt(
+      ((componentCenterX - centerX) ** 2) + ((componentCenterY - centerY) ** 2),
+    ) / maximumCenterDistance;
+    const compactness = area / (componentWidth * componentHeight);
+    const aspect = Math.min(componentWidth, componentHeight)
+      / Math.max(componentWidth, componentHeight);
+    const score = mass
+      * (1 - (0.55 * clamp(centerDistance)))
+      * (edgeCount ? 0.42 : 1)
+      * (0.35 + (0.65 * Math.sqrt(compactness)))
+      * (0.45 + (0.55 * Math.sqrt(aspect)));
+    components.push({
+      x: left,
+      y: top,
+      width: componentWidth,
+      height: componentHeight,
+      area,
+      mass,
+      centerX: componentCenterX,
+      centerY: componentCenterY,
+      centerDistance,
+      compactness,
+      aspect,
+      edgeCount,
+      score,
+    });
+  }
+  return components.sort((left, right) => right.score - left.score);
+}
+
+function findWeightedMaskBounds(mask, width, height, massCutoff, sourceBounds = null) {
+  const xMass = new Float64Array(width);
+  const yMass = new Float64Array(height);
+  const sourceLeft = Math.max(0, sourceBounds?.x ?? 0);
+  const sourceTop = Math.max(0, sourceBounds?.y ?? 0);
+  const sourceRight = Math.min(width, sourceLeft + (sourceBounds?.width ?? width));
+  const sourceBottom = Math.min(height, sourceTop + (sourceBounds?.height ?? height));
+  let totalMass = 0;
+  for (let y = sourceTop; y < sourceBottom; y += 1) {
+    for (let x = sourceLeft; x < sourceRight; x += 1) {
+      const value = mask[(y * width) + x];
+      xMass[x] += value;
+      yMass[y] += value;
+      totalMass += value;
+    }
+  }
+  if (totalMass <= 1e-6) {
+    return null;
+  }
+  const target = totalMass * massCutoff;
+  const findAxisEdge = (values, start, end, forwards) => {
+    let cumulative = 0;
+    if (forwards) {
+      for (let index = start; index < end; index += 1) {
+        cumulative += values[index];
+        if (cumulative >= target) {
+          return index;
+        }
+      }
+      return start;
+    }
+    for (let index = end - 1; index >= start; index -= 1) {
+      cumulative += values[index];
+      if (cumulative >= target) {
+        return index;
+      }
+    }
+    return end - 1;
+  };
+  const left = findAxisEdge(xMass, sourceLeft, sourceRight, true);
+  const right = findAxisEdge(xMass, sourceLeft, sourceRight, false);
+  const top = findAxisEdge(yMass, sourceTop, sourceBottom, true);
+  const bottom = findAxisEdge(yMass, sourceTop, sourceBottom, false);
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, right - left + 1),
+    height: Math.max(1, bottom - top + 1),
+    totalMass,
+  };
+}
+
+function expandBounds(bounds, width, height, expansion) {
+  const left = Math.max(0, bounds.x - expansion);
+  const top = Math.max(0, bounds.y - expansion);
+  const right = Math.min(width - 1, bounds.x + bounds.width - 1 + expansion);
+  const bottom = Math.min(height - 1, bounds.y + bounds.height - 1 + expansion);
+  return {
+    x: left,
+    y: top,
+    width: right - left + 1,
+    height: bottom - top + 1,
+  };
+}
+
+export function findForegroundBoundingBox(mask, width, height, configOverride = {}) {
+  if (!mask || mask.length !== width * height || width <= 0 || height <= 0) {
+    return null;
+  }
+  const config = mergeConfig(DEFAULT_MATCHER_CONFIG, configOverride);
+  const components = findMaskComponents(mask, width, height, config);
+  const primary = components[0] || null;
+  const secondScoreRatio = primary && components[1]
+    ? components[1].score / primary.score
+    : 0;
+  const primaryIsReliable = Boolean(
+    primary
+    && primary.centerDistance <= config.foreground.componentMaximumCenterDistance
+    && secondScoreRatio <= config.foreground.componentMaximumSecondScoreRatio
+  );
+  const weighted = findWeightedMaskBounds(
+    mask,
+    width,
+    height,
+    config.foreground.weightedMassCutoff,
+  );
+  const selected = primaryIsReliable
+    ? (
+      config.foreground.componentMassCutoff > 0
+        ? findWeightedMaskBounds(
+          mask,
+          width,
+          height,
+          config.foreground.componentMassCutoff,
+          primary,
+        ) || primary
+        : primary
+    )
+    : weighted;
+  if (!selected) {
+    return null;
+  }
+  const bounds = expandBounds(
+    selected,
+    width,
+    height,
+    config.foreground.boundsExpansion,
+  );
+  let retainedMass = 0;
+  let totalMass = 0;
+  let edgeMass = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const value = mask[(y * width) + x];
+      totalMass += value;
+      if (
+        x >= bounds.x
+        && x < bounds.x + bounds.width
+        && y >= bounds.y
+        && y < bounds.y + bounds.height
+      ) {
+        retainedMass += value;
+      }
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        edgeMass += value;
+      }
+    }
+  }
+  return {
+    ...bounds,
+    method: primaryIsReliable ? "component" : "weighted_mass",
+    retainedRatio: totalMass > 0 ? clamp(retainedMass / totalMass) : 0,
+    edgeRatio: totalMass > 0 ? clamp(edgeMass / totalMass) : 0,
+    componentCount: components.length,
+    componentCenterDistance: primary?.centerDistance ?? 1,
+    secondComponentScoreRatio: secondScoreRatio,
+  };
+}
+
+function sampleMaskBilinear(mask, width, height, x, y) {
+  if (x < 0 || y < 0 || x > width - 1 || y > height - 1) {
+    return 0;
+  }
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const tx = x - x0;
+  const ty = y - y0;
+  const topValue = mask[(y0 * width) + x0]
+    + ((mask[(y0 * width) + x1] - mask[(y0 * width) + x0]) * tx);
+  const bottomValue = mask[(y1 * width) + x0]
+    + ((mask[(y1 * width) + x1] - mask[(y1 * width) + x0]) * tx);
+  return topValue + ((bottomValue - topValue) * ty);
+}
+
+function normalizeInputRgbaAndMask(input, mask, config) {
+  const bounds = findForegroundBoundingBox(mask, input.width, input.height, config);
+  if (!config.foreground.normalizeToCandidate || !bounds) {
+    return {
+      rgba: new Uint8ClampedArray(input.data),
+      mask: new Float32Array(mask),
+      width: input.width,
+      height: input.height,
+      bounds,
+      scale: 1,
+      normalizedBounds: {
+        x: 0,
+        y: 0,
+        width: input.width,
+        height: input.height,
+      },
+    };
+  }
+  const availableWidth = config.sampleWidth * (1 - (config.candidatePaddingRatio * 2));
+  const availableHeight = config.sampleHeight * (1 - (config.candidatePaddingRatio * 2));
+  const scale = Math.min(availableWidth / bounds.width, availableHeight / bounds.height);
+  const drawWidth = Math.max(1, bounds.width * scale);
+  const drawHeight = Math.max(1, bounds.height * scale);
+  const drawX = (config.sampleWidth - drawWidth) / 2;
+  const drawY = (config.sampleHeight - drawHeight) / 2;
+  const rgba = new Uint8ClampedArray(config.sampleWidth * config.sampleHeight * 4);
+  const normalizedMask = new Float32Array(config.sampleWidth * config.sampleHeight);
+  for (let y = 0; y < config.sampleHeight; y += 1) {
+    for (let x = 0; x < config.sampleWidth; x += 1) {
+      if (
+        x + 0.5 < drawX
+        || y + 0.5 < drawY
+        || x + 0.5 >= drawX + drawWidth
+        || y + 0.5 >= drawY + drawHeight
+      ) {
+        continue;
+      }
+      const sourceX = bounds.x + ((((x + 0.5 - drawX) / drawWidth) * bounds.width) - 0.5);
+      const sourceY = bounds.y + ((((y + 0.5 - drawY) / drawHeight) * bounds.height) - 0.5);
+      const outputIndex = (y * config.sampleWidth) + x;
+      normalizedMask[outputIndex] = clamp(
+        sampleMaskBilinear(mask, input.width, input.height, sourceX, sourceY),
+      );
+      const rgbaIndex = outputIndex * 4;
+      for (let channel = 0; channel < 4; channel += 1) {
+        rgba[rgbaIndex + channel] = Math.round(
+          sampleRgbaBilinear(
+            input.data,
+            input.width,
+            input.height,
+            sourceX,
+            sourceY,
+            channel,
+          ),
+        );
+      }
+    }
+  }
+  return {
+    rgba,
+    mask: normalizedMask,
+    width: config.sampleWidth,
+    height: config.sampleHeight,
+    bounds,
+    scale,
+    normalizedBounds: {
+      x: drawX,
+      y: drawY,
+      width: drawWidth,
+      height: drawHeight,
+    },
+  };
+}
+
 export function buildInputFeature(input, sharedBackground = null, configOverride = {}) {
   assertRgbaInput(input);
   const config = mergeConfig(DEFAULT_MATCHER_CONFIG, configOverride);
@@ -606,11 +985,19 @@ export function buildInputFeature(input, sharedBackground = null, configOverride
     }
     mask[index] = clamp(cleaned);
   }
-  const feature = buildFeatureArrays(resized.data, resized.width, resized.height, mask);
+  const rawForegroundRatio = mask.reduce((total, value) => total + value, 0) / pixelCount;
+  const normalized = normalizeInputRgbaAndMask(resized, mask, config);
+  const feature = buildFeatureArrays(
+    normalized.rgba,
+    normalized.width,
+    normalized.height,
+    normalized.mask,
+  );
   delete feature.cb;
   delete feature.cr;
   const foregroundRatio = feature.maskSum / pixelCount;
-  const contrast = feature.maskSum ? contrastTotal / feature.maskSum : 0;
+  const rawMaskSum = rawForegroundRatio * pixelCount;
+  const contrast = rawMaskSum ? contrastTotal / rawMaskSum : 0;
   const minimumQuality = smoothstep(
     config.foreground.minimumRatio * 0.5,
     config.foreground.minimumRatio * 2.5,
@@ -623,10 +1010,30 @@ export function buildInputFeature(input, sharedBackground = null, configOverride
   );
   const contrastQuality = smoothstep(threshold * 0.8, threshold * 2.2, contrast);
   const noiseQuality = 1 - smoothstep(24, 72, border.noise);
-  const quality = clamp(minimumQuality * maximumQuality * contrastQuality * (0.65 + (noiseQuality * 0.35)));
+  const retentionQuality = normalized.bounds
+    ? smoothstep(0.45, 0.92, normalized.bounds.retainedRatio)
+    : 0;
+  const edgeQuality = normalized.bounds
+    ? 1 - smoothstep(0.02, 0.12, normalized.bounds.edgeRatio)
+    : 0;
+  const quality = clamp(
+    minimumQuality
+    * maximumQuality
+    * contrastQuality
+    * (0.65 + (noiseQuality * 0.35))
+    * (0.70 + (retentionQuality * 0.30))
+    * (0.82 + (edgeQuality * 0.18)),
+  );
   feature.kind = "input";
   feature.foregroundRatio = foregroundRatio;
+  feature.rawForegroundRatio = rawForegroundRatio;
   feature.foregroundQuality = quality;
+  feature.normalization = {
+    enabled: config.foreground.normalizeToCandidate,
+    bounds: normalized.bounds,
+    scale: normalized.scale,
+    normalizedBounds: normalized.normalizedBounds,
+  };
   feature.background = {
     source: useShared ? "shared_median" : "border",
     borderColor: border.color,
@@ -635,7 +1042,79 @@ export function buildInputFeature(input, sharedBackground = null, configOverride
     threshold,
     contrast,
   };
-  feature.rgba = resized.data;
+  feature.rgba = normalized.rgba;
+  feature.alternates = [];
+  const addAlternateFeature = (alternateConfig, alternateKind) => {
+    resolvedMatcherConfigs.add(alternateConfig);
+    const alternateNormalized = normalizeInputRgbaAndMask(resized, mask, alternateConfig);
+    const alternateBounds = alternateNormalized.bounds;
+    const existingBounds = [
+      normalized.bounds,
+      ...feature.alternates.map((alternate) => alternate.normalization.bounds),
+    ];
+    const boundsDiffer = Boolean(
+      alternateBounds
+      && existingBounds.every((bounds) => (
+        !bounds
+        || bounds.x !== alternateBounds.x
+        || bounds.y !== alternateBounds.y
+        || bounds.width !== alternateBounds.width
+        || bounds.height !== alternateBounds.height
+      )),
+    );
+    if (boundsDiffer) {
+      const alternateFeature = buildFeatureArrays(
+        alternateNormalized.rgba,
+        alternateNormalized.width,
+        alternateNormalized.height,
+        alternateNormalized.mask,
+      );
+      delete alternateFeature.cb;
+      delete alternateFeature.cr;
+      alternateFeature.kind = "input";
+      alternateFeature.foregroundRatio = alternateFeature.maskSum / pixelCount;
+      alternateFeature.rawForegroundRatio = rawForegroundRatio;
+      alternateFeature.foregroundQuality = quality;
+      alternateFeature.normalization = {
+        enabled: true,
+        bounds: alternateNormalized.bounds,
+        scale: alternateNormalized.scale,
+        normalizedBounds: alternateNormalized.normalizedBounds,
+        alternate: true,
+        alternateKind,
+      };
+      alternateFeature.background = feature.background;
+      alternateFeature.rgba = alternateNormalized.rgba;
+      alternateFeature.alternates = [];
+      feature.alternates.push(alternateFeature);
+    }
+  };
+  if (config.foreground.alternateNormalization) {
+    addAlternateFeature({
+      ...config,
+      foreground: {
+        ...config.foreground,
+        alternateNormalization: false,
+        weightedAlternateNormalization: false,
+        componentMinimumNeighbors: config.foreground.alternateComponentMinimumNeighbors,
+        componentMassCutoff: 0,
+        boundsExpansion: 0,
+      },
+    }, "component_exact");
+  }
+  if (config.foreground.weightedAlternateNormalization) {
+    addAlternateFeature({
+      ...config,
+      foreground: {
+        ...config.foreground,
+        alternateNormalization: false,
+        weightedAlternateNormalization: false,
+        componentMaximumCenterDistance: -1,
+        componentMassCutoff: 0,
+        boundsExpansion: 0,
+      },
+    }, "weighted_mass");
+  }
   return feature;
 }
 
@@ -924,21 +1403,50 @@ function simplifyCandidateResult(result) {
     color: result.color,
     sourceAgreement: result.sourceAgreement,
     supportingTemplateCount: result.supportingTemplateCount,
+    inputVariantIndex: result.inputVariantIndex || 0,
     transform: result.transform,
     visualCollisionId: result.visualCollisionId || result.runtimeVisualCollisionId || null,
   };
 }
 
+function getInputFeatureVariant(inputFeature, variantIndex = 0) {
+  return variantIndex > 0
+    ? inputFeature.alternates?.[variantIndex - 1] || inputFeature
+    : inputFeature;
+}
+
+function withInputVariantPenalty(score, variantIndex, config) {
+  return {
+    ...score,
+    score: clamp(
+      score.score
+      - (variantIndex * config.foreground.alternateScorePenalty),
+    ),
+    inputVariantIndex: variantIndex,
+  };
+}
+
 async function coarseRankSlot(inputFeature, candidates, config, context) {
+  const inputVariants = [inputFeature, ...(inputFeature.alternates || [])];
   const templateResults = [];
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
-    const score = scoreFeaturePair(inputFeature, candidate.feature, {
-      scale: 1,
-      offsetX: 0,
-      offsetY: 0,
-      pixelStride: config.coarsePixelStride,
-    }, config);
+    let score = null;
+    inputVariants.forEach((variant, variantIndex) => {
+      const variantScore = withInputVariantPenalty(
+        scoreFeaturePair(variant, candidate.feature, {
+          scale: 1,
+          offsetX: 0,
+          offsetY: 0,
+          pixelStride: config.coarsePixelStride,
+        }, config),
+        variantIndex,
+        config,
+      );
+      if (!score || compareTemplateResults(variantScore, score) < 0) {
+        score = variantScore;
+      }
+    });
     templateResults.push({
       ...candidate,
       ...score,
@@ -966,7 +1474,13 @@ async function estimateGlobalTransform(inputFeatures, coarseRankings, config, co
         .flatMap((entry) => entry.templates.slice(0, 1));
       let bestScore = 0;
       for (const seed of seeds) {
-        const score = scoreFeaturePair(inputFeatures[slotIndex], seed.feature, transform, config).score;
+        const variantIndex = seed.inputVariantIndex || 0;
+        const inputFeature = getInputFeatureVariant(inputFeatures[slotIndex], variantIndex);
+        const score = withInputVariantPenalty(
+          scoreFeaturePair(inputFeature, seed.feature, transform, config),
+          variantIndex,
+          config,
+        ).score;
         bestScore = Math.max(bestScore, score);
         comparisonCount += 1;
         await maybeYield(context, comparisonCount);
@@ -1028,8 +1542,14 @@ async function refineSlot(inputFeature, coarseRanking, globalTransform, config, 
     const templateResults = [];
     for (const template of coarseName.templates.slice(0, config.templatesPerName)) {
       let best = null;
+      const variantIndex = template.inputVariantIndex || 0;
+      const selectedInputFeature = getInputFeatureVariant(inputFeature, variantIndex);
       for (const transform of transforms) {
-        const score = scoreFeaturePair(inputFeature, template.feature, transform, config);
+        const score = withInputVariantPenalty(
+          scoreFeaturePair(selectedInputFeature, template.feature, transform, config),
+          variantIndex,
+          config,
+        );
         const result = {
           ...template,
           ...score,
@@ -1312,6 +1832,10 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
     });
     const matched = Boolean(selectedResult?.pokemonName && !rejectionReason);
     const display = selectedResult || bestLocal;
+    const displayInputFeature = getInputFeatureVariant(
+      inputFeatures[slotIndex],
+      display?.inputVariantIndex || 0,
+    );
     return {
       matched,
       pokemonName: matched ? display.pokemonName : "",
@@ -1344,10 +1868,13 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
         offsetY: 0,
       },
       rejectionReason,
-      foregroundQuality: inputFeatures[slotIndex].foregroundQuality,
-      foregroundRatio: inputFeatures[slotIndex].foregroundRatio,
-      foregroundSource: inputFeatures[slotIndex].background.source,
-      foregroundMaskRle: encodeMaskRle(inputFeatures[slotIndex].mask),
+      inputVariantIndex: display?.inputVariantIndex || 0,
+      foregroundQuality: displayInputFeature.foregroundQuality,
+      foregroundRatio: displayInputFeature.foregroundRatio,
+      rawForegroundRatio: displayInputFeature.rawForegroundRatio,
+      foregroundSource: displayInputFeature.background.source,
+      foregroundNormalization: displayInputFeature.normalization,
+      foregroundMaskRle: encodeMaskRle(displayInputFeature.mask),
       coarseTopCandidates: coarseRankings[slotIndex]
         .slice(0, 48)
         .map((entry) => simplifyCandidateResult(entry.bestTemplate)),

@@ -387,7 +387,7 @@ function getMatcherConfig() {
     coarseNameLimit: Number(elements.coarseLimit.value) || 24,
     templatesPerName: Number(elements.templatesPerName.value) || 2,
     confidence: {
-      scoreMin: Number(elements.scoreMin.value) || 0.74,
+      scoreMin: Number(elements.scoreMin.value) || 0.68,
       marginMin: Number(elements.marginMin.value) || 0.035,
     },
   };

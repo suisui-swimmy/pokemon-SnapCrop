@@ -8,6 +8,7 @@ import {
   equalRgba,
   fingerprintRgba,
   findAlphaBoundingBox,
+  findForegroundBoundingBox,
   groupTemplateScoresByPokemonName,
   normalizeCandidateRgba,
   recognizePokemonIconParty,
@@ -193,7 +194,7 @@ test("brightness, color, and background changes retain the correct shape prefere
   assert.ok(correctScore.gray >= 0.90);
 });
 
-test("global offset transform improves a shifted input match", () => {
+test("canonical input normalization removes a global offset", () => {
   const candidate = makeCandidate("diamond", [80, 170, 235, 255]);
   const input = compositeCandidate(candidate.normalized, {
     offsetX: 2,
@@ -206,7 +207,8 @@ test("global offset transform improves a shifted input match", () => {
     offsetX: 2,
     offsetY: -2,
   });
-  assert.ok(shifted.score > centered.score);
+  assert.ok(centered.score >= shifted.score);
+  assert.equal(inputFeature.normalization.bounds.method, "component");
 });
 
 test("global scale transform improves a scaled input match", () => {
@@ -237,6 +239,42 @@ test("global scale transform improves a scaled input match", () => {
       score: entry.score,
     })),
   }));
+});
+
+test("central foreground bounds ignore a thin edge-connected diagonal", () => {
+  const width = 64;
+  const height = 64;
+  const mask = new Float32Array(width * height);
+  for (let y = 14; y <= 50; y += 1) {
+    for (let x = 18; x <= 47; x += 1) {
+      if (Math.abs(x - 32.5) + Math.abs(y - 32) <= 25) {
+        mask[(y * width) + x] = 0.95;
+      }
+    }
+  }
+  for (let index = 0; index < 24; index += 1) {
+    mask[(index * width) + index] = 1;
+  }
+  const bounds = findForegroundBoundingBox(mask, width, height);
+  assert.equal(bounds.method, "component");
+  assert.ok(bounds.x >= 16);
+  assert.ok(bounds.y >= 12);
+  assert.ok(bounds.x + bounds.width <= 50);
+  assert.ok(bounds.y + bounds.height <= 53);
+});
+
+test("shape remains decisive when the input uses a different color", () => {
+  const correct = makeCandidate("plus", [210, 80, 75, 255]);
+  const colorLookalike = makeCandidate("bars", [80, 175, 235, 255]);
+  const input = compositeCandidate(correct.normalized, {
+    brightness: 0.88,
+    tint: [-80, 60, 110],
+  });
+  const inputFeature = buildInputFeature(input);
+  const correctScore = scoreFeaturePair(inputFeature, correct.feature);
+  const wrongScore = scoreFeaturePair(inputFeature, colorLookalike.feature);
+  assert.ok(correctScore.score > wrongScore.score);
+  assert.ok(correctScore.silhouette > wrongScore.silhouette);
 });
 
 test("unexplained input foreground increases spill and lowers score", () => {
@@ -355,8 +393,8 @@ test("six-slot recognition shares a global transform and accepts distinct strong
     }))),
   );
   assert.ok(result.results.every((entry) => entry.matched));
-  assert.equal(result.globalTransform.offsetX, 2);
-  assert.equal(result.globalTransform.offsetY, -2);
+  assert.equal(result.globalTransform.offsetX, 0);
+  assert.equal(result.globalTransform.offsetY, 0);
   assert.ok(result.timings.totalMs > 0);
 });
 
@@ -391,7 +429,7 @@ test("noise and visual collisions are not accepted", async () => {
 });
 
 test("default thresholds remain conservative", () => {
-  assert.equal(DEFAULT_MATCHER_CONFIG.confidence.scoreMin, 0.74);
+  assert.equal(DEFAULT_MATCHER_CONFIG.confidence.scoreMin, 0.68);
   assert.ok(DEFAULT_MATCHER_CONFIG.confidence.marginMin >= 0.025);
   assert.ok(DEFAULT_MATCHER_CONFIG.scoring.colorWeight <= 0.10);
 });

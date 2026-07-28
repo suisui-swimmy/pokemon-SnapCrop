@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.4.0";
+  const APP_VERSION = "pokemon-snapcrop-v1.4.1";
   const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
   const YAKKUN_POKEMON_BASE_URL = "https://yakkun.com/ch/zukan/";
   const AUTO_TEMPLATE_PATHS = {
