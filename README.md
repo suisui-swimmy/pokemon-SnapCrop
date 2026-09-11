@@ -3,7 +3,7 @@
 **pokemon-SnapCrop** は、「Pokémon Champions」において、対戦中の自分 / 相手のパーティを自動で撮影 / 表示することができるアプリです。<br>
 下部のコマンド入力欄に、コマンドを入力し操作 / ポケモンの情報を調べることができます。トラブルに対するサポートチャットは[こちら](https://chatgpt.com/g/g-69e6262f0edc8191b991191368c625c6-snapcrop-sahototiyatuto)から。
 
-![autosnap](README-images/autosnap.gif)
+![autosnap](README-images/autosnap.png)
 ## 公開URL
 [https://suisui-swimmy.github.io/pokemon-SnapCrop/](https://suisui-swimmy.github.io/pokemon-SnapCrop/)
 

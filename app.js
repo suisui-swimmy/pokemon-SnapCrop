@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.7";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.8";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -116,13 +116,13 @@
   const FIXED_16_BY_9_CROP_RATIOS = {
     my: {
       x: 295 / 1920,
-      y: 96 / 1080,
+      y: 112 / 1080,
       width: 299 / 1920,
       height: 807 / 1080,
     },
     enemy: {
       x: 1326 / 1920,
-      y: 96 / 1080,
+      y: 112 / 1080,
       width: 299 / 1920,
       height: 807 / 1080,
     },
