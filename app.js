@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.0";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.1";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -3953,13 +3953,6 @@
   }
 
   async function exportPokemonIconDiagnosticBundle() {
-    if (!state.debugMode) {
-      appendTerminalEntry(
-        ["[error] debug icon export は debug on のときだけ使用できます。"],
-        "error",
-      );
-      return;
-    }
     const reference = state.references.enemy;
     if (!reference) {
       appendTerminalEntry(
