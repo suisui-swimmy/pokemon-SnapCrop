@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.9";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.0";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -359,6 +359,13 @@
       pokemonIconSlot: 25,
     },
   };
+  const MATCH_LOG_CONFIG = {
+    completedLimit: 3,
+    eventLimit: 256,
+    sampleLimit: 1800,
+    sampleIntervalMs: 1000,
+    textLimit: 2000,
+  };
   const FAINT_DETECTION_CONFIG = {
     compareIntervalMs: 250,
     requiredStrongStreak: 2,
@@ -449,6 +456,7 @@
     suppressSuggestions: false,
     debugMode: false,
     performanceDebug: createPerformanceDebugState(),
+    matchLog: createMatchLogState(),
     terminalLogAutoFollow: true,
     terminalLogPendingBottomScroll: false,
     terminalForceAutoscrollDepth: 0,
@@ -1616,7 +1624,7 @@
     if (command === "help") {
       appendTerminalEntry(
         [
-          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / debug icon export / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
+          "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / debug log export [番号] / debug icon export / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / pick clear = p clear <slot> / crop reset = cr / layout reset = lr",
           "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
         ],
@@ -3427,6 +3435,11 @@
           ? cloneReferenceFrame(frameSource[side])
           : captureReferenceFrameFromVideo(side);
         state.references[side] = frame;
+        state.matchLog.references[side] = {
+          matchId: state.matchLog.current?.id ?? null,
+          capturedAt: Date.now(),
+        };
+        if (side === "enemy" && state.matchLog.current) state.matchLog.current.recognition = null;
       });
       if (sides.includes("enemy")) {
         state.autoSnap.pickOverlay.referenceUpdatedAt = Date.now();
@@ -3437,6 +3450,8 @@
       if (sides.includes("enemy")) {
         scheduleEnemyReferencePokemonRecognition({ deferUntilAfterPaint: true });
       }
+      if (state.matchLog.current) state.matchLog.current.captureCount += 1;
+      recordMatchLogEvent("snap", "[snap] 参照画像を更新しました。", { target, source: sourceLabel });
 
       if (target === "my") {
         return "自分側の参照画像を更新しました。";
@@ -3447,6 +3462,12 @@
       }
 
       return "左右の参照画像を更新しました。";
+    } catch (error) {
+      if (state.matchLog.current) state.matchLog.current.captureFailureCount += 1;
+      recordMatchLogEvent("snap-error", "[error] 撮影処理に失敗しました。", {
+        target, source: sourceLabel, error: String(error.message || error).slice(0, MATCH_LOG_CONFIG.textLimit),
+      });
+      throw error;
     } finally {
       recordPerformanceDebugMetric(
         "performSnapCapture",
@@ -3461,7 +3482,9 @@
     const hadReferences = CROP_SIDES.some((side) => Boolean(state.references[side]));
     CROP_SIDES.forEach((side) => {
       state.references[side] = null;
+      state.matchLog.references[side] = null;
     });
+    recordMatchLogEvent("clear", "[snap] 参照画像をクリアしました。", { source, reason });
     resetPickOverlayState("参照画像クリア", { redraw: false });
     resetPokemonIconRecognitionState("参照画像クリア");
     resetBattleResultDetection("参照画像クリア");
@@ -3595,9 +3618,18 @@
       return;
     }
 
+    if (action === "log") {
+      if (extra !== "export" || rest.length || (detail && !/^[1-9]\d*$/u.test(detail))) {
+        appendTerminalEntry(["[error] debug log export [番号] を指定してください。"], "error");
+        return;
+      }
+      exportMatchLog(detail ? Number(detail) : null);
+      return;
+    }
+
     appendTerminalEntry(
       [
-        "[error] debug は on / off / status / icon export を指定できます。",
+        "[error] debug は on / off / status / log export [番号] / icon export を指定できます。",
       ],
       "error",
     );
@@ -3916,6 +3948,7 @@
     lines.push(...getBattleResultDebugLines());
     lines.push(...getPokemonIconRecognitionDebugLines());
     lines.push(...getPerformanceDebugLines());
+    lines.push(...getMatchLogStatusLines());
     return lines;
   }
 
@@ -4051,6 +4084,10 @@
     const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], {
       type: "application/json",
     });
+    downloadBlobFile(blob, fileName);
+  }
+
+  function downloadBlobFile(blob, fileName) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -4158,6 +4195,7 @@
   }
 
   function resetAutoSnapCycle(reason = "", { preserveSelectionDiagnostics = false } = {}) {
+    recordMatchLogEvent("reset", "[debug] 自動検出をリセットしました。", { reason, phase: state.autoSnap.phase });
     state.autoSnap.phase = "idle";
     state.autoSnap.loadingFrames = 0;
     state.autoSnap.selectionFrames = 0;
@@ -4199,9 +4237,16 @@
     auto.lastDetectionAt = now;
     const metricsStartedAt = getPerformanceDebugNow();
     const metrics = captureAutoSnapMetrics();
+    const metricsDurationMs = getPerformanceDebugNow() - metricsStartedAt;
+    if (metrics && (auto.phase === "idle" || auto.phase === "snapped")
+      && metrics.loadingTemplate.matched
+      && auto.loadingFrames + 1 >= AUTO_SNAP_CONFIG.stableFrames.loading) {
+      startMatchLog(now, metrics.loadingTemplate);
+    }
+    if (metrics) recordMatchLogFrame(metrics, now);
     recordPerformanceDebugMetric(
       "captureAutoSnapMetrics",
-      getPerformanceDebugNow() - metricsStartedAt,
+      metricsDurationMs,
       `phase=${getAutoPhaseLabel(auto.phase)}`,
     );
     if (!metrics) {
@@ -4356,6 +4401,7 @@
           auto.lockedBaseline = buildLockedBaseline(metrics);
           auto.fallbackBuffer = null;
           auto.lastReason = `選出完了をラッチ bar=${formatAutoMetric(lockedSignal.barBright)}/${formatAutoMetric(lockedSignal.barBlue)}`;
+          recordMatchLogEvent("locked", "[debug] 選出完了を検出しました。", lockedSignal, now);
           appendTerminalDebug(
             [
               `[debug] 選出完了を検出しました。 ${auto.lastReason}`,
@@ -4420,6 +4466,7 @@
     const formatSignal = (signal) => `ready=${signal.templateReady ? "yes" : "no"} matched=${signal.matched ? "yes" : "no"} coverage=${formatAutoMetric(signal.coverageScore)} spill=${formatAutoMetric(signal.spillScore)} dark=${formatAutoMetric(signal.darkBackground)} offset=${signal.offsetX},${signal.offsetY}`;
     const line = `[debug] auto selection: event=${event} at=${new Date(now).toISOString()} phase=${auto.phase} elapsed=${Math.max(0, now - auto.loadingSeenAt)}ms lastLoadingAgo=${Math.max(0, now - auto.loadingLastSeenAt)}ms gap=${auto.lastDetectionGapMs}ms loading[${formatSignal(loading)}] selection[${formatSignal(selection)}]`;
     auto.selectionDiagnostics.push(line);
+    recordMatchLogEvent(`selection-${event}`, line, {}, now);
     if (auto.selectionDiagnostics.length > AUTO_SNAP_CONFIG.selectionDiagnosticHistoryLimit) {
       auto.selectionDiagnostics.shift();
     }
@@ -4821,6 +4868,8 @@
         `[debug] result accepted: ${result} left=${formatAutoMetric(leftSignal.coverageScore)}/${formatAutoMetric(leftSignal.spillScore)} right=${formatAutoMetric(rightSignal.coverageScore)}/${formatAutoMetric(rightSignal.spillScore)}`,
       ],
     );
+    recordMatchLogEvent("result", `[debug] result accepted: ${result}`, { left: leftSignal, right: rightSignal }, event.detectedAt);
+    finishMatchLog("completed", result, event.detectedAt);
   }
 
   function getBattleResultStatusLabel() {
@@ -5982,6 +6031,7 @@
     recognition.lastSlotSummaries = results.map(formatPokemonIconRecognitionSlotSummary);
     const matchedCount = results.filter((result) => result?.matched).length;
     recognition.lastSummary = `worker done matched=${matchedCount}/${results.length} candidates=${message.stats?.loadedCount || 0} total=${formatPerformanceMs(message.result?.timings?.totalMs || 0)}`;
+    recordMatchLogRecognition(recognition, message.result?.timings?.totalMs || 0);
     results.forEach((result, refIndex) => {
       recordPerformanceDebugMetric(
         "pokemonIconSlot",
@@ -6285,6 +6335,7 @@
       matchedCount = recognition.resultsByRefIndex.filter((result) => result?.matched).length;
       status = "done";
       recognition.lastSummary = `done matched=${matchedCount}/${PICK_OVERLAY_CONFIG.referenceRois.length} candidates=${candidates.length}`;
+      recordMatchLogRecognition(recognition, getPerformanceDebugNow() - perfStartedAt);
       appendPokemonIconDebugLogIfChanged(
         `done:${requestId}:${matchedCount}:${slotSummaries.join("|")}`,
         [
@@ -7331,6 +7382,8 @@
   }
 
   function recordPerformanceDebugMetric(key, durationMs, details = "", options = {}) {
+    // Async name recognition is recorded with its reference's match id separately.
+    if (!key.startsWith("pokemonIcon")) recordMatchLogPerformance(key, durationMs);
     if (!state.debugMode || !state.performanceDebug) {
       return;
     }
@@ -7427,6 +7480,7 @@
     auto.waitingIconSeenAt = now;
     auto.fallbackBuffer = bufferAutoFallbackReferences("waiting_icon_seen");
     auto.lastReason = `待機タイマーを検出 coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
+    recordMatchLogEvent("waiting", "[debug] 待機画面のタイマーを検出しました。", timerIconSignal, now);
     appendTerminalEntry(
       [
         "[auto] 待機中画面を検出しました。自動で撮影します。",
@@ -8305,6 +8359,242 @@
     };
   }
 
+  function createMatchLogState() {
+    return { nextId: 1, current: null, completed: [], references: { my: null, enemy: null } };
+  }
+
+  function createMatchLogWindow(now) {
+    return {
+      startedAt: now, lastAt: now, frames: 0, maxGapMs: 0, phase: "", timings: {},
+      signals: {
+        loadingTemplate: { readyFrames: 0, matches: 0, best: null },
+        selectionTimerIcon: { readyFrames: 0, matches: 0, best: null },
+        waitingTimerIcon: { readyFrames: 0, matches: 0, best: null },
+      },
+    };
+  }
+
+  function copyMatchLogSignal(signal) {
+    if (!signal) return null;
+    return {
+      templateReady: Boolean(signal.templateReady), matched: Boolean(signal.matched),
+      coverage: signal.coverageScore, spill: signal.spillScore, dark: signal.darkBackground,
+      offsetX: signal.offsetX, offsetY: signal.offsetY,
+    };
+  }
+
+  function startMatchLog(now, loadingSignal) {
+    if (state.matchLog.current) finishMatchLog("unfinished", "次の読み込み検出", now);
+    const match = {
+      id: state.matchLog.nextId++, startedAt: now, endedAt: null,
+      status: "recording", result: "", endReason: "", version: APP_VERSION,
+      video: {
+        width: state.streamInfo?.width || elements.video?.videoWidth || 0,
+        height: state.streamInfo?.height || elements.video?.videoHeight || 0,
+      },
+      captureCount: 0, captureFailureCount: 0, frameCount: 0, maxGapMs: 0,
+      metrics: {}, recognition: null, events: [], eventCursor: 0, eventDropped: 0,
+      milestones: new Map(), sequence: 0, samples: [], sampleCursor: 0, sampleDropped: 0,
+      window: createMatchLogWindow(now), snapshot: null,
+    };
+    state.matchLog.current = match;
+    recordMatchLogEvent("loading", "[debug] 読み込み中 を検出しました。 loading を検出", copyMatchLogSignal(loadingSignal), now);
+  }
+
+  function recordMatchLogEvent(kind, text, data = {}, now = Date.now()) {
+    const match = state.matchLog.current;
+    if (!match) return;
+    const entry = { sequence: ++match.sequence, at: now, kind, text: text.slice(0, MATCH_LOG_CONFIG.textLimit), data };
+    // Keep the most recent occurrence of every important event kind even when the ring fills.
+    match.milestones.set(kind, entry);
+    if (match.events.length < MATCH_LOG_CONFIG.eventLimit) {
+      match.events.push(entry);
+    } else {
+      match.events[match.eventCursor] = entry;
+      match.eventCursor = (match.eventCursor + 1) % MATCH_LOG_CONFIG.eventLimit;
+      match.eventDropped += 1;
+    }
+  }
+
+  function flushMatchLogWindow(match) {
+    if (!match.window?.frames) return;
+    if (match.samples.length < MATCH_LOG_CONFIG.sampleLimit) {
+      match.samples.push(match.window);
+    } else {
+      match.samples[match.sampleCursor] = match.window;
+      match.sampleCursor = (match.sampleCursor + 1) % MATCH_LOG_CONFIG.sampleLimit;
+      match.sampleDropped += 1;
+    }
+    match.window = null;
+  }
+
+  function recordMatchLogFrame(metrics, now) {
+    const match = state.matchLog.current;
+    if (!match) return;
+    if (now - match.window.startedAt >= MATCH_LOG_CONFIG.sampleIntervalMs) {
+      flushMatchLogWindow(match);
+      match.window = createMatchLogWindow(now);
+    }
+    const window = match.window;
+    window.frames += 1;
+    window.lastAt = now;
+    window.phase = state.autoSnap.phase;
+    window.maxGapMs = Math.max(window.maxGapMs, state.autoSnap.lastDetectionGapMs);
+    match.frameCount += 1;
+    match.maxGapMs = Math.max(match.maxGapMs, window.maxGapMs);
+    for (const key in window.signals) {
+      const signal = metrics[key];
+      const summary = window.signals[key];
+      if (signal.templateReady) summary.readyFrames += 1;
+      if (signal.matched) summary.matches += 1;
+      if (!summary.best || signal.coverageScore > summary.best.coverage) {
+        summary.best = copyMatchLogSignal(signal);
+      }
+    }
+  }
+
+  function recordMatchLogPerformance(key, durationMs) {
+    const match = state.matchLog.current;
+    if (!match) return;
+    const duration = Math.max(0, Number(durationMs) || 0);
+    updateMatchLogTiming(match.metrics, key, duration);
+    if (match.window) updateMatchLogTiming(match.window.timings, key, duration);
+  }
+
+  function updateMatchLogTiming(timings, key, duration) {
+    const entry = timings[key] || (timings[key] = { count: 0, totalMs: 0, maxMs: 0, lastMs: 0 });
+    entry.count += 1;
+    entry.totalMs += duration;
+    entry.maxMs = Math.max(entry.maxMs, duration);
+    entry.lastMs = duration;
+  }
+
+  function recordMatchLogRecognition(recognition, durationMs) {
+    const match = state.matchLog.current;
+    if (!match || state.matchLog.references.enemy?.matchId !== match.id
+      || recognition.reference !== state.references.enemy) return;
+    match.recognition = {
+      requestId: recognition.requestId, engine: recognition.engine,
+      durationMs, summary: recognition.lastSummary,
+      slots: recognition.lastSlotSummaries.map((line) => line.slice(0, MATCH_LOG_CONFIG.textLimit)),
+    };
+    recordMatchLogEvent("recognition", "[debug] 名前推定の結果", match.recognition);
+  }
+
+  function captureMatchLogSnapshot(match) {
+    const references = {};
+    CROP_SIDES.forEach((side) => {
+      const origin = state.matchLog.references[side];
+      references[side] = {
+        source: !state.references[side] ? "なし"
+          : origin?.matchId === match.id ? "この試合"
+            : origin?.matchId ? `前の試合 #${origin.matchId}` : "記録開始前",
+        matchId: origin?.matchId ?? null, capturedAt: origin?.capturedAt ?? null,
+      };
+    });
+    const recognition = state.pokemonIconRecognition;
+    const ownRecognition = references.enemy.source === "この試合"
+      && recognition.reference === state.references.enemy;
+    return {
+      autoEnabled: state.autoSnap.enabled, phase: state.autoSnap.phase,
+      lastReason: state.autoSnap.lastReason, reset: state.autoSnap.lastResetReason,
+      trigger: state.autoSnap.lastTriggerReason,
+      monitor: state.autoSnap.monitorActive ? state.autoSnap.frameRequestKind : "idle",
+      mode: state.mode, videoReady: state.videoReady, references,
+      iconManifestReady: state.pokemonIconReferenceReady,
+      iconWorker: { status: state.pokemonIconWorkerState.status, prewarm: state.pokemonIconWorkerState.prewarmStatus },
+      recognition: references.enemy.source === "この試合" ? {
+        status: recognition.status, engine: recognition.engine, reason: recognition.reason, requestId: recognition.requestId,
+        result: ownRecognition && match.recognition?.requestId === recognition.requestId ? match.recognition : null,
+      } : { status: "この試合の名前推定なし" },
+      pickOrders: references.enemy.source === "この試合" ? [...state.autoSnap.pickOverlay.ordersByRefIndex] : null,
+      fainted: references.enemy.source === "この試合" ? [...state.autoSnap.pickOverlay.faintedByRefIndex] : null,
+      signals: {
+        loading: copyMatchLogSignal(state.autoSnap.lastMetrics?.loadingTemplate),
+        selection: copyMatchLogSignal(state.autoSnap.lastMetrics?.selectionTimerIcon),
+        waiting: copyMatchLogSignal(state.autoSnap.lastMetrics?.waitingTimerIcon),
+      },
+    };
+  }
+
+  function finishMatchLog(status, reason, now = Date.now()) {
+    const match = state.matchLog.current;
+    if (!match) return;
+    match.status = status;
+    match.endedAt = now;
+    match.endReason = reason;
+    if (status === "completed") match.result = reason;
+    else recordMatchLogEvent("unfinished", "[debug] 勝敗未検出のまま次の記録へ切り替えます。", {}, now);
+    flushMatchLogWindow(match);
+    match.snapshot = captureMatchLogSnapshot(match);
+    state.matchLog.completed.push(match);
+    if (state.matchLog.completed.length > MATCH_LOG_CONFIG.completedLimit) state.matchLog.completed.shift();
+    state.matchLog.current = null;
+  }
+
+  function getMatchLogLabel(match) {
+    return match.status === "recording" ? "記録中" : match.status === "completed" ? `完了 ${match.result}` : "勝敗未検出";
+  }
+
+  function getMatchLogStatusLines() {
+    const logs = [...state.matchLog.completed, ...(state.matchLog.current ? [state.matchLog.current] : [])];
+    return logs.length
+      ? ["[debug] 試合ログ: debug log export [番号] で保存できます。",
+        ...logs.map((match) => `[debug] 試合ログ #${match.id}: ${getMatchLogLabel(match)} / 開始 ${new Date(match.startedAt).toISOString()} / 撮影 ${match.captureCount}回`)]
+      : ["[debug] 試合ログ: まだありません。読み込み検出で記録を開始します。"];
+  }
+
+  function formatMatchLog(match, now = Date.now()) {
+    const snapshot = match.snapshot || captureMatchLogSnapshot(match);
+    const events = [...new Map([...match.events, ...match.milestones.values()]
+      .map((entry) => [entry.sequence, entry])).values()].sort((a, b) => a.sequence - b.sequence);
+    const samples = match.sampleDropped
+      ? [...match.samples.slice(match.sampleCursor), ...match.samples.slice(0, match.sampleCursor)]
+      : [...match.samples];
+    if (match.window?.frames) samples.push(match.window);
+    const lines = [
+      `pokemon-SnapCrop 試合ログ #${match.id}`,
+      `状態: ${getMatchLogLabel(match)}`,
+      `アプリ: ${match.version}`,
+      `開始: ${new Date(match.startedAt).toISOString()}`,
+      `終了: ${match.endedAt === null ? "未確定（記録中）" : new Date(match.endedAt).toISOString()}`,
+      `出力: ${new Date(now).toISOString()}`,
+      `映像: ${match.video.width}x${match.video.height}`,
+      `この試合の撮影: 成功 ${match.captureCount}回 / 処理失敗 ${match.captureFailureCount}回`,
+      `参照画像: 自分=${snapshot.references.my.source} / 相手=${snapshot.references.enemy.source}`,
+      `検出: ${match.frameCount}回 / 最大間隔 ${formatPerformanceMs(match.maxGapMs)}`,
+      `上限による省略: 詳細イベント ${match.eventDropped}件 / 秒単位サマリー ${match.sampleDropped}件（各重要イベント種別の最新記録と全体集計は保持）`,
+      "時刻はUTC。スコアは追加画像処理なしで集計。デバッグ画面の全行コピーではありません。",
+      "", "--- 試合単位の処理時間 ---",
+      ...Object.entries(match.metrics).map(([key, value]) => `${key}: count=${value.count} mean=${formatPerformanceMs(value.totalMs / value.count)} max=${formatPerformanceMs(value.maxMs)} last=${formatPerformanceMs(value.lastMs)}`),
+      "", "--- 重要イベント ---",
+      ...events.map((entry) => `${new Date(entry.at).toISOString()} ${entry.text} ${JSON.stringify(entry.data)}`),
+      "", "--- 約1秒ごとの認識・処理時間（最高coverage時のspill/darkを併記） ---",
+      ...samples.map((sample) => `${new Date(sample.startedAt).toISOString()} ${JSON.stringify(sample)}`),
+      "", "--- 記録終了時／記録中の現在状態 ---", JSON.stringify(snapshot, null, 2),
+      "", "画像・映像は含みません。この記録はページの再読み込み／終了で消去されます。", "",
+    ];
+    return lines.join("\r\n");
+  }
+
+  function exportMatchLog(id = null) {
+    const match = id === null ? state.matchLog.current || state.matchLog.completed.at(-1)
+      : [state.matchLog.current, ...state.matchLog.completed].find((entry) => entry?.id === id);
+    if (!match) {
+      appendTerminalEntry(["[error] 対象の試合ログがありません。debug status で保持中の番号を確認できます。"], "error");
+      return;
+    }
+    try {
+      const text = formatMatchLog(match);
+      const stamp = new Date(match.startedAt).toISOString().replace(/[:.]/gu, "-");
+      const fileName = `snapcrop-match-${match.id}-${stamp}-${match.status}.txt`;
+      downloadBlobFile(new Blob(["\ufeff", text], { type: "text/plain;charset=utf-8" }), fileName);
+      appendTerminalEntry([`[system] 試合ログ #${match.id}（${getMatchLogLabel(match)}）を保存しました。`], "success");
+    } catch (error) {
+      appendTerminalError("[error] 試合ログを保存できませんでした。", error);
+    }
+  }
+
   function createAutoSnapState() {
     return {
       enabled: AUTO_SNAP_CONFIG.enabledByDefault,
@@ -8848,6 +9138,9 @@
   }
 
   function appendTerminalError(lines, error = null) {
+    recordMatchLogEvent("error", Array.isArray(lines) ? lines.join("\n") : String(lines), {
+      detail: error ? String(error.message || error).slice(0, MATCH_LOG_CONFIG.textLimit) : "",
+    });
     const normalized = Array.isArray(lines) ? [...lines] : [String(lines)];
     if (state.debugMode && error?.message) {
       normalized.push(`[debug] 詳細: ${error.message}`);
