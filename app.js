@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.5.8";
+  const APP_VERSION = "pokemon-snapcrop-v1.5.9";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -138,11 +138,15 @@
     stableFrames: {
       loading: 1,
       selection: 1,
+      selectionRecovery: 2,
+      recoveryBattleHud: 2,
       locked: 2,
     },
     timeoutsMs: {
       loadingToSelection: 6000,
+      loadingToSelectionRecovery: 30000,
     },
+    selectionDiagnosticHistoryLimit: 4,
     detectorSampleMaxWidth: 72,
     detectorSampleMinHeight: 28,
     detectorSampleMaxHeight: 160,
@@ -4153,12 +4157,19 @@
     state.autoSnap.frameRequestKind = "";
   }
 
-  function resetAutoSnapCycle(reason = "") {
+  function resetAutoSnapCycle(reason = "", { preserveSelectionDiagnostics = false } = {}) {
     state.autoSnap.phase = "idle";
     state.autoSnap.loadingFrames = 0;
     state.autoSnap.selectionFrames = 0;
     state.autoSnap.lockedFrames = 0;
     state.autoSnap.loadingSeenAt = 0;
+    state.autoSnap.loadingLastSeenAt = 0;
+    state.autoSnap.recoveryBattleHudFrames = 0;
+    state.autoSnap.lastDetectionAt = null;
+    state.autoSnap.lastDetectionGapMs = 0;
+    if (!preserveSelectionDiagnostics) {
+      state.autoSnap.selectionDiagnostics = [];
+    }
     state.autoSnap.selectionSeenAt = 0;
     state.autoSnap.selectionLockedAt = 0;
     state.autoSnap.waitingIconSeenAt = 0;
@@ -4182,6 +4193,10 @@
 
   function runAutoSnapDetection(now = Date.now()) {
     const auto = state.autoSnap;
+    auto.lastDetectionGapMs = auto.lastDetectionAt === null
+      ? 0
+      : Math.max(0, now - auto.lastDetectionAt);
+    auto.lastDetectionAt = now;
     const metricsStartedAt = getPerformanceDebugNow();
     const metrics = captureAutoSnapMetrics();
     recordPerformanceDebugMetric(
@@ -4238,6 +4253,9 @@
       auto.lastSnapMode = "";
       auto.lastTriggerReason = "";
       auto.loadingSeenAt = now;
+      auto.loadingLastSeenAt = now;
+      auto.recoveryBattleHudFrames = 0;
+      auto.selectionDiagnostics = [];
       resetBattleResultDetection("loading 検出");
       auto.lastReason = `loading を検出 coverage=${formatAutoMetric(loadingSignal.coverageScore)} spill=${formatAutoMetric(loadingSignal.spillScore)} dark=${formatAutoMetric(loadingSignal.darkBackground)} offset=${loadingSignal.offsetX},${loadingSignal.offsetY}`;
       appendTerminalDebug(
@@ -4248,27 +4266,65 @@
       return;
     }
 
-    if (auto.phase === "loading_seen") {
-      if (now - auto.loadingSeenAt > AUTO_SNAP_CONFIG.timeoutsMs.loadingToSelection) {
-        resetAutoSnapCycle("loading -> selection timeout");
+    if (auto.phase === "loading_seen" || auto.phase === "selection_recovery") {
+      const loadingSignal = getLoadingTemplateSignal(metrics);
+      const selectionSignal = getSelectionTimerSignal(metrics);
+      if (loadingSignal.matched) {
+        auto.loadingLastSeenAt = now;
+      }
+      const loadingAgeMs = Math.max(0, now - auto.loadingLastSeenAt);
+      // Do not reuse a loading signal from an old match, even after a long callback gap.
+      if (loadingAgeMs > AUTO_SNAP_CONFIG.timeoutsMs.loadingToSelectionRecovery) {
+        recordAutoSelectionDiagnostic("expired", metrics, now);
+        resetAutoSnapCycle("loading -> selection recovery expired", {
+          preserveSelectionDiagnostics: true,
+        });
         return;
       }
 
-      const selectionSignal = getSelectionTimerSignal(metrics);
+      const recovering = auto.phase === "selection_recovery";
       if (!selectionSignal.matched) {
         auto.selectionFrames = 0;
+        if (recovering) {
+          const battleHudSignal = getBattleHudSignal(metrics);
+          auto.recoveryBattleHudFrames = battleHudSignal.matched && !loadingSignal.matched
+            ? auto.recoveryBattleHudFrames + 1
+            : 0;
+          if (auto.recoveryBattleHudFrames >= AUTO_SNAP_CONFIG.stableFrames.recoveryBattleHud) {
+            recordAutoSelectionDiagnostic("battle-hud", metrics, now);
+            resetAutoSnapCycle("selection recovery -> battle HUD", {
+              preserveSelectionDiagnostics: true,
+            });
+            return;
+          }
+          if (loadingSignal.matched) {
+            recordAutoSelectionDiagnostic("loading-resumed", metrics, now);
+            auto.phase = "loading_seen";
+            auto.recoveryBattleHudFrames = 0;
+          }
+        } else if (loadingAgeMs > AUTO_SNAP_CONFIG.timeoutsMs.loadingToSelection) {
+          recordAutoSelectionDiagnostic("timeout", metrics, now);
+          auto.phase = "selection_recovery";
+          auto.recoveryBattleHudFrames = 0;
+        }
         auto.lastReason = selectionSignal.templateReady
-          ? `選出タイマー待ち coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`
+          ? `${auto.phase === "selection_recovery" ? "選出タイマー再確認" : "選出タイマー待ち"} coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`
           : "選出タイマーテンプレートの読み込み待ちです。";
         return;
       }
 
+      // A valid selection frame wins over the normal six-second timeout.
+      auto.recoveryBattleHudFrames = 0;
       auto.selectionFrames += 1;
-      auto.lastReason = `selection ${auto.selectionFrames}/${AUTO_SNAP_CONFIG.stableFrames.selection} coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
-      if (auto.selectionFrames < AUTO_SNAP_CONFIG.stableFrames.selection) {
+      const requiredFrames = recovering
+        ? AUTO_SNAP_CONFIG.stableFrames.selectionRecovery
+        : AUTO_SNAP_CONFIG.stableFrames.selection;
+      auto.lastReason = `selection ${auto.selectionFrames}/${requiredFrames} coverage=${formatAutoMetric(selectionSignal.coverageScore)} spill=${formatAutoMetric(selectionSignal.spillScore)} dark=${formatAutoMetric(selectionSignal.darkBackground)}`;
+      if (auto.selectionFrames < requiredFrames) {
         return;
       }
 
+      recordAutoSelectionDiagnostic(recovering ? "recovered" : "selected", metrics, now);
       auto.phase = "selection_active";
       auto.selectionFrames = 0;
       auto.selectionSeenAt = now;
@@ -4355,6 +4411,19 @@
       triggerAutoFallback("battle_hud");
       return;
     }
+  }
+
+  function recordAutoSelectionDiagnostic(event, metrics, now) {
+    const auto = state.autoSnap;
+    const loading = getLoadingTemplateSignal(metrics);
+    const selection = getSelectionTimerSignal(metrics);
+    const formatSignal = (signal) => `ready=${signal.templateReady ? "yes" : "no"} matched=${signal.matched ? "yes" : "no"} coverage=${formatAutoMetric(signal.coverageScore)} spill=${formatAutoMetric(signal.spillScore)} dark=${formatAutoMetric(signal.darkBackground)} offset=${signal.offsetX},${signal.offsetY}`;
+    const line = `[debug] auto selection: event=${event} at=${new Date(now).toISOString()} phase=${auto.phase} elapsed=${Math.max(0, now - auto.loadingSeenAt)}ms lastLoadingAgo=${Math.max(0, now - auto.loadingLastSeenAt)}ms gap=${auto.lastDetectionGapMs}ms loading[${formatSignal(loading)}] selection[${formatSignal(selection)}]`;
+    auto.selectionDiagnostics.push(line);
+    if (auto.selectionDiagnostics.length > AUTO_SNAP_CONFIG.selectionDiagnosticHistoryLimit) {
+      auto.selectionDiagnostics.shift();
+    }
+    appendTerminalDebug([line]);
   }
 
   function captureAutoSnapMetrics() {
@@ -8031,6 +8100,10 @@
       return "選出画面を監視中";
     }
 
+    if (auto.phase === "selection_recovery") {
+      return "選出画面を再確認中";
+    }
+
     if (auto.phase === "selection_locked") {
       return "選出完了後の待機中";
     }
@@ -8057,6 +8130,7 @@
   function getAutoStatusDebugLines(auto) {
     const lines = [
       `[debug] phase: ${getAutoPhaseLabel(auto.phase)}`,
+      `[debug] phase detail: ${auto.phase}`,
       `[debug] monitor: ${auto.monitorActive ? (auto.frameRequestKind || "active") : "idle"}`,
       `[debug] reset: ${auto.lastResetReason || "none"}`,
     ];
@@ -8098,6 +8172,7 @@
     }
 
     lines.push(`[debug] ${auto.lastTriggerReason ? `last trigger: ${auto.lastTriggerReason}` : `last reason: ${auto.lastReason}`}`);
+    lines.push(...auto.selectionDiagnostics);
     return lines;
   }
 
@@ -8113,6 +8188,10 @@
 
     if (phase === "selection_active") {
       return "selection";
+    }
+
+    if (phase === "selection_recovery") {
+      return "selection_recovery";
     }
 
     if (phase === "selection_locked") {
@@ -8233,11 +8312,16 @@
       frameRequestKind: "",
       monitorActive: false,
       lastFrameAt: 0,
+      lastDetectionAt: null,
+      lastDetectionGapMs: 0,
       phase: "idle",
       loadingFrames: 0,
       selectionFrames: 0,
       lockedFrames: 0,
       loadingSeenAt: 0,
+      loadingLastSeenAt: 0,
+      recoveryBattleHudFrames: 0,
+      selectionDiagnostics: [],
       selectionSeenAt: 0,
       selectionLockedAt: 0,
       waitingIconSeenAt: 0,
