@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.1";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.2";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -4031,14 +4031,20 @@
           : state.pokemonIconWorkerState.visualCollisions,
         runtimeMergedDuplicates: state.pokemonIconWorkerState.runtimeMergedDuplicates,
       };
-      const fileName = `pokemon-icon-diagnostic-${capturedAt.replace(/[:.]/gu, "-")}.json`;
-      downloadJsonFile(bundle, fileName);
+      const baseName = `pokemon-icon-diagnostic-${capturedAt.replace(/[:.]/gu, "-")}`;
+      const pngBytes = Uint8Array.from(
+        atob(bundle.referenceImage.dataUrl.split(",")[1]),
+        (character) => character.charCodeAt(0),
+      );
+      const pngBlob = new Blob([pngBytes], { type: "image/png" });
+      downloadJsonFile(bundle, `${baseName}.json`);
+      downloadBlobFile(pngBlob, `${baseName}.png`);
       appendTerminalEntry(
-        [`[debug] 名前推定の診断bundleを保存しました: ${fileName}`],
+        [`[debug] 名前推定の診断JSON・相手画像PNGのダウンロードを開始しました: ${baseName}.json / ${baseName}.png`],
         "success",
       );
     } catch (error) {
-      appendTerminalError("[error] 名前推定の診断bundleを保存できませんでした。", error);
+      appendTerminalError("[error] 名前推定の診断JSON・相手画像PNGを保存できませんでした。", error);
     }
   }
 
