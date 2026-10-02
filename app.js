@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.4";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.5";
   const diagnosticExportCounts = new WeakMap();
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
@@ -427,6 +427,7 @@
     pokemonSearchIndex: [],
     csvReady: false,
     stream: null,
+    mediaStartInProgress: false,
     streamInfo: null,
     videoReady: false,
     devices: [],
@@ -517,7 +518,7 @@
     syncAudioControls();
     applyResponsiveWorkspacePaneLayout({ refresh: false });
     applyResponsiveTerminalLayout({ refresh: true });
-    refreshDevices();
+    void initializeMediaInput();
     loadAutoTemplates();
     loadBattleResultTemplate();
     loadPickOverlayBadgeImages();
@@ -831,6 +832,23 @@
     });
   }
 
+  async function initializeMediaInput() {
+    const devicesReady = await refreshDevices();
+    if (devicesReady && !state.stream && !state.mediaStartInProgress) {
+      await runControlActionAndRestoreTerminalFocus(startSelectedVideo);
+    }
+  }
+
+  function syncMediaStartControls() {
+    const unsupported = !navigator.mediaDevices?.getUserMedia;
+    elements.refreshDevicesButton.disabled = unsupported || Boolean(state.mediaStartInProgress);
+    elements.startVideoButton.disabled = unsupported || Boolean(state.mediaStartInProgress) || !state.devices.length;
+    elements.deviceSelect.disabled = elements.startVideoButton.disabled;
+    if (elements.audioSelect) {
+      elements.audioSelect.disabled = unsupported || Boolean(state.mediaStartInProgress) || !state.audioDevices.length;
+    }
+  }
+
   async function refreshDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       setCameraState("非対応", "error");
@@ -848,7 +866,7 @@
         "error",
       );
       renderCameraDetails();
-      return;
+      return false;
     }
 
     try {
@@ -863,26 +881,30 @@
         state.selectedDeviceId = "";
         setCameraState("未接続", "error");
         renderCameraDetails();
-        return;
+        return false;
       }
 
       const hasNamedDevice = state.devices.some((device) => device.label);
       if (!hasNamedDevice && !state.videoReady) {
         setCameraState("権限待ち", "working");
         renderCameraDetails();
-        return;
+        return true;
       }
 
       if (!state.videoReady) {
         setCameraState("開始待ち", "idle");
       }
       renderCameraDetails();
+      return true;
     } catch (error) {
       setCameraState("失敗", "error");
       appendTerminalError(
         "[error] 映像入力の一覧取得に失敗しました。ページを再読み込みして、もう一度試してください。",
         error,
       );
+      return false;
+    } finally {
+      syncMediaStartControls();
     }
   }
 
@@ -916,6 +938,7 @@
       selected = state.devices.find((device) => device.deviceId === currentValue) || findObsDevice() || state.devices[0];
     }
 
+    selected ||= findObsDevice() || state.devices[0];
     elements.deviceSelect.value = selected.deviceId;
     state.selectedDeviceId = selected.deviceId;
     elements.deviceSelect.disabled = false;
@@ -1019,6 +1042,20 @@
   }
 
   async function startSelectedVideo() {
+    if (state.mediaStartInProgress || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    state.mediaStartInProgress = true;
+    syncMediaStartControls();
+    try {
+      await performSelectedVideoStart();
+    } finally {
+      state.mediaStartInProgress = false;
+      syncMediaStartControls();
+    }
+  }
+
+  async function performSelectedVideoStart() {
     if (!state.devices.length) {
       setCameraState("未接続", "error");
       appendTerminalError(
@@ -1040,6 +1077,7 @@
       const selectedVideoDevice = getSelectedDevice();
 
       state.stream = videoStream;
+      state.selectedDeviceId = videoStream.getVideoTracks()[0]?.getSettings?.().deviceId || state.selectedDeviceId;
       elements.video.srcObject = videoStream;
       elements.video.muted = true;
       await elements.video.play();
@@ -9242,7 +9280,9 @@
       state.audioReady = true;
       applyAudioOutputState();
       syncAudioControls();
-      await resumeAudioContext();
+      // Autoplay may keep resume() pending until the user interacts with the page.
+      // Keep media controls and terminal focus available while audio is suspended.
+      void resumeAudioContext();
       return true;
     } catch (error) {
       state.audioReady = false;
