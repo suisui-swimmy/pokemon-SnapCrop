@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 
 const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const pngBytes = Buffer.from(
@@ -14,7 +15,7 @@ function harness(debugMode) {
   const downloads = [];
   const output = [];
   const context = vm.createContext({
-    Blob, atob, downloads, output,
+    Blob, atob, crypto: webcrypto, downloads, output,
     document: { addEventListener() {} },
   });
   vm.runInContext(source.replace(/\}\)\(\);\s*$/u, `
@@ -39,7 +40,11 @@ for (const debugMode of [false, true]) {
     assert.equal(json.blob.type, "application/json");
     assert.equal(png.blob.type, "image/png");
     const bundle = JSON.parse(await json.blob.text());
-    assert.equal(json.fileName, `pokemon-icon-diagnostic-${bundle.capturedAt.replace(/[:.]/gu, "-")}.json`);
+    assert.equal(json.fileName, `${bundle.export.filePrefix}__icons-001.json`);
+    assert.match(json.fileName, /^snapcrop-unlinked-/u);
+    assert.equal(bundle.provenance.matchId, null);
+    assert.equal(bundle.provenance.association, "unlinked");
+    assert.equal(bundle.export.exportedAt, bundle.capturedAt);
     assert.equal(bundle.referenceImage.dataUrl, dataUrl);
     assert.equal(bundle.slots.length, 6);
     assert.deepEqual(bundle.labels.pokemonNames, ["", "", "", "", "", ""]);

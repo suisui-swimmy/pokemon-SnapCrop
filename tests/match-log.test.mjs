@@ -2,8 +2,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 
 const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+async function readLastIconExport(h) {
+  const json = h.downloads.at(-2);
+  const png = h.downloads.at(-1);
+  assert.equal(png.fileName, json.fileName.replace(/\.json$/u, ".png"));
+  return { fileName: json.fileName, bundle: JSON.parse(await json.blob.text()) };
+}
 
 function harness() {
   const clock = { now: 1000 };
@@ -14,7 +22,7 @@ function harness() {
   const output = [];
   const downloads = [];
   const context = vm.createContext({
-    Date: ClockDate, Blob, output, downloads,
+    Date: ClockDate, Blob, atob, crypto: webcrypto, output, downloads,
     document: { addEventListener() {} }, window: { cancelAnimationFrame() {} },
   });
   vm.runInContext(source.replace(/\}\)\(\);\s*$/u, `
@@ -25,16 +33,18 @@ function harness() {
     queueAfterNextPaint = () => { if (globalThis.failQueue) throw new Error("test queue failure"); };
     captureReferenceFrameFromVideo = (side) => {
       if (globalThis.failSide === side) throw new Error("test canvas failure");
-      return { side, width: 299, height: 807 };
+      return { side, width: 299, height: 807, toDataURL: () => "data:image/png;base64,AQID" };
     };
     appendTerminalEntry = (lines) => output.push(...lines);
     downloadBlobFile = (blob, fileName) => downloads.push({ blob, fileName });
+    createPokemonIconDiagnosticRoiImages = () => Array.from({length: 6}, () => ({width: 1, height: 1, dataUrl: "roi"}));
     elements.terminalOutput = { innerHTML: "", getClientRects: () => [] };
     globalThis.api = {
       state, MATCH_LOG_CONFIG, runAutoSnapDetection, performSnapCapture,
       publishBattleResult, recordPerformanceDebugMetric, recordMatchLogEvent,
       recordMatchLogRecognition, startMatchLog, finishMatchLog, formatMatchLog,
       captureMatchLogSnapshot, handleTerminalCommand, resetAutoSnapCycle,
+      exportPokemonIconDiagnosticBundle,
     };
   })();`), context);
   const api = context.api;
@@ -60,6 +70,98 @@ function harness() {
   return { ...api, clock, output, downloads, context, step, signal, win, command,
     log: api.state.matchLog };
 }
+
+test("match and image exports share an identity before and after completion, including recaptures", async () => {
+  const h = harness();
+  const match = h.step("loading", 1000);
+  h.step("selection", 1200);
+  h.step("waiting", 1300);
+  const captureId = h.log.references.enemy.captureId;
+  h.command("debug log export");
+  const text = await h.downloads[0].blob.text();
+  const metadata = JSON.parse(text.split("\r\n").find((line) => line.startsWith("識別情報: ")).slice(6));
+  await h.exportPokemonIconDiagnosticBundle();
+  const first = await readLastIconExport(h);
+  assert.equal(first.bundle.provenance.matchId, metadata.matchId);
+  assert.equal(first.bundle.provenance.captureId, captureId);
+  assert.equal(first.bundle.provenance.referenceCapturedAt, 1300);
+  assert.equal(first.fileName.split("__")[0], h.downloads[0].fileName.split("__")[0]);
+  assert.match(text, new RegExp(captureId, "u"));
+  h.clock.now = 1400;
+  h.performSnapCapture("enemy");
+  await h.exportPokemonIconDiagnosticBundle();
+  const second = await readLastIconExport(h);
+  assert.equal(second.bundle.provenance.matchId, metadata.matchId);
+  assert.notEqual(second.bundle.provenance.captureId, captureId);
+  assert.equal(second.bundle.export.sequence, 2);
+  h.win();
+  await h.exportPokemonIconDiagnosticBundle();
+  const third = await readLastIconExport(h);
+  assert.equal(third.bundle.provenance.matchId, match.diagnostic.matchId);
+  assert.equal(third.bundle.provenance.captureId, second.bundle.provenance.captureId);
+  assert.equal(third.bundle.export.sequence, 3);
+  h.command("debug log export 1");
+  assert.match(h.downloads.at(-1).fileName, /__match-002\.txt$/u);
+  assert.match(await h.downloads.at(-1).blob.text(), /"exportSequence":2/u);
+});
+
+test("old images keep their match identity after new matches and history eviction", async () => {
+  const h = harness();
+  const first = h.step("loading", 1000);
+  h.step("selection", 1200);
+  h.step("waiting", 1300);
+  h.win();
+  for (let i = 0; i < 4; i += 1) {
+    h.startMatchLog(2000 + i * 1000, h.signal(true));
+    h.finishMatchLog("unfinished", "test", 2500 + i * 1000);
+  }
+  h.startMatchLog(7000, h.signal(true));
+  assert.equal(h.log.completed.some((entry) => entry.id === first.id), false);
+  await h.exportPokemonIconDiagnosticBundle();
+  const exported = await readLastIconExport(h);
+  assert.equal(exported.bundle.provenance.matchId, first.diagnostic.matchId);
+  assert.notEqual(exported.bundle.provenance.matchId, h.log.current.diagnostic.matchId);
+  assert.ok(exported.fileName.includes(first.diagnostic.matchId));
+});
+
+test("manual images before logging remain unlinked when a match starts", async () => {
+  const h = harness();
+  h.performSnapCapture("enemy");
+  await h.exportPokemonIconDiagnosticBundle();
+  const first = await readLastIconExport(h);
+  h.step("loading", 2000);
+  await h.exportPokemonIconDiagnosticBundle();
+  const second = await readLastIconExport(h);
+  assert.equal(second.bundle.provenance.association, "unlinked");
+  assert.equal(second.bundle.provenance.matchId, null);
+  assert.equal(second.bundle.provenance.captureId, first.bundle.provenance.captureId);
+  assert.equal(second.bundle.export.filePrefix, first.bundle.export.filePrefix);
+  assert.match(second.fileName, /^snapcrop-unlinked-.*__icons-002\.json$/u);
+});
+
+test("separate page sessions never reuse the ID even with identical time and match number", () => {
+  const a = harness().step("loading", 1000);
+  const b = harness().step("loading", 1000);
+  assert.equal(a.id, b.id);
+  assert.equal(a.startedAt, b.startedAt);
+  assert.notEqual(a.diagnostic.matchId, b.diagnostic.matchId);
+});
+
+test("partial capture failure preserves the old enemy image identity", async () => {
+  const h = harness();
+  const first = h.step("loading", 1000);
+  h.step("selection", 1200);
+  h.step("waiting", 1300);
+  const oldCaptureId = h.log.references.enemy.captureId;
+  h.win();
+  h.startMatchLog(2000, h.signal(true));
+  h.context.failSide = "enemy";
+  assert.throws(() => h.performSnapCapture("both"), /test canvas failure/u);
+  await h.exportPokemonIconDiagnosticBundle();
+  const exported = await readLastIconExport(h);
+  assert.equal(exported.bundle.provenance.matchId, first.diagnostic.matchId);
+  assert.equal(exported.bundle.provenance.captureId, oldCaptureId);
+});
 
 test("logging starts at loading detection with debug off and does not print debug rows", () => {
   const h = harness();
@@ -146,7 +248,8 @@ test("export downloads UTF-8 text while debug is off and keeps recording without
   assert.equal(h.log.current, match);
   assert.equal(JSON.stringify(match), before);
   assert.equal(h.downloads.length, 1);
-  assert.match(h.downloads[0].fileName, /^snapcrop-match-1-.*-recording\.txt$/u);
+  assert.ok(h.downloads[0].fileName.includes(match.diagnostic.matchId));
+  assert.match(h.downloads[0].fileName, /__match-001\.txt$/u);
   assert.equal(h.downloads[0].blob.type, "text/plain;charset=utf-8");
   assert.deepEqual([...new Uint8Array(await h.downloads[0].blob.arrayBuffer()).slice(0, 3)], [239, 187, 191]);
   assert.match(await h.downloads[0].blob.text(), /未確定（記録中）/u);
@@ -154,7 +257,7 @@ test("export downloads UTF-8 text while debug is off and keeps recording without
   h.step("waiting", 1300);
   h.win();
   h.command("debug log export");
-  assert.match(h.downloads.at(-1).fileName, /completed\.txt$/u);
+  assert.match(h.downloads.at(-1).fileName, /__match-002\.txt$/u);
   assert.match(await h.downloads.at(-1).blob.text(), /状態: 完了 WIN/u);
 });
 

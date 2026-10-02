@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 
 const appSource = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
@@ -9,6 +10,7 @@ function createHarness({ debug = true } = {}) {
   const logs = [];
   const captures = [];
   const context = vm.createContext({
+    crypto: webcrypto,
     document: { addEventListener() {} },
     window: { cancelAnimationFrame() {} },
     logs,

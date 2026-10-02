@@ -3,7 +3,8 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.2";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.3";
+  const diagnosticExportCounts = new WeakMap();
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -3437,7 +3438,10 @@
         state.references[side] = frame;
         state.matchLog.references[side] = {
           matchId: state.matchLog.current?.id ?? null,
+          diagnostic: state.matchLog.current?.diagnostic || createDiagnosticIdentity(),
+          captureId: crypto.randomUUID(),
           capturedAt: Date.now(),
+          reference: frame,
         };
         if (side === "enemy" && state.matchLog.current) state.matchLog.current.recognition = null;
       });
@@ -3451,7 +3455,10 @@
         scheduleEnemyReferencePokemonRecognition({ deferUntilAfterPaint: true });
       }
       if (state.matchLog.current) state.matchLog.current.captureCount += 1;
-      recordMatchLogEvent("snap", "[snap] 参照画像を更新しました。", { target, source: sourceLabel });
+      recordMatchLogEvent("snap", "[snap] 参照画像を更新しました。", {
+        target, source: sourceLabel,
+        references: Object.fromEntries(sides.map((side) => [side, getReferenceDiagnosticMetadata(state.matchLog.references[side])])),
+      });
 
       if (target === "my") {
         return "自分側の参照画像を更新しました。";
@@ -3964,6 +3971,14 @@
 
     try {
       const capturedAt = new Date().toISOString();
+      // Use the image's origin, never the match active at export time.
+      let origin = state.matchLog.references.enemy;
+      if (origin?.reference !== reference) {
+        origin = { matchId: null, diagnostic: createDiagnosticIdentity(), captureId: crypto.randomUUID(), capturedAt: null, reference };
+        state.matchLog.references.enemy = origin;
+      }
+      const sequence = nextDiagnosticExportSequence(origin.diagnostic, "icons");
+      const filePrefix = getDiagnosticFilePrefix(origin.diagnostic);
       const recognition = state.pokemonIconRecognition;
       const roiImages = createPokemonIconDiagnosticRoiImages(reference);
       const results = recognition.resultsByRefIndex || [];
@@ -3971,6 +3986,8 @@
         schemaVersion: 1,
         kind: "pokemon-snapcrop-icon-diagnostic",
         capturedAt,
+        provenance: getReferenceDiagnosticMetadata(origin),
+        export: { sequence, exportedAt: capturedAt, filePrefix },
         appVersion: APP_VERSION,
         matcherPath: POKEMON_ICON_MATCHER_PATH,
         workerPath: POKEMON_ICON_WORKER_PATH,
@@ -4031,7 +4048,7 @@
           : state.pokemonIconWorkerState.visualCollisions,
         runtimeMergedDuplicates: state.pokemonIconWorkerState.runtimeMergedDuplicates,
       };
-      const baseName = `pokemon-icon-diagnostic-${capturedAt.replace(/[:.]/gu, "-")}`;
+      const baseName = `${filePrefix}__icons-${String(sequence).padStart(3, "0")}`;
       const pngBytes = Uint8Array.from(
         atob(bundle.referenceImage.dataUrl.split(",")[1]),
         (character) => character.charCodeAt(0),
@@ -8358,6 +8375,39 @@
     };
   }
 
+  function createDiagnosticIdentity(matchNumber = null, matchStartedAt = null) {
+    const id = crypto.randomUUID();
+    return { matchId: matchNumber === null ? null : id, matchNumber, matchStartedAt,
+      unlinkedId: matchNumber === null ? id : null };
+  }
+
+  function getDiagnosticFilePrefix(identity) {
+    if (!identity.matchId) return `snapcrop-unlinked-${identity.unlinkedId}`;
+    const stamp = new Date(identity.matchStartedAt).toISOString().replace(/[-:.]/gu, "");
+    return `snapcrop-${stamp}-${identity.matchId}`;
+  }
+
+  function nextDiagnosticExportSequence(identity, kind) {
+    let counts = diagnosticExportCounts.get(identity);
+    if (!counts) {
+      counts = { match: 0, icons: 0 };
+      diagnosticExportCounts.set(identity, counts);
+    }
+    return ++counts[kind];
+  }
+
+  function getReferenceDiagnosticMetadata(origin) {
+    return {
+      association: origin?.diagnostic?.matchId ? "linked" : "unlinked",
+      matchId: origin?.diagnostic?.matchId ?? null,
+      matchNumber: origin?.diagnostic?.matchNumber ?? null,
+      matchStartedAt: origin?.diagnostic?.matchStartedAt ?? null,
+      unlinkedId: origin?.diagnostic?.unlinkedId ?? null,
+      captureId: origin?.captureId ?? null,
+      referenceCapturedAt: origin?.capturedAt ?? null,
+    };
+  }
+
   function createMatchLogState() {
     return { nextId: 1, current: null, completed: [], references: { my: null, enemy: null } };
   }
@@ -8396,6 +8446,7 @@
       milestones: new Map(), sequence: 0, samples: [], sampleCursor: 0, sampleDropped: 0,
       window: createMatchLogWindow(now), snapshot: null,
     };
+    match.diagnostic = createDiagnosticIdentity(match.id, now);
     state.matchLog.current = match;
     recordMatchLogEvent("loading", "[debug] 読み込み中 を検出しました。 loading を検出", copyMatchLogSignal(loadingSignal), now);
   }
@@ -8489,6 +8540,7 @@
           : origin?.matchId === match.id ? "この試合"
             : origin?.matchId ? `前の試合 #${origin.matchId}` : "記録開始前",
         matchId: origin?.matchId ?? null, capturedAt: origin?.capturedAt ?? null,
+        provenance: getReferenceDiagnosticMetadata(origin),
       };
     });
     const recognition = state.pokemonIconRecognition;
@@ -8543,7 +8595,7 @@
       : ["[debug] 試合ログ: まだありません。読み込み検出で記録を開始します。"];
   }
 
-  function formatMatchLog(match, now = Date.now()) {
+  function formatMatchLog(match, now = Date.now(), exportSequence = null) {
     const snapshot = match.snapshot || captureMatchLogSnapshot(match);
     const events = [...new Map([...match.events, ...match.milestones.values()]
       .map((entry) => [entry.sequence, entry])).values()].sort((a, b) => a.sequence - b.sequence);
@@ -8553,6 +8605,7 @@
     if (match.window?.frames) samples.push(match.window);
     const lines = [
       `pokemon-SnapCrop 試合ログ #${match.id}`,
+      `識別情報: ${JSON.stringify({ ...match.diagnostic, exportSequence, exportedAt: new Date(now).toISOString(), filePrefix: getDiagnosticFilePrefix(match.diagnostic) })}`,
       `状態: ${getMatchLogLabel(match)}`,
       `アプリ: ${match.version}`,
       `開始: ${new Date(match.startedAt).toISOString()}`,
@@ -8584,9 +8637,9 @@
       return;
     }
     try {
-      const text = formatMatchLog(match);
-      const stamp = new Date(match.startedAt).toISOString().replace(/[:.]/gu, "-");
-      const fileName = `snapcrop-match-${match.id}-${stamp}-${match.status}.txt`;
+      const sequence = nextDiagnosticExportSequence(match.diagnostic, "match");
+      const text = formatMatchLog(match, Date.now(), sequence);
+      const fileName = `${getDiagnosticFilePrefix(match.diagnostic)}__match-${String(sequence).padStart(3, "0")}.txt`;
       downloadBlobFile(new Blob(["\ufeff", text], { type: "text/plain;charset=utf-8" }), fileName);
       appendTerminalEntry([`[system] 試合ログ #${match.id}（${getMatchLogLabel(match)}）を保存しました。`], "success");
     } catch (error) {
