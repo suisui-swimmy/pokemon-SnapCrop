@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.3";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.4";
   const diagnosticExportCounts = new WeakMap();
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
@@ -366,6 +366,21 @@
     sampleLimit: 1800,
     sampleIntervalMs: 1000,
     textLimit: 2000,
+  };
+  const PICK_DIAGNOSTIC_CONFIG = { comparisonLimit: 7200, eventLimit: 256 };
+  const PICK_DIAGNOSTIC_REASONS = {
+    no_reference: "相手参照画像なし", phase_wait: "撮影後の監視段階待ち",
+    interval_wait: "通常の比較間隔待ち", screen_blocked: "画面判定で比較を保留",
+    video_missing: "入力サイズなし", hud_read_failed: "HUD画像の読み取り失敗",
+    hud_quality_rejected: "HUDの明るさ・明暗差が不足", reference_read_failed: "参照画像の読み取り失敗",
+    compared: "比較実行", no_candidate: "比較候補なし", threshold_rejected: "スコア・点差の採用条件不足",
+    contested: "同じ参照枠への候補競合", already_assigned: "採番済み", pending: "連続一致待ち",
+    accepted: "自動採番確定", order_limit: "採番上限", candidate_changed: "連続一致の候補変更",
+    pending_cleared: "連続一致の解除", grace_kept: "画面判定待ちで連続一致を一時保持",
+    grace_expired: "連続一致の保持期限切れ", reset: "採番状態の初期化",
+    manual_set: "手動採番・移動", manual_clear: "手動解除",
+    recognition_wait: "名前推定待ち", name_unresolved: "名前未確定", data_wait: "ポケモン情報データ待ち",
+    data_missing: "該当ポケモン情報なし", emitted: "ポケモン情報表示完了",
   };
   const FAINT_DETECTION_CONFIG = {
     compareIntervalMs: 250,
@@ -3486,13 +3501,14 @@
 
   function clearReferenceImages(options = {}) {
     const { source = "system", reason = "" } = options;
+    const diagnosticContext = state.matchLog.current ? getPickDiagnosticContext(state.matchLog.current) : null;
     const hadReferences = CROP_SIDES.some((side) => Boolean(state.references[side]));
     CROP_SIDES.forEach((side) => {
       state.references[side] = null;
       state.matchLog.references[side] = null;
     });
     recordMatchLogEvent("clear", "[snap] 参照画像をクリアしました。", { source, reason });
-    resetPickOverlayState("参照画像クリア", { redraw: false });
+    resetPickOverlayState("参照画像クリア", { redraw: false, diagnosticContext });
     resetPokemonIconRecognitionState("参照画像クリア");
     resetBattleResultDetection("参照画像クリア");
     refreshCropPanels();
@@ -3769,6 +3785,7 @@
   function setPickOverlayOrderSlot(order, refIndex) {
     const pickOverlay = state.autoSnap.pickOverlay;
     const orders = pickOverlay.ordersByRefIndex;
+    const diagnosticBefore = { orders: [...orders], pending: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) };
     const sourceRefIndex = findPickOverlayRefIndexByOrder(order);
     const destinationOrder = orders[refIndex] || 0;
 
@@ -3818,12 +3835,14 @@
       lines.push(`[system] pick: 既存の ${getPickOverlayOrderLabel(destinationOrder)} は ${getPickSlotLabel(displacedRefIndex)} に移動しました。`);
     }
 
+    recordPickDiagnosticEvent("manual_set", { order, refIndex, before: diagnosticBefore, ordersAfter: [...orders] });
     return { lines };
   }
 
   function clearPickOverlaySlot(refIndex) {
     const pickOverlay = state.autoSnap.pickOverlay;
     const orders = pickOverlay.ordersByRefIndex;
+    const diagnosticBefore = { orders: [...orders], pending: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) };
     const removedOrder = orders[refIndex] || 0;
     const hadFainted = Boolean(pickOverlay.faintedByRefIndex?.[refIndex]);
     const hadPendingMatch = pickOverlay.pendingMatchesByHudIndex?.some((pending) => pending?.refIndex === refIndex);
@@ -3861,6 +3880,7 @@
     if (hadFainted) {
       lines.push(`[system] pick: ${getPickSlotLabel(refIndex)} の瀕死表示も解除しました。`);
     }
+    recordPickDiagnosticEvent("manual_clear", { refIndex, before: diagnosticBefore, ordersAfter: [...orders] });
     return { lines };
   }
 
@@ -4900,12 +4920,30 @@
   }
 
   function updatePickOverlayDetection(metrics, now = Date.now()) {
+    const observation = beginPickDiagnosticObservation(now);
+    try {
+      runPickOverlayDetection(metrics, now, observation);
+    } finally {
+      finishPickDiagnosticObservation(observation);
+    }
+  }
+
+  function runPickOverlayDetection(metrics, now, observation) {
     const auto = state.autoSnap;
     const pickOverlay = state.autoSnap.pickOverlay;
     pickOverlay.lastGateActive = false;
     const battleHudSignal = getPickOverlayBattleHudSignal(metrics);
+    if (observation) observation.screen = { ...battleHudSignal,
+      selectionRed: metrics.selectionRight?.red ?? null, selectionChroma: metrics.selectionRight?.chroma ?? null,
+      selectionTimerMatched: metrics.selectionTimerIcon?.matched ?? null,
+      waitingTimerMatched: metrics.waitingTimerIcon?.matched ?? null,
+      selectionTemplateReady: metrics.selectionTimerIcon?.templateReady ?? null,
+      waitingTemplateReady: metrics.waitingTimerIcon?.templateReady ?? null,
+      selectionTimer: metrics.selectionTimerIcon ? copyMatchLogSignal(metrics.selectionTimerIcon) : null,
+      waitingTimer: metrics.waitingTimerIcon ? copyMatchLogSignal(metrics.waitingTimerIcon) : null };
 
     if (!state.references.enemy) {
+      if (observation) observation.reason = "no_reference";
       clearPickOverlayPendingMatches();
       pickOverlay.lastGateActive = false;
       pickOverlay.lastGateReason = "敵参照画像待ち";
@@ -4919,6 +4957,7 @@
     }
 
     if (auto.phase !== "snapped") {
+      if (observation) observation.reason = "phase_wait";
       clearPickOverlayPendingMatches();
       pickOverlay.lastGateActive = false;
       const phaseLabel = getAutoPhaseLabel(auto.phase);
@@ -4937,8 +4976,10 @@
     const pickGateMode = battleHudSignal.matched
       ? "battle"
       : (battleHudSignal.hudOnlyAllowed ? "hud-only" : "");
+    if (observation) observation.mode = pickGateMode || null;
 
     if (now - pickOverlay.lastCompareAt < PICK_OVERLAY_CONFIG.compareIntervalMs) {
+      if (observation) observation.reason = "interval_wait";
       if (pickGateMode === "battle") {
         updateFaintDetection([], [], now);
       } else {
@@ -4950,6 +4991,7 @@
     }
 
     if (!pickGateMode) {
+      if (observation) observation.reason = "screen_blocked";
       updateFaintDetection([], [], now);
       const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = battleHudSignal.enemyListStillVisible
@@ -4971,6 +5013,7 @@
 
     const dimensions = getStreamDimensions();
     if (!dimensions.width || !dimensions.height) {
+      if (observation) observation.reason = "video_missing";
       clearPickOverlayPendingMatches();
       pickOverlay.lastGateActive = false;
       pickOverlay.lastHudSummaries = PICK_OVERLAY_CONFIG.hudRois.map(() => "video missing");
@@ -4991,7 +5034,9 @@
       getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
       dimensions,
     ));
+    if (observation) observation.readCounts = hudSampleSets.map((candidates) => candidates.length);
     if (hudSampleSets.some((candidates) => !candidates.length)) {
+      if (observation) observation.reason = "hud_read_failed";
       if (pickGateMode === "battle") {
         updateFaintDetection([], [], now);
       } else {
@@ -5009,10 +5054,12 @@
     }
 
     const hudGateStates = hudSampleSets.map((candidates) => evaluatePickOverlayHudCandidateGate(candidates));
+    if (observation) observation.gates = hudGateStates;
     const readyHudIndexes = hudGateStates
       .map((gateState, hudIndex) => (gateState.ready ? hudIndex : -1))
       .filter((hudIndex) => hudIndex >= 0);
     if (!readyHudIndexes.length) {
+      if (observation) observation.reason = "hud_quality_rejected";
       if (pickGateMode === "battle") {
         updateFaintDetection([], hudGateStates, now);
       } else {
@@ -5043,6 +5090,7 @@
 
     pickOverlay.lastCompareAt = now;
     if (referenceSamples.some((sample) => !sample)) {
+      if (observation) observation.reason = "reference_read_failed";
       if (pickGateMode === "battle") {
         updateFaintDetection([], hudGateStates, now);
       } else {
@@ -5069,6 +5117,12 @@
       pickGateMode,
     );
     const acceptedAssignments = updatePickOverlayAssignments(tentativeMatches);
+    if (observation) {
+      observation.reason = "compared";
+      observation.best = bestByHudIndex;
+      observation.tentative = tentativeMatches;
+      observation.accepted = acceptedAssignments;
+    }
     updatePickOverlayDebugState(bestByHudIndex, tentativeMatches, acceptedAssignments, hudGateStates, pickGateMode);
     if (pickGateMode === "battle") {
       updateFaintDetection(bestByHudIndex, hudGateStates, now);
@@ -5128,6 +5182,9 @@
         const margin = bestScore - secondBestScore;
         const nextCandidate = {
           refIndex: scores[0]?.refIndex ?? -1,
+          scores,
+          secondRefIndex: scores[1]?.refIndex ?? -1,
+          candidateGate: candidate.gateState,
           bestScore,
           secondBestScore,
           margin,
@@ -5361,6 +5418,7 @@
       key: reasons.length ? reasons.join("+") : "ready",
       summary: reasons.length ? `gate ${reasons.join("/")} ${detail}` : `gate ready ${detail}`,
       reasonCount: reasons.length,
+      mean: sample.mean,
       contrast: sample.contrast,
       brightRatio: sample.brightRatio,
     };
@@ -6578,6 +6636,11 @@
 
   function flushPickOverlayPokemonResults() {
     const recognition = state.pokemonIconRecognition;
+    state.autoSnap.pickOverlay.ordersByRefIndex.forEach((order, refIndex) => {
+      if (!order || recognition?.notifiedByRefIndex[refIndex]) return;
+      if (!state.csvReady) recordPickDisplayDiagnostic(refIndex, "data_wait", recognition);
+      else if (!recognition?.resultsByRefIndex?.[refIndex]) recordPickDisplayDiagnostic(refIndex, "recognition_wait", recognition);
+    });
     if (!state.csvReady || !recognition?.resultsByRefIndex?.length) {
       if (!state.csvReady) {
         appendPokemonIconDebugLogIfChanged(
@@ -6595,6 +6658,7 @@
 
       const result = recognition.resultsByRefIndex[refIndex];
       if (!result?.matched || !result.pokemonName) {
+        recordPickDisplayDiagnostic(refIndex, result ? "name_unresolved" : "recognition_wait", recognition);
         appendPokemonIconDebugLogIfChanged(
           `pick-emit-unresolved:${refIndex}:${order}:${result?.bestId || "none"}:${formatPokemonIconScore(result?.bestScore)}`,
           [`[debug] icon result: ${getPickOverlayOrderLabel(order)} ${getPickSlotLabel(refIndex)} unresolved ${formatPokemonIconRecognitionSlotSummary(result)}`],
@@ -6604,6 +6668,7 @@
 
       const pokemon = state.pokemonMap.get(result.pokemonName);
       if (!pokemon) {
+        recordPickDisplayDiagnostic(refIndex, "data_missing", recognition);
         appendPokemonIconDebugLogIfChanged(
           `pick-emit-missing-reference:${refIndex}:${result.pokemonName}`,
           [`[debug] pick pokemon reference missing: ${result.pokemonName}`],
@@ -6614,6 +6679,7 @@
       recognition.notifiedByRefIndex[refIndex] = true;
       appendTerminalEntry([`[pick] ${getPickOverlayOrderLabel(order)}: ${pokemon.name}`], "system");
       appendPokemonResultEntry(pokemon);
+      recordPickDisplayDiagnostic(refIndex, "emitted", recognition);
       appendPokemonIconDebugLogIfChanged(
         `pick-emit:${refIndex}:${order}:${pokemon.name}`,
         [`[debug] icon result: emitted ${getPickOverlayOrderLabel(order)} ${getPickSlotLabel(refIndex)} ${pokemon.name}`],
@@ -6700,6 +6766,10 @@
             order: assignedOrder,
             tier: assignment.tier,
           });
+          recordPickDiagnosticEvent("accepted", { hudIndex: assignment.hudIndex, refIndex: assignment.refIndex,
+            order: assignedOrder, tier: assignment.tier,
+            streak: pickOverlay.pendingMatchesByHudIndex[assignment.hudIndex]?.streak ?? null,
+            requiredStreak: getPickOverlayRequiredStreak(assignment.tier) });
           didAssignOrder = true;
           flushPickOverlayPokemonResults();
         }
@@ -8375,6 +8445,222 @@
     };
   }
 
+  function createPickDiagnosticState() {
+    return {
+      version: 1,
+      config: JSON.parse(JSON.stringify({
+        ...PICK_DIAGNOSTIC_CONFIG, compareIntervalMs: PICK_OVERLAY_CONFIG.compareIntervalMs,
+        thresholds: PICK_OVERLAY_CONFIG.thresholds, hudRois: PICK_OVERLAY_CONFIG.hudRois,
+        referenceRois: PICK_OVERLAY_CONFIG.referenceRois, hudSearchOffsets: PICK_OVERLAY_CONFIG.hudSearchOffsets,
+        sampleWidth: PICK_OVERLAY_CONFIG.sampleWidth, sampleHeight: PICK_OVERLAY_CONFIG.sampleHeight,
+        requiredStrongStreak: PICK_OVERLAY_CONFIG.requiredStrongStreak,
+        requiredWeakStreak: PICK_OVERLAY_CONFIG.requiredWeakStreak,
+        requiredHudOnlyStreak: PICK_OVERLAY_CONFIG.requiredHudOnlyStreak,
+        gateGraceMs: PICK_OVERLAY_CONFIG.gateGraceMs, maxOrders: PICK_OVERLAY_CONFIG.maxOrders,
+        screen: { ...AUTO_SNAP_CONFIG.thresholds.battleHud, selectionRedMin: 0.16, selectionChromaMin: 0.28,
+          selectionTimer: AUTO_SNAP_CONFIG.thresholds.selectionTimerIcon, waitingTimer: AUTO_SNAP_CONFIG.thresholds.waitingTimerIcon },
+      })),
+      comparisons: [], comparisonCursor: 0, comparisonDropped: 0, comparisonCount: 0,
+      events: [], eventCursor: 0, eventDropped: 0, eventCount: 0,
+      reasons: Object.fromEntries(Object.keys(PICK_DIAGNOSTIC_REASONS).map((key) => [key, {
+        count: 0, byAssociation: { current: 0, previous: 0, unlinked: 0, none: 0 }, first: null, last: null }])),
+      hud: [0, 1].map(() => ({ current: { comparisons: 0, accepted: 0 }, other: { comparisons: 0, accepted: 0 } })),
+      lastGateKey: "", lastGraceKey: "", displayCaptureId: null, displayStates: Array(6).fill(null),
+    };
+  }
+
+  function getPickDiagnosticContext(match, at = Date.now()) {
+    const origin = state.matchLog.references.enemy;
+    const hasReference = Boolean(state.references.enemy);
+    const knownOrigin = hasReference && origin?.reference === state.references.enemy ? origin : null;
+    const provenance = getReferenceDiagnosticMetadata(knownOrigin);
+    return {
+      at, matchId: match.diagnostic.matchId, imageMatchId: provenance.matchId,
+      captureId: provenance.captureId, referenceCapturedAt: provenance.referenceCapturedAt,
+      association: !hasReference ? "none" : provenance.matchId === match.diagnostic.matchId ? "current"
+        : provenance.matchId ? "previous" : "unlinked",
+    };
+  }
+
+  function copyPickDiagnosticPending(pending) {
+    return pending ? { refIndex: pending.refIndex, tier: pending.tier, streak: pending.streak,
+      required: getPickOverlayRequiredStreak(pending.tier), firstSeenAt: pending.firstSeenAt,
+      firstSeenSequence: pending.firstSeenSequence } : null;
+  }
+
+  function beginPickDiagnosticObservation(now) {
+    const match = state.matchLog.current;
+    if (!match?.pickDiagnostic) return null;
+    const pick = state.autoSnap.pickOverlay;
+    return {
+      match, context: getPickDiagnosticContext(match, now), reason: null, mode: null, screen: null, gates: [],
+      phase: state.autoSnap.phase, lastCompareAt: pick.lastCompareAt,
+      pendingBefore: pick.pendingMatchesByHudIndex.map(copyPickDiagnosticPending),
+      ordersBefore: [...pick.ordersByRefIndex], nextOrderBefore: pick.nextOrder,
+    };
+  }
+
+  function appendPickDiagnosticRing(diagnostic, kind, entry, limit) {
+    const entries = diagnostic[kind];
+    const stem = kind === "comparisons" ? "comparison" : "event";
+    if (entries.length < limit) entries.push(entry);
+    else {
+      entries[diagnostic[`${stem}Cursor`]] = entry;
+      diagnostic[`${stem}Cursor`] = (diagnostic[`${stem}Cursor`] + 1) % limit;
+      diagnostic[`${stem}Dropped`] += 1;
+    }
+  }
+
+  function countPickDiagnosticReason(diagnostic, reason, example) {
+    const summary = diagnostic.reasons[reason];
+    if (!summary) return;
+    summary.count += 1;
+    summary.byAssociation[example.association] += 1;
+    if (!summary.first) summary.first = example;
+    summary.last = example;
+  }
+
+  function recordPickDiagnosticEvent(reason, data = {}, context = null) {
+    const match = state.matchLog.current;
+    if (!match?.pickDiagnostic || !PICK_DIAGNOSTIC_REASONS[reason]) return;
+    const origin = context || getPickDiagnosticContext(match);
+    if (origin.matchId !== match.diagnostic.matchId) return;
+    const diagnostic = match.pickDiagnostic;
+    const entry = { ...origin, at: Date.now(), observedAt: origin.at, sequence: ++diagnostic.eventCount, reason, ...data };
+    appendPickDiagnosticRing(diagnostic, "events", entry, PICK_DIAGNOSTIC_CONFIG.eventLimit);
+    countPickDiagnosticReason(diagnostic, reason, entry);
+  }
+
+  function recordPickDisplayDiagnostic(refIndex, reason, recognition) {
+    const match = state.matchLog.current;
+    if (!match?.pickDiagnostic || recognition !== state.pokemonIconRecognition
+      || recognition.reference !== state.references.enemy) return;
+    const context = getPickDiagnosticContext(match);
+    // Late results and previous-match images must not become this match's display results.
+    if (context.association !== "current") return;
+    const diagnostic = match.pickDiagnostic;
+    if (diagnostic.displayCaptureId !== context.captureId) {
+      diagnostic.displayCaptureId = context.captureId;
+      diagnostic.displayStates.fill(null);
+    }
+    const order = state.autoSnap.pickOverlay.ordersByRefIndex[refIndex];
+    const key = `${order}:${reason}`;
+    if (diagnostic.displayStates[refIndex] === key) return;
+    diagnostic.displayStates[refIndex] = key;
+    recordPickDiagnosticEvent(reason, { refIndex, order, requestId: recognition.requestId }, context);
+  }
+
+  function getPickDiagnosticThresholdChecks(best, mode) {
+    const t = PICK_OVERLAY_CONFIG.thresholds;
+    const routes = mode === "hud-only" ? [["hud-only", t.hudOnlyScoreMin, t.hudOnlyMarginMin]]
+      : [["strong", t.scoreMin, t.marginMin], ["strong-margin", t.scoreMinStrongMargin, t.marginStrongMin],
+        ["weak", t.scoreWeakMin, t.marginWeakMin]];
+    return routes.map(([route, scoreMin, marginMin]) => ({ route,
+      scorePass: best.bestScore >= scoreMin, marginPass: best.margin >= marginMin }));
+  }
+
+  function finishPickDiagnosticObservation(observation) {
+    if (!observation || state.matchLog.current !== observation.match || !observation.reason) return;
+    const { match, context, reason } = observation;
+    const diagnostic = match.pickDiagnostic;
+    const pick = state.autoSnap.pickOverlay;
+    const gates = observation.gates.map((gate) => ({ ready: gate.ready, reason: gate.key,
+      mean: gate.mean ?? null, contrast: gate.contrast ?? null, brightRatio: gate.brightRatio ?? null,
+      offsetX: gate.offsetX ?? null, offsetY: gate.offsetY ?? null }));
+    const pendingAfter = pick.pendingMatchesByHudIndex.map(copyPickDiagnosticPending);
+    const sample = { ...context, reason, mode: observation.mode, phase: observation.phase, screen: observation.screen,
+      readCounts: observation.readCounts || null, gates };
+    countPickDiagnosticReason(diagnostic, reason, sample);
+    if (reason !== "compared") {
+      if (match.window) {
+        const summary = match.window.pick || (match.window.pick = { reasons: {}, latest: null });
+        summary.reasons[reason] = (summary.reasons[reason] || 0) + 1;
+        summary.latest = sample;
+      }
+      const gateKey = `${context.captureId}:${reason}:${gates.map((gate) => gate.reason).join("|")}`;
+      if (reason !== "interval_wait" && diagnostic.lastGateKey !== gateKey) {
+        // The observation was already counted; this event marks only the transition.
+        const entry = { ...sample, at: Date.now(), observedAt: sample.at, sequence: ++diagnostic.eventCount };
+        appendPickDiagnosticRing(diagnostic, "events", entry, PICK_DIAGNOSTIC_CONFIG.eventLimit);
+        diagnostic.lastGateKey = gateKey;
+      }
+    } else {
+      diagnostic.lastGateKey = "compared";
+      const tentative = new Set(observation.tentative.map((item) => item.hudIndex));
+      const hud = observation.best.map((best, hudIndex) => {
+        const accepted = observation.accepted.get(hudIndex);
+        const measured = best.refIndex >= 0;
+        const outcome = !gates[hudIndex]?.ready ? "hud_quality_rejected" : !measured ? "no_candidate"
+          : !best.tier ? "threshold_rejected" : !tentative.has(hudIndex) ? "contested"
+            : observation.ordersBefore[best.refIndex] ? "already_assigned" : accepted ? "accepted"
+              : pendingAfter[hudIndex] ? "pending" : "order_limit";
+        const decisionTier = accepted?.tier || pendingAfter[hudIndex]?.tier || (best.tier
+          ? observation.pendingBefore[hudIndex]?.refIndex === best.refIndex
+            ? getStrongerPickOverlayTier(observation.pendingBefore[hudIndex].tier, best.tier) : best.tier
+          : null);
+        const result = { hudIndex, outcome, gate: gates[hudIndex] || null,
+          candidateGate: measured ? { mean: best.candidateGate.mean ?? null, contrast: best.candidateGate.contrast ?? null,
+            brightRatio: best.candidateGate.brightRatio ?? null, ready: best.candidateGate.ready } : null,
+          scores: measured ? best.scores.map((item) => ({ refIndex: item.refIndex, score: item.score })) : null,
+          bestRefIndex: measured ? best.refIndex : null, secondRefIndex: measured ? best.secondRefIndex : null,
+          bestScore: measured ? best.bestScore : null, secondBestScore: measured ? best.secondBestScore : null,
+          margin: measured ? best.margin : null, tier: best.tier || null,
+          thresholdChecks: measured ? getPickDiagnosticThresholdChecks(best, observation.mode) : null,
+          grayScore: measured ? best.grayScore : null, edgeScore: measured ? best.edgeScore : null,
+          colorScore: measured ? best.colorScore : null, offsetX: measured ? best.offsetX : null, offsetY: measured ? best.offsetY : null,
+          pendingBefore: observation.pendingBefore[hudIndex], pendingAfter: pendingAfter[hudIndex],
+          decisionStreak: accepted || outcome === "order_limit" ? (observation.pendingBefore[hudIndex]?.refIndex === best.refIndex
+            ? observation.pendingBefore[hudIndex].streak + 1 : 1) : pendingAfter[hudIndex]?.streak ?? null,
+          requiredStreak: decisionTier ? getPickOverlayRequiredStreak(decisionTier) : null,
+          order: accepted?.order ?? pick.ordersByRefIndex[best.refIndex] ?? null };
+        const totals = diagnostic.hud[hudIndex][context.association === "current" ? "current" : "other"];
+        if (measured) totals.comparisons += 1;
+        if (accepted) totals.accepted += 1;
+        if (!accepted) countPickDiagnosticReason(diagnostic, outcome, { ...context, hudIndex, ...result });
+        return result;
+      });
+      const entry = { ...sample, comparison: ++diagnostic.comparisonCount, hud,
+        ordersBefore: observation.ordersBefore, ordersAfter: [...pick.ordersByRefIndex],
+        nextOrderBefore: observation.nextOrderBefore, nextOrderAfter: pick.nextOrder };
+      appendPickDiagnosticRing(diagnostic, "comparisons", entry, PICK_DIAGNOSTIC_CONFIG.comparisonLimit);
+    }
+    observation.pendingBefore.forEach((before, hudIndex) => {
+      const after = pendingAfter[hudIndex];
+      if (!before) return;
+      if (after && before.refIndex !== after.refIndex) {
+        recordPickDiagnosticEvent("candidate_changed", { hudIndex, before, after }, context);
+      } else if (!after && !observation.accepted?.has(hudIndex)) {
+        const expired = ["screen_blocked", "hud_quality_rejected"].includes(reason)
+          && context.at - observation.lastCompareAt > PICK_OVERLAY_CONFIG.gateGraceMs;
+        recordPickDiagnosticEvent(expired ? "grace_expired" : "pending_cleared", { hudIndex, cause: reason, before, after }, context);
+      }
+    });
+    const kept = ["screen_blocked", "hud_quality_rejected"].includes(reason) && pendingAfter.some(Boolean);
+    const graceKey = kept ? `${context.captureId}:${pendingAfter.map((item) => item?.firstSeenSequence ?? "").join(",")}` : "";
+    if (kept && diagnostic.lastGraceKey !== graceKey) recordPickDiagnosticEvent("grace_kept", { pending: pendingAfter }, context);
+    if (reason !== "interval_wait") diagnostic.lastGraceKey = graceKey;
+  }
+
+  function formatPickDiagnosticLog(diagnostic) {
+    if (!diagnostic) return [];
+    const ordered = (kind, stem) => diagnostic[`${stem}Dropped`]
+      ? [...diagnostic[kind].slice(diagnostic[`${stem}Cursor`]), ...diagnostic[kind].slice(0, diagnostic[`${stem}Cursor`])]
+      : diagnostic[kind];
+    return [
+      "", "--- 採番診断の設定・集計 ---",
+      "refIndexは相手画像の上から0〜5、hudIndexはHUDの0〜1。nullは未計測。未採番だけでは失敗を意味しません。",
+      "association=currentはこの試合の画像、previous/unlinked/noneは集計を分離。記録終了後の結果は含みません。",
+      `理由コード: ${JSON.stringify(PICK_DIAGNOSTIC_REASONS)}`,
+      JSON.stringify({ version: diagnostic.version, config: diagnostic.config, comparisonCount: diagnostic.comparisonCount,
+        eventCount: diagnostic.eventCount, comparisonDropped: diagnostic.comparisonDropped, eventDropped: diagnostic.eventDropped,
+        hud: diagnostic.hud, reasons: diagnostic.reasons }),
+      "", "--- 採番イベント ---",
+      ...ordered("events", "event").map((entry) => `${new Date(entry.at).toISOString()} ${JSON.stringify(entry)}`),
+      "", "--- 採番の詳細比較 ---",
+      ...ordered("comparisons", "comparison").map((entry) => `${new Date(entry.at).toISOString()} ${JSON.stringify(entry)}`),
+    ];
+  }
+
   function createDiagnosticIdentity(matchNumber = null, matchStartedAt = null) {
     const id = crypto.randomUUID();
     return { matchId: matchNumber === null ? null : id, matchNumber, matchStartedAt,
@@ -8447,6 +8733,7 @@
       window: createMatchLogWindow(now), snapshot: null,
     };
     match.diagnostic = createDiagnosticIdentity(match.id, now);
+    match.pickDiagnostic = createPickDiagnosticState();
     state.matchLog.current = match;
     recordMatchLogEvent("loading", "[debug] 読み込み中 を検出しました。 loading を検出", copyMatchLogSignal(loadingSignal), now);
   }
@@ -8623,6 +8910,7 @@
       ...events.map((entry) => `${new Date(entry.at).toISOString()} ${entry.text} ${JSON.stringify(entry.data)}`),
       "", "--- 約1秒ごとの認識・処理時間（最高coverage時のspill/darkを併記） ---",
       ...samples.map((sample) => `${new Date(sample.startedAt).toISOString()} ${JSON.stringify(sample)}`),
+      ...formatPickDiagnosticLog(match.pickDiagnostic),
       "", "--- 記録終了時／記録中の現在状態 ---", JSON.stringify(snapshot, null, 2),
       "", "画像・映像は含みません。この記録はページの再読み込み／終了で消去されます。", "",
     ];
@@ -8694,8 +8982,10 @@
   }
 
   function resetPickOverlayState(reason = "", options = {}) {
-    const { redraw = true } = options;
+    const { redraw = true, diagnosticContext = null } = options;
     const pickOverlay = state.autoSnap.pickOverlay;
+    recordPickDiagnosticEvent("reset", { cause: reason, ordersBefore: [...pickOverlay.ordersByRefIndex],
+      pendingBefore: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) }, diagnosticContext);
     const hadVisibleOverlay = pickOverlay.ordersByRefIndex?.some(Boolean);
     const hadFaintOverlay = pickOverlay.faintedByRefIndex?.some(Boolean);
     const hadFaintCache = pickOverlay.faintSlotCacheByHudIndex?.some(Boolean);
