@@ -3,8 +3,9 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.5";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.6";
   const diagnosticExportCounts = new WeakMap();
+  const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
     "mythical",
     "sublegendary",
@@ -428,6 +429,8 @@
     csvReady: false,
     stream: null,
     mediaStartInProgress: false,
+    mediaPermissionsPrepared: false,
+    audioInputRequestId: 0,
     streamInfo: null,
     videoReady: false,
     devices: [],
@@ -833,17 +836,48 @@
   }
 
   async function initializeMediaInput() {
-    const devicesReady = await refreshDevices();
-    if (devicesReady && !state.stream && !state.mediaStartInProgress) {
+    if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices?.enumerateDevices) {
+      await refreshDevices();
+      return;
+    }
+    if (!state.stream && !state.mediaStartInProgress) {
       await runControlActionAndRestoreTerminalFocus(startSelectedVideo);
+    }
+  }
+
+  async function prepareMediaPermissions() {
+    const preferredVideoDeviceId = state.selectedDeviceId;
+    const preferredAudioDeviceId = state.selectedAudioDeviceId;
+    let permissionStream;
+    let audioAvailable = true;
+    try {
+      try {
+        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch {
+        audioAvailable = false;
+        appendTerminalEntry(
+          ["[system] カメラとマイクを同時に取得できなかったため、映像のみで開始を試みます。"],
+          "system",
+        );
+        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      // Enumerate while the permission tracks are live so device names are exposed.
+      state.selectedDeviceId = preferredVideoDeviceId;
+      state.selectedAudioDeviceId = preferredAudioDeviceId;
+      const devicesReady = await refreshDevices();
+      state.mediaPermissionsPrepared = devicesReady;
+      return { devicesReady, audioAvailable };
+    } finally {
+      permissionStream?.getTracks().forEach((track) => track.stop());
     }
   }
 
   function syncMediaStartControls() {
     const unsupported = !navigator.mediaDevices?.getUserMedia;
     elements.refreshDevicesButton.disabled = unsupported || Boolean(state.mediaStartInProgress);
-    elements.startVideoButton.disabled = unsupported || Boolean(state.mediaStartInProgress) || !state.devices.length;
-    elements.deviceSelect.disabled = elements.startVideoButton.disabled;
+    elements.startVideoButton.disabled = unsupported || Boolean(state.mediaStartInProgress)
+      || (state.mediaPermissionsPrepared && !state.devices.length);
+    elements.deviceSelect.disabled = unsupported || Boolean(state.mediaStartInProgress) || !state.devices.length;
     if (elements.audioSelect) {
       elements.audioSelect.disabled = unsupported || Boolean(state.mediaStartInProgress) || !state.audioDevices.length;
     }
@@ -961,7 +995,7 @@
 
     state.audioDevices.forEach((device, index) => {
       const option = document.createElement("option");
-      option.value = device.deviceId;
+      option.value = device.deviceId || AUDIO_PERMISSION_DEVICE_ID;
       option.textContent = device.label || `音声入力 ${index + 1}`;
       elements.audioSelect.append(option);
     });
@@ -972,9 +1006,12 @@
     const suggestedAudioDevice = findAssociatedAudioDevice(selectedVideoDevice);
 
     let selectedValue = "";
+    const hasCurrentAudioDevice = state.audioDevices.some(
+      (device) => (device.deviceId || AUDIO_PERMISSION_DEVICE_ID) === currentValue,
+    );
     if (state.audioSelectionLocked) {
-      selectedValue = state.audioDevices.some((device) => device.deviceId === currentValue) ? currentValue : "";
-    } else if (currentValue && state.audioDevices.some((device) => device.deviceId === currentValue)) {
+      selectedValue = hasCurrentAudioDevice ? currentValue : "";
+    } else if (currentValue && hasCurrentAudioDevice) {
       selectedValue = currentValue;
     } else if (state.hasPersistedAudioSelection && currentValue === "") {
       selectedValue = "";
@@ -1004,7 +1041,9 @@
     state.audioSelectionLocked = true;
     state.hasPersistedAudioSelection = true;
     state.selectedAudioDeviceId = elements.audioSelect?.value || "";
-    persistStoredValue(STORAGE_KEYS.audioDevice, state.selectedAudioDeviceId);
+    if (state.selectedAudioDeviceId !== AUDIO_PERMISSION_DEVICE_ID) {
+      persistStoredValue(STORAGE_KEYS.audioDevice, state.selectedAudioDeviceId);
+    }
     return {
       previousSelectedAudioDeviceId,
       nextSelectedAudioDeviceId: state.selectedAudioDeviceId,
@@ -1023,17 +1062,32 @@
     }
 
     stopSelectedAudioInput();
+    const requestId = state.audioInputRequestId;
 
     if (!selectedAudioDeviceId) {
       return;
     }
 
     const audioResult = await requestSelectedAudioStream(selectedAudioDeviceId);
+    if (requestId !== state.audioInputRequestId) {
+      audioResult.stream?.getTracks().forEach((track) => track.stop());
+      return;
+    }
     if (!audioResult.stream) {
       return;
     }
 
     state.audioInputStream = audioResult.stream;
+    if (selectedAudioDeviceId === AUDIO_PERMISSION_DEVICE_ID) {
+      state.selectedAudioDeviceId = audioResult.stream.getAudioTracks()[0]?.getSettings?.().deviceId || "";
+      if (state.selectedAudioDeviceId) {
+        persistStoredValue(STORAGE_KEYS.audioDevice, state.selectedAudioDeviceId);
+      }
+      await refreshDevices();
+      if (requestId !== state.audioInputRequestId) {
+        return;
+      }
+    }
     const audioReady = await setupAudioPlayback({ stream: audioResult.stream });
     if (!audioReady && state.audioInputStream) {
       state.audioInputStream.getTracks().forEach((track) => track.stop());
@@ -1048,14 +1102,28 @@
     state.mediaStartInProgress = true;
     syncMediaStartControls();
     try {
-      await performSelectedVideoStart();
+      let skipAudio = false;
+      if (!state.mediaPermissionsPrepared) {
+        setCameraState("権限待ち", "working");
+        const permissions = await prepareMediaPermissions();
+        if (!permissions.devicesReady) {
+          return;
+        }
+        skipAudio = !permissions.audioAvailable;
+      }
+      await performSelectedVideoStart({ skipAudio });
+    } catch (error) {
+      if (!state.mediaPermissionsPrepared) {
+        await refreshDevices();
+      }
+      handleStreamError(error);
     } finally {
       state.mediaStartInProgress = false;
       syncMediaStartControls();
     }
   }
 
-  async function performSelectedVideoStart() {
+  async function performSelectedVideoStart({ skipAudio = false } = {}) {
     if (!state.devices.length) {
       setCameraState("未接続", "error");
       appendTerminalError(
@@ -1083,10 +1151,15 @@
       await elements.video.play();
 
       const activeVideoDevice = getSelectedDevice() || selectedVideoDevice;
-      const activeAudioDeviceId = selectedAudioDeviceId;
+      const activeAudioDeviceId = skipAudio ? "" : selectedAudioDeviceId;
 
       if (!activeAudioDeviceId) {
-        if (!state.audioDevices.length) {
+        if (skipAudio) {
+          appendTerminalEntry(
+            ["[system] 音声入力を利用できなかったため、映像のみで開始しました。音声入力またはブラウザの権限設定を確認してください。"],
+            "system",
+          );
+        } else if (!state.audioDevices.length) {
           appendTerminalEntry(
             [
               "[system] 音声入力が見つからないため、映像のみで開始しました。",
@@ -9302,7 +9375,9 @@
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: { exact: selectedAudioDeviceId },
+          ...(selectedAudioDeviceId && selectedAudioDeviceId !== AUDIO_PERMISSION_DEVICE_ID
+            ? { deviceId: { exact: selectedAudioDeviceId } }
+            : {}),
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
@@ -9328,6 +9403,7 @@
   }
 
   function stopSelectedAudioInput() {
+    state.audioInputRequestId += 1;
     stopAudioPlayback();
 
     if (state.audioInputStream) {
