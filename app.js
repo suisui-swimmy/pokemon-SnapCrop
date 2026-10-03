@@ -3,7 +3,7 @@
   const POKEMON_ICON_REFERENCE_PATH = "./data/pokemon-icon-reference.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.6.6";
+  const APP_VERSION = "pokemon-snapcrop-v1.6.7";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -382,6 +382,16 @@
     manual_set: "手動採番・移動", manual_clear: "手動解除",
     recognition_wait: "名前推定待ち", name_unresolved: "名前未確定", data_wait: "ポケモン情報データ待ち",
     data_missing: "該当ポケモン情報なし", emitted: "ポケモン情報表示完了",
+  };
+  const FAINT_DIAGNOSTIC_CONFIG = { comparisonLimit: 7200, eventLimit: 256 };
+  const FAINT_DIAGNOSTIC_REASONS = {
+    missing_slot: "対象ポケモンの枠を特定できない", roi_read_failed: "瀕死判定範囲の読み取り失敗",
+    already_fainted: "瀕死表示済み", not_matched: "瀕死の画像条件が不成立",
+    pending: "瀕死条件の一致回数待ち", accepted: "瀕死表示を確定",
+    mapping_changed: "HUDとポケモンの対応元・対象が変化", candidate_changed: "一致待ちの対象変更",
+    pending_kept: "一致待ちを一時保持", pending_expired: "一致待ちの保持期限切れ",
+    pending_cleared: "一致待ちを解除", reset: "瀕死状態・対応履歴を初期化",
+    manual_set: "手動採番に伴う瀕死状態・対応履歴の変更", manual_clear: "手動解除に伴う瀕死状態・対応履歴の変更",
   };
   const FAINT_DETECTION_CONFIG = {
     compareIntervalMs: 250,
@@ -3897,6 +3907,7 @@
     const pickOverlay = state.autoSnap.pickOverlay;
     const orders = pickOverlay.ordersByRefIndex;
     const diagnosticBefore = { orders: [...orders], pending: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) };
+    const faintBefore = captureFaintDiagnosticState();
     const sourceRefIndex = findPickOverlayRefIndexByOrder(order);
     const destinationOrder = orders[refIndex] || 0;
 
@@ -3947,6 +3958,7 @@
     }
 
     recordPickDiagnosticEvent("manual_set", { order, refIndex, before: diagnosticBefore, ordersAfter: [...orders] });
+    recordFaintDiagnosticEvent("manual_set", { order, refIndex, before: faintBefore, after: captureFaintDiagnosticState() });
     return { lines };
   }
 
@@ -3954,6 +3966,7 @@
     const pickOverlay = state.autoSnap.pickOverlay;
     const orders = pickOverlay.ordersByRefIndex;
     const diagnosticBefore = { orders: [...orders], pending: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) };
+    const faintBefore = captureFaintDiagnosticState();
     const removedOrder = orders[refIndex] || 0;
     const hadFainted = Boolean(pickOverlay.faintedByRefIndex?.[refIndex]);
     const hadPendingMatch = pickOverlay.pendingMatchesByHudIndex?.some((pending) => pending?.refIndex === refIndex);
@@ -3992,6 +4005,7 @@
       lines.push(`[system] pick: ${getPickSlotLabel(refIndex)} の瀕死表示も解除しました。`);
     }
     recordPickDiagnosticEvent("manual_clear", { refIndex, before: diagnosticBefore, ordersAfter: [...orders] });
+    recordFaintDiagnosticEvent("manual_clear", { refIndex, before: faintBefore, after: captureFaintDiagnosticState() });
     return { lines };
   }
 
@@ -7253,6 +7267,7 @@
     }
 
     pickOverlay.lastFaintCompareAt = now;
+    const diagnosticComparison = beginFaintDiagnosticComparison(now);
     const summaryKeyParts = [];
     const debugLines = [];
     let didMarkFainted = false;
@@ -7260,9 +7275,14 @@
     FAINT_DETECTION_CONFIG.hudRois.forEach((_, hudIndex) => {
       const best = bestByHudIndex[hudIndex] || {};
       const gateState = hudGateStates[hudIndex];
+      const observation = beginFaintDiagnosticHud(diagnosticComparison, hudIndex, best, gateState);
       const resolvedRef = resolveFaintHudRefIndex(hudIndex, best, gateState, now);
       const refIndex = resolvedRef.refIndex;
-      const signal = getFaintHudSignal(hudIndex);
+      const signal = getFaintHudSignal(hudIndex, observation?.read);
+      if (observation) {
+        observation.resolved = { ...resolvedRef };
+        observation.signal = signal;
+      }
 
       if (refIndex < 0) {
         const keptPending = keepFaintPendingThroughGap(hudIndex, now);
@@ -7273,6 +7293,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:missing:${keptPending?.refIndex ?? -1}:${keptPending?.streak ?? 0}:${gateState?.key || "slot"}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+        recordFaintDiagnosticOutcome(observation, "missing_slot");
         return;
       }
 
@@ -7285,6 +7306,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:read-failed:${refIndex}:${keptPending?.streak ?? 0}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+        recordFaintDiagnosticOutcome(observation, "roi_read_failed");
         return;
       }
 
@@ -7294,6 +7316,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:already:${refIndex}:${signal.key}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+        recordFaintDiagnosticOutcome(observation, "already_fainted");
         return;
       }
 
@@ -7305,6 +7328,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:watch:${refIndex}:${signal.key}:${keptPending?.streak ?? 0}:${resolvedRef.source}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+        recordFaintDiagnosticOutcome(observation, "not_matched");
         return;
       }
 
@@ -7327,6 +7351,7 @@
             signalSummary: signal.summary,
           };
       pickOverlay.pendingFaintsByHudIndex[hudIndex] = nextPending;
+      if (observation) observation.decision = { streak: nextPending.streak, requiredStreak: nextPending.requiredStreak };
 
       if (nextPending.streak >= nextPending.requiredStreak) {
         pickOverlay.faintedByRefIndex[refIndex] = true;
@@ -7336,6 +7361,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:accepted:${refIndex}:${signal.key}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+        recordFaintDiagnosticOutcome(observation, "accepted");
         appendTerminalEntry(
           [
             `[auto] 相手 ${getFaintSlotLabel(refIndex)} を瀕死表示にしました。`,
@@ -7349,8 +7375,10 @@
       pickOverlay.lastFaintSummaries[hudIndex] = summary;
       summaryKeyParts.push(`hud${hudIndex + 1}:pending:${refIndex}:${nextPending.streak}:${nextPending.requiredStreak}:${signal.key}:${resolvedRef.source}`);
       debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
+      recordFaintDiagnosticOutcome(observation, "pending");
     });
 
+    finishFaintDiagnosticComparison(diagnosticComparison);
     appendFaintDebugLogIfChanged(summaryKeyParts.join("|"), debugLines);
 
     if (didMarkFainted && state.references.enemy && state.mode !== "edit") {
@@ -7417,10 +7445,11 @@
     return null;
   }
 
-  function getFaintHudSignal(hudIndex) {
+  function getFaintHudSignal(hudIndex, diagnosticRead = null) {
     const iconCrop = getFaintHudRoiCrop(hudIndex, "faintIcon");
     const colorCrop = getFaintHudRoiCrop(hudIndex, "hudColor");
     const percentCrop = getFaintHudRoiCrop(hudIndex, "percent");
+    if (diagnosticRead) diagnosticRead.crops = { icon: iconCrop, color: colorCrop, percent: percentCrop };
     if (!iconCrop || !colorCrop || !percentCrop) {
       return null;
     }
@@ -7428,6 +7457,7 @@
     const icon = sampleFaintHudRoi(elements.video, iconCrop);
     const color = sampleFaintHudRoi(elements.video, colorCrop);
     const percent = sampleFaintHudRoi(elements.video, percentCrop);
+    if (diagnosticRead) diagnosticRead.samples = { icon, color, percent };
     if (!icon || !color || !percent) {
       return null;
     }
@@ -7457,6 +7487,7 @@
 
     return {
       matched,
+      checks: { iconMatched, colorMatched, percentVisible },
       strength: strong ? "strong" : "weak",
       key,
       summary: `icon=${formatFaintMetric(icon)} color=${formatFaintMetric(color)} pctWhite=${formatAutoMetric(percent.white)}`,
@@ -8556,6 +8587,158 @@
     };
   }
 
+  function createFaintDiagnosticState() {
+    return {
+      version: 1, config: JSON.parse(JSON.stringify({ ...FAINT_DETECTION_CONFIG, ...FAINT_DIAGNOSTIC_CONFIG })),
+      comparisons: [], comparisonCount: 0, comparisonCursor: 0, comparisonDropped: 0,
+      events: [], eventCount: 0, eventCursor: 0, eventDropped: 0,
+      reasons: Object.fromEntries(Object.keys(FAINT_DIAGNOSTIC_REASONS).map((reason) => [reason, {
+        count: 0, byAssociation: { current: 0, previous: 0, unlinked: 0, none: 0 }, first: null, last: null }])),
+      hud: [0, 1].map(() => ({ current: { observations: 0, accepted: 0 }, other: { observations: 0, accepted: 0 } })),
+      lastOutcomes: [null, null], lastMappings: [null, null], lastPending: [null, null],
+    };
+  }
+
+  function copyFaintDiagnosticPending(pending, now) {
+    return pending ? { refIndex: pending.refIndex, streak: pending.streak, requiredStreak: pending.requiredStreak,
+      firstSeenAt: pending.firstSeenAt, lastSeenAt: pending.lastSeenAt, ageMs: now - pending.lastSeenAt } : null;
+  }
+
+  function copyFaintDiagnosticCache(cache, now) {
+    return cache ? { refIndex: cache.refIndex, tier: cache.tier, lastSeenAt: cache.lastSeenAt,
+      ageMs: now - cache.lastSeenAt } : null;
+  }
+
+  function captureFaintDiagnosticState() {
+    const pick = state.autoSnap.pickOverlay;
+    const now = Date.now();
+    return { fainted: [...pick.faintedByRefIndex],
+      pending: pick.pendingFaintsByHudIndex.map((item) => copyFaintDiagnosticPending(item, now)),
+      cache: pick.faintSlotCacheByHudIndex.map((item) => copyFaintDiagnosticCache(item, now)) };
+  }
+
+  function beginFaintDiagnosticComparison(now) {
+    const match = state.matchLog.current;
+    if (!match?.faintDiagnostic) return null;
+    const context = getPickDiagnosticContext(match, now);
+    return { match, context: { ...context, matchElapsedMs: now - match.startedAt }, hud: [] };
+  }
+
+  function beginFaintDiagnosticHud(comparison, hudIndex, best, gate) {
+    if (!comparison) return null;
+    const now = comparison.context.at;
+    const pick = state.autoSnap.pickOverlay;
+    const hasCandidate = Number.isInteger(best.refIndex) && best.refIndex >= 0;
+    return { comparison, hudIndex, read: {},
+      candidate: { refIndex: hasCandidate ? best.refIndex : null, tier: hasCandidate ? best.tier || null : null,
+        score: hasCandidate ? best.bestScore ?? null : null, margin: hasCandidate ? best.margin ?? null : null },
+      gate: gate ? { ready: gate.ready, reason: gate.key, mean: gate.mean ?? null,
+        contrast: gate.contrast ?? null, brightRatio: gate.brightRatio ?? null } : null,
+      cacheBefore: copyFaintDiagnosticCache(pick.faintSlotCacheByHudIndex[hudIndex], now),
+      pendingBefore: copyFaintDiagnosticPending(pick.pendingFaintsByHudIndex[hudIndex], now) };
+  }
+
+  function recordFaintDiagnosticEvent(reason, data = {}, context = null, count = true) {
+    const match = state.matchLog.current;
+    if (!match?.faintDiagnostic || !FAINT_DIAGNOSTIC_REASONS[reason]) return;
+    const origin = context || getPickDiagnosticContext(match);
+    if (origin.matchId !== match.diagnostic.matchId) return;
+    const diagnostic = match.faintDiagnostic;
+    const entry = { ...origin, at: Date.now(), observedAt: origin.at,
+      matchElapsedMs: origin.at - match.startedAt, sequence: ++diagnostic.eventCount, reason, ...data };
+    appendPickDiagnosticRing(diagnostic, "events", entry, FAINT_DIAGNOSTIC_CONFIG.eventLimit);
+    if (count) countPickDiagnosticReason(diagnostic, reason, entry);
+    if (reason === "reset" || reason === "manual_set" || reason === "manual_clear") {
+      diagnostic.lastOutcomes.fill(null);
+      diagnostic.lastMappings.fill(null);
+      diagnostic.lastPending.fill(null);
+    }
+  }
+
+  function recordFaintDiagnosticOutcome(observation, outcome) {
+    if (!observation || state.matchLog.current !== observation.comparison.match) return;
+    const { comparison, hudIndex, resolved, signal, pendingBefore } = observation;
+    const diagnostic = comparison.match.faintDiagnostic;
+    const context = comparison.context;
+    const pick = state.autoSnap.pickOverlay;
+    const pendingAfter = copyFaintDiagnosticPending(pick.pendingFaintsByHudIndex[hudIndex], context.at);
+    const copyParts = (parts) => Object.fromEntries(["icon", "color", "percent"].map((key) => [key, parts?.[key] ? { ...parts[key] } : null]));
+    const pendingTransition = outcome === "accepted" ? "completed"
+      : pendingBefore && pendingAfter && pendingBefore.refIndex !== pendingAfter.refIndex ? "changed"
+        : pendingBefore && !pendingAfter ? context.at - pendingBefore.lastSeenAt > FAINT_DETECTION_CONFIG.pendingGraceMs
+          && outcome !== "already_fainted" ? "expired" : "cleared"
+          : pendingBefore && pendingAfter && pendingBefore.lastSeenAt === pendingAfter.lastSeenAt ? "kept"
+            : pendingAfter ? "counting" : "none";
+    const row = {
+      hudIndex, outcome, candidate: observation.candidate, gate: observation.gate,
+      resolved: { ...resolved, refIndex: resolved.refIndex < 0 ? null : resolved.refIndex },
+      cacheBefore: observation.cacheBefore,
+      cacheAfter: copyFaintDiagnosticCache(pick.faintSlotCacheByHudIndex[hudIndex], context.at),
+      crops: copyParts(observation.read.crops), samples: copyParts(observation.read.samples),
+      matched: signal?.matched ?? null, strength: signal?.strength ?? null, checks: signal ? { ...signal.checks } : null,
+      pendingBefore, pendingAfter, pendingTransition,
+      currentRequiredStreak: signal ? getFaintRequiredStreak(signal, resolved) : null,
+      decision: observation.decision ? { ...observation.decision } : null,
+      fainted: resolved.refIndex >= 0 ? Boolean(pick.faintedByRefIndex[resolved.refIndex]) : null,
+    };
+    comparison.hud.push(row);
+    const example = { ...context, ...row };
+    countPickDiagnosticReason(diagnostic, outcome, example);
+    const totals = diagnostic.hud[hudIndex][context.association === "current" ? "current" : "other"];
+    totals.observations += 1;
+    if (outcome === "accepted") totals.accepted += 1;
+    const mappingKey = `${context.captureId}:${resolved.refIndex}:${resolved.source}`;
+    if (diagnostic.lastMappings[hudIndex] !== mappingKey) {
+      recordFaintDiagnosticEvent("mapping_changed", { hudIndex, resolved: row.resolved,
+        candidate: row.candidate, cacheBefore: row.cacheBefore, cacheAfter: row.cacheAfter }, context);
+      diagnostic.lastMappings[hudIndex] = mappingKey;
+    }
+    const outcomeKey = `${context.captureId}:${resolved.refIndex}:${outcome}:${signal?.key || "no-signal"}`;
+    if (diagnostic.lastOutcomes[hudIndex] !== outcomeKey || outcome === "accepted") {
+      recordFaintDiagnosticEvent(outcome, { observation: row }, context, false);
+      diagnostic.lastOutcomes[hudIndex] = outcomeKey;
+    }
+    const transitionReason = { kept: "pending_kept", expired: "pending_expired", cleared: "pending_cleared", changed: "candidate_changed" }[pendingTransition];
+    const pendingKey = `${context.captureId}:${pendingBefore?.refIndex}:${pendingAfter?.refIndex}:${pendingTransition}`;
+    if (transitionReason && diagnostic.lastPending[hudIndex] !== pendingKey) {
+      recordFaintDiagnosticEvent(transitionReason, { hudIndex, before: pendingBefore, after: pendingAfter }, context);
+    }
+    // A changed target may immediately meet the one-observation strong condition.
+    if (outcome === "accepted" && pendingBefore && pendingBefore.refIndex !== resolved.refIndex) {
+      recordFaintDiagnosticEvent("candidate_changed", { hudIndex, before: pendingBefore, refIndex: resolved.refIndex }, context);
+    }
+    diagnostic.lastPending[hudIndex] = pendingKey;
+  }
+
+  function finishFaintDiagnosticComparison(comparison) {
+    if (!comparison || state.matchLog.current !== comparison.match) return;
+    const diagnostic = comparison.match.faintDiagnostic;
+    const entry = { ...comparison.context, comparison: ++diagnostic.comparisonCount, hud: comparison.hud };
+    appendPickDiagnosticRing(diagnostic, "comparisons", entry, FAINT_DIAGNOSTIC_CONFIG.comparisonLimit);
+  }
+
+  function formatFaintDiagnosticLog(diagnostic) {
+    if (!diagnostic) return [];
+    const ordered = (kind, stem) => diagnostic[`${stem}Dropped`]
+      ? [...diagnostic[kind].slice(diagnostic[`${stem}Cursor`]), ...diagnostic[kind].slice(0, diagnostic[`${stem}Cursor`])]
+      : diagnostic[kind];
+    return [
+      "", "--- 瀕死診断の設定・集計 ---",
+      "refIndexは相手画像の上から0〜5、hudIndexは対戦HUDの左0/右1。nullは未取得・未確定。",
+      "percentVisibleは白い画素の量による文字の存在確認で、0%の数字認識ではありません。",
+      "resolved.source: live=今回の照合、cache=以前の対応、cache-live-weak=弱い別候補より以前の対応を維持、pending=一致待ちの対象、missing=不明。",
+      "at/lastSeenAtはUTCのミリ秒、matchElapsedMsは記録開始からの経過、ageMsは対応・一致待ちの経過。current以外の画像は集計を分離。",
+      `理由コード: ${JSON.stringify(FAINT_DIAGNOSTIC_REASONS)}`,
+      JSON.stringify({ version: diagnostic.version, config: diagnostic.config, comparisonCount: diagnostic.comparisonCount,
+        eventCount: diagnostic.eventCount, comparisonDropped: diagnostic.comparisonDropped, eventDropped: diagnostic.eventDropped,
+        hud: diagnostic.hud, reasons: diagnostic.reasons }),
+      "", "--- 瀕死イベント ---",
+      ...ordered("events", "event").map((entry) => `${new Date(entry.at).toISOString()} ${JSON.stringify(entry)}`),
+      "", "--- 瀕死の詳細判定 ---",
+      ...ordered("comparisons", "comparison").map((entry) => `${new Date(entry.at).toISOString()} ${JSON.stringify(entry)}`),
+    ];
+  }
+
   function createPickDiagnosticState() {
     return {
       version: 1,
@@ -8845,6 +9028,7 @@
     };
     match.diagnostic = createDiagnosticIdentity(match.id, now);
     match.pickDiagnostic = createPickDiagnosticState();
+    match.faintDiagnostic = createFaintDiagnosticState();
     state.matchLog.current = match;
     recordMatchLogEvent("loading", "[debug] 読み込み中 を検出しました。 loading を検出", copyMatchLogSignal(loadingSignal), now);
   }
@@ -9022,6 +9206,7 @@
       "", "--- 約1秒ごとの認識・処理時間（最高coverage時のspill/darkを併記） ---",
       ...samples.map((sample) => `${new Date(sample.startedAt).toISOString()} ${JSON.stringify(sample)}`),
       ...formatPickDiagnosticLog(match.pickDiagnostic),
+      ...formatFaintDiagnosticLog(match.faintDiagnostic),
       "", "--- 記録終了時／記録中の現在状態 ---", JSON.stringify(snapshot, null, 2),
       "", "画像・映像は含みません。この記録はページの再読み込み／終了で消去されます。", "",
     ];
@@ -9097,6 +9282,7 @@
     const pickOverlay = state.autoSnap.pickOverlay;
     recordPickDiagnosticEvent("reset", { cause: reason, ordersBefore: [...pickOverlay.ordersByRefIndex],
       pendingBefore: pickOverlay.pendingMatchesByHudIndex.map(copyPickDiagnosticPending) }, diagnosticContext);
+    recordFaintDiagnosticEvent("reset", { cause: reason, before: captureFaintDiagnosticState() }, diagnosticContext);
     const hadVisibleOverlay = pickOverlay.ordersByRefIndex?.some(Boolean);
     const hadFaintOverlay = pickOverlay.faintedByRefIndex?.some(Boolean);
     const hadFaintCache = pickOverlay.faintSlotCacheByHudIndex?.some(Boolean);
@@ -9114,6 +9300,7 @@
   function resetFaintOverlayState(reason = "", options = {}) {
     const { redraw = true } = options;
     const pickOverlay = state.autoSnap.pickOverlay;
+    recordFaintDiagnosticEvent("reset", { cause: reason, before: captureFaintDiagnosticState() });
     const hadFainted = pickOverlay.faintedByRefIndex?.some(Boolean);
     const hadPending = pickOverlay.pendingFaintsByHudIndex?.some(Boolean);
     const hadCache = pickOverlay.faintSlotCacheByHudIndex?.some(Boolean);

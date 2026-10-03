@@ -262,7 +262,7 @@ test("rings stay bounded, summaries survive truncation and exporting does not mu
   assert.match(text, /--- 採番の詳細比較 ---/u);
   assert.match(text, /"comparisonDropped":3/u);
   assert.doesNotMatch(text, /data:image|"edgeValues"|"colorValues"/u);
-  const detailLines = text.split("--- 採番の詳細比較 ---")[1].split("--- 記録終了時")[0].trim().split("\r\n");
+  const detailLines = text.split("--- 採番の詳細比較 ---")[1].split(/\r?\n--- /u)[0].trim().split("\r\n");
   assert.equal(JSON.parse(detailLines[0].slice(25)).comparison, 4);
   assert.equal(JSON.parse(detailLines.at(-1).slice(25)).comparison, 7203);
 });
