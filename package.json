@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "generate:icons": "node tools/generate-pokemon-icon-reference.mjs",
-    "validate:icons": "node tools/validate-pokemon-icon-reference.mjs"
+    "generate:catalog": "node tools/generate-display-catalog.mjs",
+    "validate:catalog": "node tools/generate-display-catalog.mjs --check",
+    "check": "node tools/generate-display-catalog.mjs --check && node --test tests/*.test.mjs",
+    "build:pages": "node tools/build-pages.mjs"
   }
 }

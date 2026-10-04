@@ -1,23 +1,19 @@
 import {
   buildCandidateFeature,
+  dedupeNormalizedPokemonIconCandidates,
   createPokemonIconRequestGate,
   buildInputFeature,
   DEFAULT_MATCHER_CONFIG,
-  equalRgba,
   fingerprintRgba,
   legacyScoreFeaturePair,
   normalizeCandidateRgba,
+  pokemonIconIdentity,
   recognizePokemonIconParty,
   resizeRgba,
 } from "./pokemon-icon-matcher.js";
 
-const WORKER_PROTOCOL_VERSION = 1;
-const LOAD_CONCURRENCY = 12;
-const SOURCE_PRIORITY = {
-  champions: 0,
-  sv: 1,
-  supplemental: 2,
-};
+const WORKER_PROTOCOL_VERSION = 2;
+const LOAD_CONCURRENCY = 4;
 const LOAD_REASONS = new Set([
   "fetch_error",
   "decode_error",
@@ -38,6 +34,32 @@ let candidateFailures = [];
 let runtimeVisualCollisions = [];
 let runtimeMergedDuplicates = [];
 let workerStats = createWorkerStats();
+let remoteAssets = false;
+let assetRequestSequence = 0;
+const pendingAssets = new Map();
+const successfulCandidates = new Map();
+
+function candidateKey(entry) {
+  return `${entry.id}:${entry.path}`;
+}
+
+function cancelPendingAssets() {
+  pendingAssets.forEach(({ reject }) => reject(Object.assign(new Error("prewarm cancelled"), { code: "cancelled" })));
+  pendingAssets.clear();
+}
+
+async function fetchCandidateBlob(url, generation) {
+  if (!remoteAssets) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.blob();
+  }
+  return new Promise((resolve, reject) => {
+    const assetRequestId = ++assetRequestSequence;
+    pendingAssets.set(assetRequestId, { generation, resolve, reject });
+    post("asset-fetch", { assetRequestId, url });
+  });
+}
 
 function now() {
   return globalThis.performance?.now?.() ?? Date.now();
@@ -48,6 +70,7 @@ function createWorkerStats() {
     protocolVersion: WORKER_PROTOCOL_VERSION,
     workerStatus: "idle",
     prewarmStatus: "idle",
+    ready: false,
     rawManifestCount: 0,
     canonicalManifestCount: 0,
     buildMergedDuplicateCount: 0,
@@ -102,23 +125,17 @@ function createFailure(entry, reason, error = null) {
   };
 }
 
-function compareCandidatePriority(left, right) {
-  const sourceDifference = (SOURCE_PRIORITY[left.source] ?? 99) - (SOURCE_PRIORITY[right.source] ?? 99);
-  if (sourceDifference !== 0) {
-    return sourceDifference;
-  }
-  return String(left.id || "").localeCompare(String(right.id || ""), "en");
-}
-
 function manifestStatsToWorkerStats(nextManifest) {
   const stats = nextManifest?.stats || {};
+  const icons = nextManifest?.icons || [];
   return {
-    rawManifestCount: Number(stats.rawCandidateCount || nextManifest?.rawCandidates?.length || 0),
+    rawManifestCount: Number(stats.rawCandidateCount || nextManifest?.rawCandidates?.length || icons.length),
     canonicalManifestCount: Number(stats.canonicalCandidateCount || nextManifest?.icons?.length || 0),
     buildMergedDuplicateCount: Number(stats.mergedDuplicateCount || 0),
     buildVisualCollisionCount: Number(stats.visualCollisionGroupCount || 0),
-    uniquePokemonNameCount: Number(stats.uniquePokemonNameCount || 0),
-    uniqueSpeciesKeyCount: Number(stats.uniqueSpeciesKeyCount || 0),
+    uniquePokemonNameCount: Number(stats.uniquePokemonNameCount || new Set(icons.map(pokemonIconIdentity)).size),
+    uniqueSpeciesKeyCount: Number(stats.uniqueSpeciesKeyCount || new Set(icons.map((entry) => entry.speciesKey)).size),
+    providerDataVersion: nextManifest?.dataVersion || null,
     championsRawCount: Number(stats.sourceCounts?.raw?.champions || 0),
     svRawCount: Number(stats.sourceCounts?.raw?.sv || 0),
     supplementalRawCount: Number(stats.sourceCounts?.raw?.supplemental || 0),
@@ -178,6 +195,7 @@ async function decodeCandidateBlob(blob, entry) {
 }
 
 async function loadCandidate(entry, generation) {
+  const stats = workerStats;
   if (generation !== prewarmGeneration) {
     return {
       failure: createFailure(entry, "cancelled", "prewarm generation changed"),
@@ -185,31 +203,28 @@ async function loadCandidate(entry, generation) {
   }
   const candidateUrl = new URL(entry.path, self.location.href).href;
   const fetchStartedAt = now();
-  let response;
+  let blob;
   try {
-    response = await fetch(candidateUrl);
-    workerStats.timings.candidateFetchMs += now() - fetchStartedAt;
-    if (!response.ok) {
-      return {
-        failure: createFailure(entry, "fetch_error", `HTTP ${response.status}`),
-      };
-    }
-    workerStats.fetchedCount += 1;
+    blob = await fetchCandidateBlob(candidateUrl, generation);
+    stats.timings.candidateFetchMs += now() - fetchStartedAt;
+    if (generation !== prewarmGeneration) return { failure: createFailure(entry, "cancelled") };
+    stats.fetchedCount += 1;
   } catch (error) {
-    workerStats.timings.candidateFetchMs += now() - fetchStartedAt;
+    stats.timings.candidateFetchMs += now() - fetchStartedAt;
     return {
-      failure: createFailure(entry, "fetch_error", error),
+      failure: createFailure(entry, generation === prewarmGeneration ? "fetch_error" : "cancelled", error),
     };
   }
 
   let decoded;
   const decodeStartedAt = now();
   try {
-    decoded = await decodeCandidateBlob(await response.blob(), entry);
-    workerStats.timings.candidateDecodeMs += now() - decodeStartedAt;
-    workerStats.decodedCount += 1;
+    decoded = await decodeCandidateBlob(blob, entry);
+    if (generation !== prewarmGeneration) return { failure: createFailure(entry, "cancelled") };
+    stats.timings.candidateDecodeMs += now() - decodeStartedAt;
+    stats.decodedCount += 1;
   } catch (error) {
-    workerStats.timings.candidateDecodeMs += now() - decodeStartedAt;
+    stats.timings.candidateDecodeMs += now() - decodeStartedAt;
     return {
       failure: createFailure(entry, error?.reason || "decode_error", error),
       unsupported: Boolean(error?.workerUnsupported),
@@ -220,20 +235,20 @@ async function loadCandidate(entry, generation) {
   try {
     const normalized = normalizeCandidateRgba(decoded, matcherConfig);
     if (!normalized.valid) {
-      workerStats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
+      stats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
       return {
         failure: createFailure(entry, normalized.reason || "sample_error"),
       };
     }
     const feature = buildCandidateFeature(normalized, matcherConfig);
     if (!feature.maskSum) {
-      workerStats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
+      stats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
       return {
         failure: createFailure(entry, "no_alpha_foreground"),
       };
     }
-    workerStats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
-    workerStats.preprocessedCount += 1;
+    stats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
+    stats.preprocessedCount += 1;
     return {
       candidate: {
         ...entry,
@@ -250,104 +265,11 @@ async function loadCandidate(entry, generation) {
       },
     };
   } catch (error) {
-    workerStats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
+    stats.timings.candidatePreprocessMs += now() - preprocessStartedAt;
     return {
       failure: createFailure(entry, "sample_error", error),
     };
   }
-}
-
-function splitExactNormalizedGroups(fingerprintEntries) {
-  const exactGroups = [];
-  fingerprintEntries.forEach((entry) => {
-    const matching = exactGroups.find((group) => equalRgba(group[0].normalizedRgba, entry.normalizedRgba));
-    if (matching) {
-      matching.push(entry);
-    } else {
-      exactGroups.push([entry]);
-    }
-  });
-  return exactGroups;
-}
-
-function dedupeNormalizedCandidates(loadedCandidates) {
-  const fingerprintGroups = new Map();
-  loadedCandidates.forEach((candidate) => {
-    const group = fingerprintGroups.get(candidate.normalizedFingerprint) || [];
-    group.push(candidate);
-    fingerprintGroups.set(candidate.normalizedFingerprint, group);
-  });
-  const deduped = [];
-  const merged = [];
-  const collisions = [];
-
-  [...fingerprintGroups.entries()]
-    .sort(([left], [right]) => left.localeCompare(right, "en"))
-    .forEach(([fingerprint, fingerprintEntries]) => {
-      splitExactNormalizedGroups(fingerprintEntries).forEach((exactGroup, exactIndex) => {
-        const byName = new Map();
-        exactGroup.forEach((entry) => {
-          const entries = byName.get(entry.pokemonName) || [];
-          entries.push(entry);
-          byName.set(entry.pokemonName, entries);
-        });
-        const pokemonNames = [...byName.keys()].sort((left, right) => left.localeCompare(right, "ja"));
-        const collisionId = pokemonNames.length > 1
-          ? `runtime:${fingerprint}:${exactIndex}`
-          : "";
-        if (collisionId) {
-          collisions.push({
-            id: collisionId,
-            kind: "normalized_rgba",
-            fingerprint,
-            pokemonNames,
-            entries: exactGroup.map((entry) => ({
-              id: entry.id,
-              pokemonName: entry.pokemonName,
-              speciesKey: entry.speciesKey,
-              source: entry.source,
-              path: entry.path,
-            })),
-          });
-        }
-        [...byName.entries()]
-          .sort(([left], [right]) => left.localeCompare(right, "ja"))
-          .forEach(([, sameNameEntries]) => {
-            const ordered = sameNameEntries.slice().sort(compareCandidatePriority);
-            const canonical = ordered[0];
-            const runtimeMergedIds = ordered.flatMap((entry) => entry.mergedIds || [entry.id]);
-            const runtimeSources = [...new Set(ordered.flatMap((entry) => entry.sources || [entry.source]))]
-              .sort((left, right) => (SOURCE_PRIORITY[left] ?? 99) - (SOURCE_PRIORITY[right] ?? 99));
-            deduped.push({
-              ...canonical,
-              runtimeMergedIds,
-              runtimeSources,
-              runtimeVisualCollisionId: collisionId || null,
-            });
-            ordered.slice(1).forEach((entry) => {
-              merged.push({
-                id: entry.id,
-                pokemonName: entry.pokemonName,
-                speciesKey: entry.speciesKey,
-                source: entry.source,
-                path: entry.path,
-                reason: "normalized_rgba_duplicate",
-                canonicalId: canonical.id,
-                fingerprint,
-              });
-            });
-          });
-      });
-    });
-
-  deduped.forEach((candidate) => {
-    delete candidate.normalizedRgba;
-  });
-  return {
-    candidates: deduped,
-    merged,
-    collisions,
-  };
 }
 
 async function loadCandidates(entries, generation) {
@@ -361,8 +283,10 @@ async function loadCandidates(entries, generation) {
       const entry = entries[nextIndex];
       nextIndex += 1;
       const result = await loadCandidate(entry, generation);
+      if (generation !== prewarmGeneration) return;
       if (result.candidate) {
         loaded.push(result.candidate);
+        successfulCandidates.set(candidateKey(entry), result.candidate);
       }
       if (result.failure) {
         failures.push(result.failure);
@@ -391,90 +315,84 @@ async function loadCandidates(entries, generation) {
   };
 }
 
-async function ensurePrewarmed() {
-  if (candidates.length && workerStats.prewarmStatus === "ready") {
-    return candidates;
+async function ensurePrewarmed({ retry = false } = {}) {
+  if (candidates.length && workerStats.prewarmStatus === "ready") return candidates;
+  if (prewarmPromise) return prewarmPromise;
+  if (!manifest?.icons?.length) throw new Error("Pokemon icon manifest is not initialized");
+  if (!retry && ["failed", "unsupported"].includes(workerStats.prewarmStatus)) {
+    throw new Error("Candidate assets are incomplete; retry-prewarm is required");
   }
-  if (prewarmPromise) {
-    return prewarmPromise;
-  }
-  if (!manifest?.icons?.length) {
-    throw new Error("Pokemon icon manifest is not initialized");
-  }
-  const generation = prewarmGeneration + 1;
-  prewarmGeneration = generation;
+  const generation = ++prewarmGeneration;
   const startedAt = now();
   workerStats = {
     ...createWorkerStats(),
     ...manifestStatsToWorkerStats(manifest),
     workerStatus: "prewarming",
     prewarmStatus: "loading",
+    retainedCount: successfulCandidates.size,
   };
   candidateFailures = [];
   runtimeVisualCollisions = [];
   runtimeMergedDuplicates = [];
-  post("prewarm-start", {
-    stats: workerStats,
-  });
-
-  prewarmPromise = loadCandidates(manifest.icons, generation)
+  post("prewarm-start", { stats: workerStats });
+  const pendingEntries = manifest.icons.filter((entry) => !successfulCandidates.has(candidateKey(entry)));
+  const promise = loadCandidates(pendingEntries, generation)
     .then((loadedResult) => {
-      if (generation !== prewarmGeneration) {
-        throw Object.assign(new Error("prewarm cancelled"), {
-          code: "cancelled",
+      if (generation !== prewarmGeneration) throw Object.assign(new Error("prewarm cancelled"), { code: "cancelled" });
+      candidateFailures = loadedResult.failures;
+      workerStats.loadFailureCount = candidateFailures.length;
+      workerStats.loadedCount = successfulCandidates.size;
+      workerStats.timings.prewarmTotalMs = now() - startedAt;
+      if (candidateFailures.length || successfulCandidates.size !== manifest.icons.length) {
+        candidates = [];
+        workerStats.workerStatus = loadedResult.unsupported ? "unsupported" : "failed";
+        workerStats.prewarmStatus = workerStats.workerStatus;
+        throw Object.assign(new Error("Not all eligible candidate images could be loaded"), {
+          code: loadedResult.unsupported ? "unsupported" : "incomplete_assets",
         });
       }
       const dedupeStartedAt = now();
-      const deduped = dedupeNormalizedCandidates(loadedResult.loaded);
+      const deduped = dedupeNormalizedPokemonIconCandidates([...successfulCandidates.values()]);
       workerStats.timings.dedupeMs = now() - dedupeStartedAt;
       candidates = deduped.candidates;
-      candidateFailures = loadedResult.failures;
       runtimeVisualCollisions = deduped.collisions;
       runtimeMergedDuplicates = deduped.merged;
       workerStats.loadedCount = candidates.length;
+      workerStats.assetCount = successfulCandidates.size;
+      workerStats.assetFingerprints = [...successfulCandidates.values()].map((entry) => ({
+        id: entry.id, showdownId: entry.showdownId || "", path: entry.path,
+        fingerprint: entry.normalizedFingerprint,
+      }));
       workerStats.runtimeNormalizedDuplicateCount = runtimeMergedDuplicates.length;
       workerStats.runtimeVisualCollisionGroupCount = runtimeVisualCollisions.length;
-      workerStats.runtimeVisualCollisionEntryCount = runtimeVisualCollisions.reduce(
-        (total, collision) => total + collision.entries.length,
-        0,
-      );
-      workerStats.loadFailureCount = candidateFailures.length;
-      workerStats.prewarmStatus = loadedResult.unsupported ? "unsupported" : "ready";
-      workerStats.workerStatus = loadedResult.unsupported ? "unsupported" : "ready";
+      workerStats.runtimeVisualCollisionEntryCount = runtimeVisualCollisions.reduce((total, collision) => total + collision.entries.length, 0);
+      workerStats.prewarmStatus = "ready";
+      workerStats.workerStatus = "ready";
+      workerStats.ready = true;
       workerStats.timings.prewarmTotalMs = now() - startedAt;
-      post(loadedResult.unsupported ? "worker-unsupported" : "prewarm-complete", {
-        stats: workerStats,
-        failures: candidateFailures,
-        runtimeMergedDuplicates,
-        visualCollisions: [
-          ...(manifest.visualCollisions || []),
-          ...runtimeVisualCollisions,
-        ],
+      post("prewarm-complete", {
+        stats: workerStats, failures: [], runtimeMergedDuplicates,
+        visualCollisions: [...(manifest.visualCollisions || []), ...runtimeVisualCollisions],
       });
-      if (loadedResult.unsupported) {
-        throw Object.assign(new Error("Worker image APIs are unavailable"), {
-          code: "unsupported",
-        });
-      }
       return candidates;
     })
     .catch((error) => {
-      if (error?.code !== "cancelled" && error?.code !== "unsupported") {
-        workerStats.workerStatus = "failed";
-        workerStats.prewarmStatus = "failed";
+      if (generation === prewarmGeneration && error?.code !== "cancelled") {
+        workerStats.ready = false;
+        workerStats.workerStatus = error?.code === "unsupported" ? "unsupported" : "failed";
+        workerStats.prewarmStatus = workerStats.workerStatus;
         workerStats.timings.prewarmTotalMs = now() - startedAt;
-        post("prewarm-error", {
-          stats: workerStats,
-          error: normalizeError(error),
-          failures: candidateFailures,
+        post(error?.code === "unsupported" ? "worker-unsupported" : "prewarm-error", {
+          stats: workerStats, error: normalizeError(error), failures: candidateFailures,
         });
       }
       throw error;
     })
     .finally(() => {
-      prewarmPromise = null;
+      if (prewarmPromise === promise) prewarmPromise = null;
     });
-  return prewarmPromise;
+  prewarmPromise = promise;
+  return promise;
 }
 
 function deserializeSlots(slots) {
@@ -519,7 +437,7 @@ async function recognizeLegacyParty(slotInputs, loadedCandidates, requestId, con
     }
     ranked.sort((left, right) => right.score - left.score);
     const best = ranked[0];
-    const second = ranked.find((candidate) => candidate.pokemonName !== best?.pokemonName);
+    const second = ranked.find((candidate) => pokemonIconIdentity(candidate) !== pokemonIconIdentity(best));
     const margin = (best?.score || 0) - (second?.score || 0);
     const collision = best?.visualCollisionId || best?.runtimeVisualCollisionId;
     const matched = Boolean(
@@ -531,6 +449,8 @@ async function recognizeLegacyParty(slotInputs, loadedCandidates, requestId, con
     results.push({
       matched,
       pokemonName: matched ? best.pokemonName : "",
+      showdownId: matched ? best.showdownId || "" : "",
+      bestShowdownId: best?.showdownId || "",
       speciesKey: best?.speciesKey || "",
       bestId: best?.id || "",
       bestSource: best?.source || "",
@@ -546,6 +466,7 @@ async function recognizeLegacyParty(slotInputs, loadedCandidates, requestId, con
             : "",
       coarseTopCandidates: ranked.slice(0, 48).map((candidate) => ({
         pokemonName: candidate.pokemonName,
+        showdownId: candidate.showdownId || "",
         speciesKey: candidate.speciesKey,
         id: candidate.id,
         source: candidate.source,
@@ -553,6 +474,7 @@ async function recognizeLegacyParty(slotInputs, loadedCandidates, requestId, con
       })),
       refinedTopCandidates: ranked.slice(0, 12).map((candidate) => ({
         pokemonName: candidate.pokemonName,
+        showdownId: candidate.showdownId || "",
         speciesKey: candidate.speciesKey,
         id: candidate.id,
         source: candidate.source,
@@ -631,6 +553,7 @@ async function runRecognition(message) {
     if (error?.code === "cancelled" || error?.code === "unsupported") {
       post("recognition-cancelled", {
         requestId,
+        mode: message.mode || "new",
         reason: error.code,
         error: normalizeError(error),
       });
@@ -638,6 +561,7 @@ async function runRecognition(message) {
     }
     post("recognition-error", {
       requestId,
+      mode: message.mode || "new",
       error: normalizeError(error),
       stats: workerStats,
     });
@@ -648,9 +572,26 @@ async function runRecognition(message) {
 
 self.addEventListener("message", (event) => {
   const message = event.data || {};
+  if (message.type === "asset-response") {
+    const pending = pendingAssets.get(message.assetRequestId);
+    if (!pending) return;
+    pendingAssets.delete(message.assetRequestId);
+    if (pending.generation !== prewarmGeneration) pending.reject(Object.assign(new Error("prewarm cancelled"), { code: "cancelled" }));
+    else if (message.ok && message.buffer instanceof ArrayBuffer) pending.resolve(new Blob([message.buffer]));
+    else pending.reject(new Error(message.error || "Asset fetch failed"));
+    return;
+  }
   if (message.type === "init") {
     const initStartedAt = now();
-    manifest = message.manifest || null;
+    cancelPendingAssets();
+    requestGate.reset();
+    prewarmPromise = null;
+    successfulCandidates.clear();
+    remoteAssets = message.remoteAssets === true;
+    manifest = message.manifest ? {
+      ...message.manifest,
+      icons: (message.manifest.icons || []).map((entry) => ({ ...entry, pokemonName: entry.pokemonName || entry.name || entry.canonicalName || entry.showdownId || "" })),
+    } : null;
     matcherConfig = {
       ...DEFAULT_MATCHER_CONFIG,
       ...(message.config || {}),
@@ -682,8 +623,8 @@ self.addEventListener("message", (event) => {
     return;
   }
 
-  if (message.type === "prewarm") {
-    void ensurePrewarmed().catch(() => {});
+  if (message.type === "prewarm" || message.type === "retry-prewarm") {
+    void ensurePrewarmed({ retry: message.type === "retry-prewarm" }).catch(() => {});
     return;
   }
 

@@ -5,7 +5,9 @@ import {
   buildCandidateFeature,
   buildInputFeature,
   DEFAULT_MATCHER_CONFIG,
+  dedupeNormalizedPokemonIconCandidates,
   equalRgba,
+  estimateSharedBackground,
   fingerprintRgba,
   findAlphaBoundingBox,
   findForegroundBoundingBox,
@@ -581,7 +583,8 @@ test("noise and visual collisions are not accepted", async () => {
 });
 
 test("default thresholds remain conservative", () => {
-  assert.equal(POKEMON_ICON_MATCHER_VERSION, 5);
+  assert.equal(POKEMON_ICON_MATCHER_VERSION, 6);
+  assert.equal(DEFAULT_MATCHER_CONFIG.foreground.backgroundMode, "border");
   assert.equal(DEFAULT_MATCHER_CONFIG.confidence.scoreMin, 0.68);
   assert.ok(DEFAULT_MATCHER_CONFIG.confidence.marginMin >= 0.025);
   assert.equal(DEFAULT_MATCHER_CONFIG.refineAlternateInputVariantNameLimit, 1);
@@ -606,4 +609,60 @@ test("default thresholds remain conservative", () => {
     2,
   );
   assert.ok(DEFAULT_MATCHER_CONFIG.scoring.colorWeight <= 0.10);
+});
+
+test("Showdown IDs keep identically translated forms distinct and merge renamed templates", () => {
+  const ranking = groupTemplateScoresByPokemonName([
+    { id: "a1", showdownId: "taurospaldeaaqua", pokemonName: "ケンタロス", score: 0.91 },
+    { id: "a2", showdownId: "taurospaldeaaqua", pokemonName: "水ケンタロス", score: 0.90 },
+    { id: "b", showdownId: "taurospaldeablaze", pokemonName: "ケンタロス", score: 0.89 },
+  ]);
+  assert.equal(ranking.length, 2);
+  assert.equal(ranking[0].templates.length, 2);
+  assert.deepEqual(ranking.map((entry) => entry.showdownId), ["taurospaldeaaqua", "taurospaldeablaze"]);
+  const assignment = assignPartyCandidates([ranking.map((entry) => ({
+    ...entry.bestTemplate, speciesKey: "tauros", silhouette: 0.9, spill: 0, missing: 0,
+  }))]);
+  // A close different form is still an alternative even if its Japanese label is identical.
+  assert.ok(assignment.slotMargins[0] < 0.035);
+});
+
+test("border mode ignores shared background and shared mode remains explicit", () => {
+  const image = compositeCandidate(makeCandidate("plus", [220, 30, 50, 255]).normalized);
+  const shared = estimateSharedBackground(Array.from({ length: 6 }, () => image));
+  const border = buildInputFeature(image, shared);
+  assert.equal(border.background.source, "border");
+  assert.deepEqual(border.mask, buildInputFeature(image, null).mask);
+  const previous = buildInputFeature(image, shared, { foreground: { backgroundMode: "shared" } });
+  assert.equal(previous.background.source, "shared_median");
+});
+
+test("recognized results retain canonical IDs independently of display names", async () => {
+  const shapes = ["circle", "square", "diamond", "plus", "diagonal", "triangle"];
+  const candidates = shapes.map((shape, index) => candidateRecord(index, shape, [70 + index * 25, 150, 90, 255], {
+    showdownId: `canonical${index}`, pokemonName: "同じ表示名",
+  }));
+  const result = await recognizePokemonIconParty(candidates.map((entry) => compositeCandidate(entry.normalized)), candidates);
+  assert.deepEqual(result.results.map((entry) => entry.showdownId), candidates.map((entry) => entry.showdownId));
+  assert.deepEqual(result.assignment.showdownIds, candidates.map((entry) => entry.showdownId));
+  assert.ok(result.results.every((entry) => entry.refinedTopCandidates[0].showdownId));
+});
+
+test("shared candidate preparation rejects same-image different IDs without mutating retained assets", async () => {
+  const original = candidateRecord(1, "circle", [140, 90, 220, 255], { showdownId: "first" });
+  original.normalizedFingerprint = fingerprintRgba(original.normalizedRgba);
+  const second = { ...original, id: "second", showdownId: "second", pokemonName: "同じ画像の別フォーム" };
+  const prepared = dedupeNormalizedPokemonIconCandidates([original, second]);
+  assert.equal(prepared.candidates.length, 2);
+  assert.equal(prepared.collisions.length, 1);
+  assert.ok(prepared.candidates.every((entry) => entry.runtimeVisualCollisionId));
+  assert.ok(prepared.candidates.every((entry) => !entry.normalizedRgba));
+  assert.ok(original.normalizedRgba);
+  assert.equal(original.runtimeVisualCollisionId, null);
+  const slots = Array.from({ length: 6 }, () => compositeCandidate(original.normalized));
+  const result = await recognizePokemonIconParty(slots, prepared.candidates);
+  assert.ok(result.results.every((entry) => !entry.matched));
+  const next = dedupeNormalizedPokemonIconCandidates([{ ...original, runtimeVisualCollisionId: "old" }]);
+  assert.equal(next.candidates[0].runtimeVisualCollisionId, null);
+  assert.equal(next.collisions.length, 0);
 });

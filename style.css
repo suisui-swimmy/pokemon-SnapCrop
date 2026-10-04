@@ -1298,3 +1298,11 @@ html[data-theme="light"] .terminal-entry--system {
     min-height: 200px;
   }
 }
+
+/* Statistics remain in the terminal and wrap without widening the workspace. */
+.terminal-source-note { padding: 3px 10px; font-size: 11px; overflow-wrap: anywhere; }
+.terminal-source-note a, .terminal-statistics__source { color: inherit; text-decoration: underline; }
+.terminal-entry--statistics { min-width: 0; overflow-wrap: anywhere; }
+.terminal-statistics__heading { font-weight: 700; }
+.terminal-statistics__body { white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
+.terminal-statistics__source, .terminal-statistics__shared { font-size: 0.85em; }

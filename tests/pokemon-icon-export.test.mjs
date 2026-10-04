@@ -33,6 +33,7 @@ for (const debugMode of [false, true]) {
   test(`icon export pairs JSON and original PNG with debug=${debugMode}`, async () => {
     const h = harness(debugMode);
     h.state.references.enemy = { width: 1, height: 1, toDataURL: () => dataUrl };
+    h.state.pokemonIconRecognition.candidateStats = { assetFingerprints: [{ id: "pikachu", fingerprint: "normalized-test" }] };
     await h.exportPokemonIconDiagnosticBundle();
     assert.equal(h.downloads.length, 2);
     const [json, png] = h.downloads;
@@ -46,6 +47,7 @@ for (const debugMode of [false, true]) {
     assert.equal(bundle.provenance.association, "unlinked");
     assert.equal(bundle.export.exportedAt, bundle.capturedAt);
     assert.equal(bundle.referenceImage.dataUrl, dataUrl);
+    assert.deepEqual(bundle.remoteSource.assets, [{ id: "pikachu", fingerprint: "normalized-test" }]);
     assert.equal(bundle.slots.length, 6);
     assert.deepEqual(bundle.labels.pokemonNames, ["", "", "", "", "", ""]);
     assert.deepEqual(Buffer.from(await png.blob.arrayBuffer()), pngBytes);

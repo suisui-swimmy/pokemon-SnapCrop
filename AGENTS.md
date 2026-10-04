@@ -56,9 +56,10 @@
 - `pokemon-icon-matcher.js`, `pokemon-icon-worker.js`: ポケモンアイコンの照合処理と、画像読み込み・認識を実行する Worker
 - `assets/auto/*`  
   auto snap 用テンプレート画像
-- `data/pokemon-reference.csv`: ポケモン検索用データ
-- `data/pokemon-icon-reference.json`, `assets/pokemon-icons/`: 生成済みのアイコン参照データと、ブラウザ内の認識で使う画像
-- `tools/`: 検索データ・アイコン参照データの生成、アイコン検証、ブラウザ用ベンチマーク
+- `battle-api.js`: Pokémon Champions Battle Dataへの読み込み、取得内容の検証、通信数の制御
+- `battle-statistics.js`: 統計設定コマンド、候補、選出・手入力の統計表示
+- `data/pokemon-display-catalog.json`, `data/showdown-LICENSE.txt`: Showdown識別子・分類・表示名・翻訳を生成した同梱データと出典ライセンス
+- `tools/`: 表示辞書の生成・検証、公開ファイルの組み立て、ブラウザ用ベンチマーク。旧CSV・同梱アイコンの生成処理は過去検証用で、本番の生成経路ではない
 - `tests/`, `package.json`: Node テスト、検証用 fixture、実行コマンド
 - `manifest.webmanifest`, `sw.js`  
   PWA 関連
@@ -79,7 +80,7 @@
 - または GitHub Pages で確認する
 
 `file://` を前提に直さないこと。  
-`getUserMedia()`、CSV 読み込み、Service Worker の都合で、`localhost` または HTTPS 前提です。
+`getUserMedia()`、表示辞書の読み込み、Service Worker の都合で、`localhost` または HTTPS 前提です。
 
 ---
 
@@ -167,8 +168,9 @@
 ### 生成データ
 
 - 生成済みデータやアイコン画像を変更するときは、対応する生成元・生成処理から更新する。生成結果への手修正だけで済ませない。
-- `npm run generate:icons` は生成物を書き換えるコマンド。単なる検証として実行せず、依頼されたデータ更新に必要な場合に使う。
-- アイコン参照データの検証には `npm run validate:icons` を使う。
+- `npm run generate:catalog` は表示辞書を書き換えるコマンド。単なる検証には使わず、検証は `npm run validate:catalog` で行う。生成には所定のコミットに揃えた `others/pokemon-showdown` と `others/damage-calc-ja-layer`、Node.js 24以上が必要。
+- 外部提供の比較画像・生の統計・API一覧を配布物に同梱しない。取得は利用者のブラウザから行い、HTTPのキャッシュ指定に従う。Cache API、IndexedDB、localStorageへ独自に永続保存しない。
+- 公開物は `npm run build:pages` の許可リストから作成する。旧 `assets/pokemon-icons/`、旧CSV・アイコンJSON、`others/`、診断ログを公開対象へ戻さない。
 
 ---
 
@@ -178,7 +180,7 @@
 
 - 文書のみの変更: `git diff --check` と記述の整合性・参照先の確認を行う。アプリのテスト追加や実機検証は不要。
 - JavaScript のロジック変更: 変更したファイルの `node --check` と関連する Node テストを行う。全体の回帰確認が必要なら `npm test` を使う。
-- アイコンデータ・生成処理・認識処理の変更: 関連テストと `npm run validate:icons` を行う。認識結果に影響する場合は、対象サンプルと既存サンプルをベンチマークで比較し、誤採用が増えていないか確認する。
+- 表示辞書・生成処理・認識処理の変更: 関連テストと `npm run validate:catalog` を行う。認識結果に影響する場合は、対象サンプルと既存サンプルをベンチマークで比較し、誤採用が増えていないか確認する。配布内容の変更時は `npm run build:pages` と公開対象の検査も行う。
 - 表示・操作の変更: localhost のブラウザで関連する表示・操作・terminal のフォーカスを確認する。レイアウト変更では狭い幅、fullscreen、PWA への影響も確認する。
 - 意味のある検証を選び、軽微な変更に対して実装をなぞるだけのテストを増やさない。必要な確認が合格したら、新たな変更・失敗・具体的な懸念がある場合に限り、検証を拡大・再実行する。
 - 実機や必要なサンプルが使えない場合は、実行できる検証を進め、未確認の挙動・影響・次の確認方法を報告する。代替検証を実機確認済みと扱わない。
@@ -238,7 +240,7 @@
 ## やってはいけないこと
 
 - バックエンドを追加しない
-- 配布アプリの実行時構成を外部 API 依存にしない。開発時の公式資料参照まで禁止する意味ではない
+- 新たな外部API依存を無断で追加しない。ユーザー承認済みの例外として、名前推定の比較画像・候補一覧・バトル統計は Pokémon Champions Battle Data から実行時に取得する。通信失敗で映像・撮影・画像保持・選出番号判定を止めない。開発時の公式資料参照は妨げない
 - OCR を勝手に追加しない
 - 4:3 自動認識対応を勝手に広げない
 - terminal 導線を click-heavy UI に置き換えない

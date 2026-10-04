@@ -1,9 +1,11 @@
+import { createBattleApi } from "../battle-api.js";
 import {
   createBenchmarkEnvironment,
   createBenchmarkRunRecord,
+  createBenchmarkLabelResolver,
 } from "./pokemon-icon-benchmark-metadata.mjs";
 
-const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.6.7";
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.7.0";
 
 const elements = {
   files: document.getElementById("bundle-files"),
@@ -11,7 +13,8 @@ const elements = {
   templatesPerName: document.getElementById("templates-per-name"),
   scoreMin: document.getElementById("score-min"),
   marginMin: document.getElementById("margin-min"),
-  addSynthetic: document.getElementById("add-synthetic"),
+  retryCandidates: document.getElementById("retry-candidates"),
+  backgroundMode: document.getElementById("background-mode"),
   runCurrent: document.getElementById("run-current"),
   runBoth: document.getElementById("run-both"),
   saveLabeled: document.getElementById("save-labeled"),
@@ -34,27 +37,14 @@ const state = {
   visualCollisions: [],
   longTasks: [],
   manifestFetchMs: 0,
+  api: null,
+  catalog: null,
+  resolveLabel: () => ({ status: "unknown", showdownId: "" }),
 };
-const RECOGNITION_LEGEND_CLASSES = new Set([
-  "mythical",
-  "sublegendary",
-  "restricted",
-]);
-
 initialize();
 
 function isRecognitionCandidate(entry) {
-  if (entry?.isMega === true) {
-    return false;
-  }
-  return Boolean(
-    entry?.isRecognitionCandidate === true
-    || entry?.hasChampionsSource === true
-    || entry?.isChampionsCandidate === true
-    || entry?.sources?.includes("champions")
-    || entry?.isFinalEvolution === true
-    || RECOGNITION_LEGEND_CLASSES.has(entry?.legendClass)
-  );
+  return entry?.supported !== false && !entry?.isMega && entry?.isRecognitionCandidate !== false;
 }
 
 async function initialize() {
@@ -62,11 +52,13 @@ async function initialize() {
   observeLongTasks();
   try {
     const manifestStartedAt = performance.now();
-    const response = await fetch("../data/pokemon-icon-reference.json");
-    if (!response.ok) {
-      throw new Error(`manifest HTTP ${response.status}`);
-    }
-    const manifest = await response.json();
+    const response = await fetch("../data/pokemon-display-catalog.json");
+    if (!response.ok) throw new Error(`catalog HTTP ${response.status}`);
+    state.catalog = await response.json();
+    state.resolveLabel = createBenchmarkLabelResolver(state.catalog);
+    state.api = createBattleApi({ catalog: state.catalog });
+    const index = await state.api.loadIndex();
+    const manifest = { ...index, schemaVersion: 2 };
     state.manifestFetchMs = performance.now() - manifestStartedAt;
     const eligibleIcons = (manifest.icons || []).filter(isRecognitionCandidate);
     if (!eligibleIcons.length) {
@@ -96,19 +88,27 @@ async function initialize() {
       type: "init",
       manifest: recognitionManifest,
       prewarm: true,
+      remoteAssets: true,
     });
     setStatus(
       `認識候補 ${eligibleIcons.length}/${manifest.icons.length}件をprewarmしています…`,
     );
   } catch (error) {
     setStatus(`初期化に失敗しました: ${error.message}`, true);
+    syncControls();
   }
 }
 
 function bindEvents() {
   elements.files.addEventListener("change", handleBundleFiles);
-  elements.addSynthetic.addEventListener("click", () => {
-    void addSyntheticBundle();
+  elements.retryCandidates.addEventListener("click", () => {
+    if (!state.worker) {
+      window.location.reload();
+      return;
+    }
+    state.prewarmReady = false;
+    state.worker?.postMessage({ type: "retry-prewarm" });
+    syncControls();
   });
   elements.runCurrent.addEventListener("click", () => {
     void runBenchmarks(["new"]);
@@ -138,8 +138,19 @@ function observeLongTasks() {
 
 function handleWorkerMessage(event) {
   const message = event.data || {};
-  if (message.stats) {
-    state.candidateStats = message.stats;
+  if (message.stats) state.candidateStats = message.stats;
+  if (message.type === "asset-fetch") {
+    void state.api.fetchAsset(message.url).then((buffer) => {
+      state.worker.postMessage({ type: "asset-response", assetRequestId: message.assetRequestId, ok: true, buffer }, [buffer]);
+    }).catch((error) => {
+      state.worker.postMessage({ type: "asset-response", assetRequestId: message.assetRequestId, ok: false, error: error.message });
+    });
+    return;
+  }
+  if (message.type === "prewarm-start") {
+    state.prewarmReady = false;
+    setStatus("比較画像を準備しています…");
+    syncControls();
   }
   if (Array.isArray(message.failures)) {
     state.candidateFailures = message.failures;
@@ -160,13 +171,15 @@ function handleWorkerMessage(event) {
     return;
   }
   if (message.type === "prewarm-complete") {
-    state.prewarmReady = true;
+    state.prewarmReady = message.stats?.ready === true;
     setStatus(`Worker ready: ${message.stats?.loadedCount || 0} candidates`);
     syncControls();
     renderCandidateStatus();
     return;
   }
   if (["worker-unsupported", "prewarm-error"].includes(message.type)) {
+    state.prewarmReady = false;
+    syncControls();
     setStatus(`Workerを準備できませんでした: ${message.error || message.type}`, true);
     renderCandidateStatus();
     return;
@@ -220,126 +233,6 @@ async function handleBundleFiles(event) {
   setStatus(`${loaded.length} bundleを読み込みました。ラベルを確認してbenchmarkを実行できます。`);
 }
 
-async function addSyntheticBundle() {
-  if (!state.manifest?.icons?.length) {
-    return;
-  }
-  setBusy(true);
-  try {
-    const selected = [];
-    const seenNames = new Set();
-    const seenSpecies = new Set();
-    for (const icon of state.manifest.icons) {
-      if (
-        seenNames.has(icon.pokemonName)
-        || seenSpecies.has(icon.speciesKey)
-        || icon.visualCollisionId
-      ) {
-        continue;
-      }
-      selected.push(icon);
-      seenNames.add(icon.pokemonName);
-      seenSpecies.add(icon.speciesKey);
-      if (selected.length === 6) {
-        break;
-      }
-    }
-    if (selected.length !== 6) {
-      throw new Error("合成fixture用の重複しない6候補を選べませんでした。");
-    }
-    const slots = await Promise.all(selected.map(async (icon, index) => ({
-      index,
-      label: icon.pokemonName,
-      speciesKey: icon.speciesKey,
-      templateId: icon.id,
-      dataUrl: await renderSyntheticSlot(icon, index),
-    })));
-    const bundle = {
-      kind: "pokemon-snapcrop-icon-diagnostic",
-      schemaVersion: 1,
-      capturedAt: new Date().toISOString(),
-      source: "benchmark-synthetic-fixture",
-      labels: {
-        pokemonNames: selected.map((icon) => icon.pokemonName),
-      },
-      settings: {
-        inputWidth: 114,
-        inputHeight: 114,
-        note: "Candidate assets composited on a shared noisy background for deterministic browser smoke testing.",
-      },
-      slots,
-    };
-    state.bundles.push({
-      fileName: `synthetic-${state.bundles.length + 1}.json`,
-      bundle,
-      labels: getBundleLabels(bundle),
-      runs: {},
-    });
-    renderBundles();
-    renderMetrics();
-    syncControls();
-    setStatus("6枠の合成fixtureを追加しました。current / legacy比較を実行できます。");
-  } catch (error) {
-    setStatus(`合成fixtureの作成に失敗しました: ${error.message}`, true);
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function renderSyntheticSlot(icon, slotIndex) {
-  const image = await loadImage(new URL(
-    `../${String(icon.path).replace(/^\.\//u, "")}`,
-    window.location.href,
-  ).href);
-  const canvas = document.createElement("canvas");
-  canvas.width = 114;
-  canvas.height = 114;
-  const context = canvas.getContext("2d");
-  const background = context.createLinearGradient(0, 0, 114, 114);
-  background.addColorStop(0, "#263142");
-  background.addColorStop(1, "#121923");
-  context.fillStyle = background;
-  context.fillRect(0, 0, 114, 114);
-  const random = createDeterministicRandom(0x51a7 + slotIndex);
-  for (let index = 0; index < 90; index += 1) {
-    const value = 20 + Math.floor(random() * 25);
-    context.fillStyle = `rgba(${value}, ${value + 5}, ${value + 12}, 0.15)`;
-    context.fillRect(Math.floor(random() * 114), Math.floor(random() * 114), 2, 2);
-  }
-  const scale = 0.78 + ((slotIndex % 3) * 0.02);
-  const maxSide = 86 * scale;
-  const imageScale = Math.min(maxSide / image.naturalWidth, maxSide / image.naturalHeight);
-  const width = image.naturalWidth * imageScale;
-  const height = image.naturalHeight * imageScale;
-  const offsetX = ((slotIndex % 2) * 2) - 1;
-  const offsetY = (((slotIndex + 1) % 3) - 1) * 1.5;
-  context.drawImage(
-    image,
-    ((114 - width) / 2) + offsetX,
-    ((114 - height) / 2) + offsetY,
-    width,
-    height,
-  );
-  return canvas.toDataURL("image/png");
-}
-
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`画像を読み込めませんでした: ${url}`));
-    image.src = url;
-  });
-}
-
-function createDeterministicRandom(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
-    return value / 0x100000000;
-  };
-}
-
 function validateBundle(bundle) {
   if (bundle?.kind !== "pokemon-snapcrop-icon-diagnostic") {
     throw new Error("pokemon-SnapCropのicon diagnostic bundleではありません。");
@@ -383,15 +276,25 @@ function renderBundles() {
       const input = document.createElement("input");
       input.value = entry.labels[slotIndex] || "";
       input.placeholder = "正解pokemonName";
+      const labelState = document.createElement("small");
+      const updateLabelState = () => {
+        const resolution = state.resolveLabel(input.value);
+        labelState.textContent = !input.value ? "正解未入力"
+          : resolution.status === "resolved" ? `ID: ${resolution.showdownId}`
+            : resolution.status === "ambiguous" ? "同名の候補あり：集計対象外。Showdown IDを入力してください。"
+              : "名称対応なし：集計対象外。Showdown IDを確認してください。";
+      };
+      updateLabelState();
       input.dataset.bundleIndex = String(bundleIndex);
       input.dataset.slotIndex = String(slotIndex);
       input.addEventListener("input", () => {
         entry.labels[slotIndex] = input.value.trim();
+        updateLabelState();
         renderMetrics();
       });
       const result = document.createElement("small");
       result.textContent = formatSlotRuns(entry, slotIndex);
-      container.append(image, input, result);
+      container.append(image, input, labelState, result);
       slots.append(container);
     });
     card.append(slots);
@@ -425,6 +328,7 @@ function formatSlotRuns(entry, slotIndex) {
 
 function getMatcherConfig() {
   return {
+    foreground: { backgroundMode: elements.backgroundMode.value === "shared" ? "shared" : "border" },
     coarseNameLimit: Number(elements.coarseLimit.value) || 24,
     templatesPerName: Number(elements.templatesPerName.value) || 2,
     confidence: {
@@ -534,26 +438,28 @@ function calculateMetrics(mode) {
         bundle: entry.fileName,
         slot: slotIndex + 1,
         label: entry.labels[slotIndex] || "",
+        labelResolution: state.resolveLabel(entry.labels[slotIndex] || ""),
         result,
         workerTiming: message.workerTiming,
         totalMs: message.result.timings?.totalMs || 0,
       });
     });
   });
-  const labeled = rows.filter((row) => row.label);
+  const labeled = rows.filter((row) => row.labelResolution.status === "resolved");
+  const matchesLabel = (candidate, row) => candidate?.showdownId === row.labelResolution.showdownId;
   const accepted = labeled.filter((row) => row.result.matched);
-  const acceptedCorrect = accepted.filter((row) => row.result.pokemonName === row.label);
-  const acceptedWrong = accepted.filter((row) => row.result.pokemonName !== row.label);
+  const acceptedCorrect = accepted.filter((row) => matchesLabel(row.result, row));
+  const acceptedWrong = accepted.filter((row) => !matchesLabel(row.result, row));
   const refinedTop1Correct = labeled.filter(
-    (row) => row.result.refinedTopCandidates?.[0]?.pokemonName === row.label,
+    (row) => matchesLabel(row.result.refinedTopCandidates?.[0], row),
   ).length;
   const coarseTop1Correct = labeled.filter(
-    (row) => row.result.coarseTopCandidates?.[0]?.pokemonName === row.label,
+    (row) => matchesLabel(row.result.coarseTopCandidates?.[0], row),
   ).length;
   const recall = (limit) => labeled.filter(
     (row) => row.result.coarseTopCandidates
       ?.slice(0, limit)
-      .some((candidate) => candidate.pokemonName === row.label),
+      .some((candidate) => matchesLabel(candidate, row)),
   ).length;
   const rejectionReasons = {};
   rows.filter((row) => !row.result.matched).forEach((row) => {
@@ -593,6 +499,8 @@ function calculateMetrics(mode) {
     mode,
     rows: rows.length,
     labeled: labeled.length,
+    ambiguousLabels: rows.filter((row) => row.labelResolution.status === "ambiguous").map(({ bundle, slot, label, labelResolution }) => ({ bundle, slot, label, candidates: labelResolution.candidates })),
+    unknownLabels: rows.filter((row) => row.label && row.labelResolution.status === "unknown").map(({ bundle, slot, label }) => ({ bundle, slot, label })),
     rawCandidateCount: state.candidateStats?.rawManifestCount || 0,
     canonicalCandidateCount: state.candidateStats?.canonicalManifestCount || 0,
     loadedCandidateCount: state.candidateStats?.loadedCount || 0,
@@ -722,16 +630,16 @@ function renderMetrics() {
       runtimeDuplicates: state.candidateStats?.runtimeNormalizedDuplicateCount || 0,
       collisions: state.candidateStats?.runtimeVisualCollisionGroupCount || 0,
       loadFailures: state.candidateFailures.length,
-      champions: state.candidateStats?.championsRawCount || 0,
-      sv: state.candidateStats?.svRawCount || 0,
-      supplemental: state.candidateStats?.supplementalRawCount || 0,
-      svOnlyNames: state.candidateStats?.svOnlyPokemonNameCount || 0,
+      providerVersion: state.manifest?.dataVersion || null,
+      assetFingerprints: state.candidateStats?.assetFingerprints || [],
     },
     manifestFetchMs: state.manifestFetchMs,
     mainThreadBlocking: state.lastMainThreadBlocking || null,
     modes: modes.map(calculateMetrics).map((metrics) => ({
       mode: metrics.mode,
       rejectionReasons: metrics.rejectionReasons,
+      ambiguousLabels: metrics.ambiguousLabels,
+      unknownLabels: metrics.unknownLabels,
       confusionPairs: metrics.confusionPairs,
       confidenceRoutes: metrics.confidenceRoutes,
       fallback: metrics.fallback,
@@ -756,6 +664,7 @@ function renderCandidateStatus() {
   const values = [
     ["app version", BENCHMARK_APP_VERSION],
     ["manifest schema", state.manifest?.schemaVersion || 0],
+    ["provider version", state.manifest?.dataVersion || "不明"],
     ["raw", stats.rawManifestCount],
     ["canonical", stats.canonicalManifestCount],
     ["loaded", stats.loadedCount],
@@ -766,10 +675,6 @@ function renderCandidateStatus() {
     ["load failures", stats.loadFailureCount],
     ["unique pokemonName", stats.uniquePokemonNameCount],
     ["unique speciesKey", stats.uniqueSpeciesKeyCount],
-    ["Champions source raw", stats.championsRawCount],
-    ["SV raw", stats.svRawCount],
-    ["Supplemental raw", stats.supplementalRawCount],
-    ["SV-only pokemonName", stats.svOnlyPokemonNameCount],
     ["manifest fetch + parse", formatMs(state.manifestFetchMs)],
     ["candidate fetch (sum)", formatMs(stats.timings?.candidateFetchMs)],
     ["candidate decode (sum)", formatMs(stats.timings?.candidateDecodeMs)],
@@ -835,7 +740,7 @@ function setBusy(busy) {
   elements.runCurrent.disabled = busy || !state.prewarmReady || !state.bundles.length;
   elements.runBoth.disabled = busy || !state.prewarmReady || !state.bundles.length;
   elements.saveLabeled.disabled = busy || !state.bundles.length;
-  elements.addSynthetic.disabled = busy || !state.manifest || !state.prewarmReady;
+  elements.retryCandidates.disabled = busy || state.candidateStats?.prewarmStatus === "loading";
   elements.files.disabled = busy;
 }
 

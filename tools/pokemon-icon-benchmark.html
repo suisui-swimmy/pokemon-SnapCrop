@@ -119,6 +119,7 @@
     <h1>Pokémon Icon Matcher Benchmark</h1>
     <p><code>debug icon export</code> で保存したJSONを読み込み、ラベルを付けてcurrent / legacyを同じROIで比較します。</p>
 
+    <p>比較画像は <a href="https://championsbattledata.com/" target="_blank" rel="noopener noreferrer">Pokemon Champions Battle Data</a> から一時取得します。全候補の取得完了が必要です。提供元の変更により旧ログ採取時の結果を完全再現できない場合があります。</p>
     <section>
       <div class="controls">
         <label>
@@ -141,7 +142,8 @@
           margin min
           <input id="margin-min" type="number" min="0" max="1" step="0.005" value="0.035">
         </label>
-        <button id="add-synthetic" type="button" disabled>合成fixtureを追加</button>
+        <label>背景推定<select id="background-mode"><option value="border">各枠の縁（現行）</option><option value="shared">6枠共通（旧方式）</option></select></label>
+        <button id="retry-candidates" type="button" disabled>画像取得を再試行</button>
         <button id="run-current" type="button" disabled>currentを実行</button>
         <button id="run-both" type="button" disabled>current / legacy比較</button>
         <button id="save-labeled" type="button" disabled>ラベル付きbundleを保存</button>

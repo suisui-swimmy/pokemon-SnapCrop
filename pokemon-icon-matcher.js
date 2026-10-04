@@ -1,4 +1,9 @@
-export const POKEMON_ICON_MATCHER_VERSION = 5;
+export const POKEMON_ICON_MATCHER_VERSION = 6;
+
+// Legacy diagnostic fixtures have display names but no canonical ID.
+export function pokemonIconIdentity(candidate) {
+  return candidate?.showdownId || candidate?.pokemonName || candidate?.id || "";
+}
 
 export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   sampleWidth: 64,
@@ -6,6 +11,7 @@ export const DEFAULT_MATCHER_CONFIG = Object.freeze({
   alphaThreshold: 24,
   candidatePaddingRatio: 0.18,
   foreground: {
+    backgroundMode: "border",
     borderRatio: 0.08,
     sharedBackgroundReliabilityMin: 0.42,
     distanceFloor: 14,
@@ -394,6 +400,110 @@ export function equalRgba(left, right) {
     }
   }
   return true;
+}
+
+function compareIconCandidatePriority(left, right) {
+  const priority = { "champions-battle-data": 0, champions: 0, sv: 1, supplemental: 2 };
+  const difference = (priority[left.source] ?? 99) - (priority[right.source] ?? 99);
+  return difference || String(left.id || "").localeCompare(String(right.id || ""), "en");
+}
+
+function splitExactNormalizedGroups(fingerprintEntries) {
+  const exactGroups = [];
+  fingerprintEntries.forEach((entry) => {
+    const matching = exactGroups.find((group) => equalRgba(group[0].normalizedRgba, entry.normalizedRgba));
+    if (matching) {
+      matching.push(entry);
+    } else {
+      exactGroups.push([entry]);
+    }
+  });
+  return exactGroups;
+}
+
+export function dedupeNormalizedPokemonIconCandidates(loadedCandidates) {
+  const fingerprintGroups = new Map();
+  loadedCandidates.forEach((candidate) => {
+    const group = fingerprintGroups.get(candidate.normalizedFingerprint) || [];
+    group.push(candidate);
+    fingerprintGroups.set(candidate.normalizedFingerprint, group);
+  });
+  const deduped = [];
+  const merged = [];
+  const collisions = [];
+
+  [...fingerprintGroups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, "en"))
+    .forEach(([fingerprint, fingerprintEntries]) => {
+      splitExactNormalizedGroups(fingerprintEntries).forEach((exactGroup, exactIndex) => {
+        const byName = new Map();
+        exactGroup.forEach((entry) => {
+          const key = pokemonIconIdentity(entry);
+          const entries = byName.get(key) || [];
+          entries.push(entry);
+          byName.set(key, entries);
+        });
+        const identities = [...byName.keys()].sort();
+        const pokemonNames = [...new Set(exactGroup.map((entry) => entry.pokemonName))];
+        const collisionId = identities.length > 1
+          ? `runtime:${fingerprint}:${exactIndex}`
+          : "";
+        if (collisionId) {
+          collisions.push({
+            id: collisionId,
+            kind: "normalized_rgba",
+            fingerprint,
+            pokemonNames,
+            showdownIds: [...new Set(exactGroup.map((entry) => entry.showdownId).filter(Boolean))],
+            entries: exactGroup.map((entry) => ({
+              id: entry.id,
+              pokemonName: entry.pokemonName,
+              showdownId: entry.showdownId || "",
+              speciesKey: entry.speciesKey,
+              source: entry.source,
+              path: entry.path,
+            })),
+          });
+        }
+        [...byName.entries()]
+          .sort(([left], [right]) => left.localeCompare(right, "ja"))
+          .forEach(([, sameNameEntries]) => {
+            const ordered = sameNameEntries.slice().sort(compareIconCandidatePriority);
+            const canonical = ordered[0];
+            const runtimeMergedIds = ordered.flatMap((entry) => entry.mergedIds || [entry.id]);
+            const runtimeSources = [...new Set(ordered.flatMap((entry) => entry.sources || [entry.source]))]
+              .sort((left, right) => compareIconCandidatePriority({ source: left }, { source: right }));
+            deduped.push({
+              ...canonical,
+              runtimeMergedIds,
+              runtimeSources,
+              runtimeVisualCollisionId: collisionId || null,
+            });
+            ordered.slice(1).forEach((entry) => {
+              merged.push({
+                id: entry.id,
+                pokemonName: entry.pokemonName,
+                showdownId: entry.showdownId || "",
+                speciesKey: entry.speciesKey,
+                source: entry.source,
+                path: entry.path,
+                reason: "normalized_rgba_duplicate",
+                canonicalId: canonical.id,
+                fingerprint,
+              });
+            });
+          });
+      });
+    });
+
+  deduped.forEach((candidate) => {
+    delete candidate.normalizedRgba;
+  });
+  return {
+    candidates: deduped,
+    merged,
+    collisions,
+  };
 }
 
 function computeEdge(gray, width, height) {
@@ -947,6 +1057,7 @@ function normalizeInputRgbaAndMask(input, mask, config) {
 export function buildInputFeature(input, sharedBackground = null, configOverride = {}) {
   assertRgbaInput(input);
   const config = mergeConfig(DEFAULT_MATCHER_CONFIG, configOverride);
+  if (config.foreground.backgroundMode !== "shared") sharedBackground = null;
   const resized = input.width === config.sampleWidth && input.height === config.sampleHeight
     ? {
       data: new Uint8ClampedArray(input.data),
@@ -1352,6 +1463,7 @@ function compareTemplateResults(left, right) {
     return scoreDifference;
   }
   const sourcePriority = {
+    "champions-battle-data": 0,
     champions: 0,
     sv: 1,
     supplemental: 2,
@@ -1370,15 +1482,17 @@ export function groupTemplateScoresByPokemonName(templateResults, options = {}) 
   const templatesPerName = Number(options.templatesPerName) || DEFAULT_MATCHER_CONFIG.templatesPerName;
   const grouped = new Map();
   templateResults.forEach((result) => {
-    const entries = grouped.get(result.pokemonName) || [];
+    const key = pokemonIconIdentity(result);
+    const entries = grouped.get(key) || [];
     entries.push(result);
-    grouped.set(result.pokemonName, entries);
+    grouped.set(key, entries);
   });
   return [...grouped.entries()]
-    .map(([pokemonName, entries]) => {
+    .map(([, entries]) => {
       const templates = entries.slice().sort(compareTemplateResults).slice(0, templatesPerName);
       return {
-        pokemonName,
+        pokemonName: templates[0]?.pokemonName || "",
+        showdownId: templates[0]?.showdownId || "",
         speciesKey: templates[0]?.speciesKey || "",
         score: templates[0]?.score || 0,
         bestTemplate: templates[0] || null,
@@ -1425,6 +1539,7 @@ function simplifyCandidateResult(result) {
   }
   return {
     pokemonName: result.pokemonName,
+    showdownId: result.showdownId || "",
     speciesKey: result.speciesKey,
     id: result.id,
     source: result.source,
@@ -1683,9 +1798,10 @@ function mergeRefinedRankings(rankings, limit) {
     if (!candidate?.pokemonName) {
       return;
     }
-    const current = byPokemonName.get(candidate.pokemonName);
+    const key = pokemonIconIdentity(candidate);
+    const current = byPokemonName.get(key);
     if (!current || compareTemplateResults(candidate, current) < 0) {
-      byPokemonName.set(candidate.pokemonName, candidate);
+      byPokemonName.set(key, candidate);
     }
   });
   return [...byPokemonName.values()]
@@ -1694,7 +1810,7 @@ function mergeRefinedRankings(rankings, limit) {
 }
 
 function assignmentKey(choices) {
-  return choices.map((choice) => choice?.pokemonName || "-").join("|");
+  return choices.map((choice) => pokemonIconIdentity(choice) || "-").join("|");
 }
 
 export function assignPartyCandidates(slotRankings, configOverride = {}) {
@@ -1711,7 +1827,7 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
       .filter((candidate) => !candidate.visualCollisionId && !candidate.runtimeVisualCollisionId)
       .map((candidate) => {
         const alternative = ranking.find(
-          (entry) => entry.pokemonName !== candidate.pokemonName,
+          (entry) => pokemonIconIdentity(entry) !== pokemonIconIdentity(candidate),
         );
         const localMargin = candidate.score - (alternative?.score || 0);
         const stableLowScore = candidate.score < config.confidence.scoreMin
@@ -1782,9 +1898,9 @@ export function assignPartyCandidates(slotRankings, configOverride = {}) {
   };
   const second = beam.find((state) => assignmentKey(state.choices) !== assignmentKey(best.choices)) || null;
   const slotMargins = best.choices.map((choice, slotIndex) => {
-    const pokemonName = choice?.pokemonName || "";
+    const identity = pokemonIconIdentity(choice);
     const alternative = beam.find(
-      (state) => (state.choices[slotIndex]?.pokemonName || "") !== pokemonName,
+      (state) => pokemonIconIdentity(state.choices[slotIndex]) !== identity,
     );
     return alternative ? best.totalScore - alternative.totalScore : best.totalScore;
   });
@@ -1935,10 +2051,10 @@ function evaluatePartyRankings(
     const selected = assignment.best.choices[slotIndex] || null;
     const bestLocal = ranking[0] || null;
     const selectedResult = selected?.pokemonName
-      ? ranking.find((candidate) => candidate.pokemonName === selected.pokemonName) || selected
+      ? ranking.find((candidate) => pokemonIconIdentity(candidate) === pokemonIconIdentity(selected)) || selected
       : null;
     const alternative = ranking.find(
-      (candidate) => candidate.pokemonName !== (selectedResult?.pokemonName || bestLocal?.pokemonName),
+      (candidate) => pokemonIconIdentity(candidate) !== pokemonIconIdentity(selectedResult || bestLocal),
     );
     const localMargin = selectedResult
       ? selectedResult.score - (alternative?.score || 0)
@@ -2019,7 +2135,9 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
       : resizeRgba(input, config.sampleWidth, config.sampleHeight)
   ));
   const sharedBackgroundStartedAt = performanceNow();
-  const sharedBackground = estimateSharedBackground(resizedInputs, config);
+  const sharedBackground = config.foreground.backgroundMode === "shared"
+    ? estimateSharedBackground(resizedInputs, config)
+    : null;
   const inputFeatures = resizedInputs.map((input) => buildInputFeature(input, sharedBackground, config));
   const foregroundMs = performanceNow() - sharedBackgroundStartedAt;
 
@@ -2197,6 +2315,8 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
     return {
       matched,
       pokemonName: matched ? display.pokemonName : "",
+      showdownId: matched ? display.showdownId || "" : "",
+      bestShowdownId: display?.showdownId || "",
       bestPokemonName: display?.pokemonName || "",
       speciesKey: display?.speciesKey || "",
       bestId: display?.id || "",
@@ -2275,6 +2395,7 @@ export async function recognizePokemonIconParty(slotInputs, candidates, options 
     },
     assignment: {
       pokemonNames: assignment.best.choices.map((choice) => choice?.pokemonName || ""),
+      showdownIds: assignment.best.choices.map((choice) => choice?.showdownId || ""),
       speciesKeys: assignment.best.choices.map((choice) => choice?.speciesKey || ""),
       score: assignment.best.totalScore,
       secondScore: assignment.second?.totalScore || 0,

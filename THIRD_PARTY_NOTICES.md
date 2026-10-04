@@ -1,8 +1,23 @@
 # Third-party notices
 
+## Pokémon Champions Battle Data
+
+比較用のポケモン画像、画像とShowdown IDの対応、ルール別バトル統計は [Pokémon Champions Battle Data](https://championsbattledata.com/) から提供されています。
+
+SnapCropは利用者のブラウザから必要なデータを直接読み込み、提供元のHTTPキャッシュ指定に従います。これらの候補PNG、生のバトル統計、API一覧をGitHub Pages配布物へ同梱せず、独自の永続ミラーを作りません。ゲーム映像の撮影画像はこの提供画像と別に扱います。
+
+- [API guide](https://championsbattledata.com/api_guide)
+- [API usage rules](https://championsbattledata.com/api-rules/)
+
+ポケモンの画像・名称等の権利は各権利者に帰属します。SnapCropのMITライセンスは、それらの権利を付与するものではありません。
+
+## damage-calc-ja-layer
+
+同梱の `data/pokemon-display-catalog.json` に含む表示名・別名・技・特性・持ち物・性格の日本語対応は、[damage-calc-ja-layer](https://github.com/suisui-swimmy/damage-calc-ja-layer) の表示APIと辞書から生成しています。画像やアートワークは取り込みません。参照コミット、翻訳の確認状態、生成元のハッシュは同JSONの `provenance` に記録します。未確認の翻訳は元の英語名を表示します。
+
 ## Pokémon Showdown
 
-`data/pokemon-icon-reference.json`の進化、フォーム、メガシンカ、伝説区分の生成には、[Pokémon Showdown](https://github.com/smogon/pokemon-showdown)の`data/pokedex.ts`および`data/tags.ts`を使用しています。
+`data/pokemon-display-catalog.json` の識別子、進化、フォーム、メガシンカ、伝説区分の生成には、[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) の `data/pokedex.ts` および `data/tags.ts` を使用しています。参照コミットとファイルハッシュは同JSONに記録し、元のライセンス文を [data/showdown-LICENSE.txt](data/showdown-LICENSE.txt) として同梱します。
 
 The MIT License (MIT)
 

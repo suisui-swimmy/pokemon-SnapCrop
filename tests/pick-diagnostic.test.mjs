@@ -43,13 +43,13 @@ function harness({ logging = true } = {}) {
     elements.video = {videoWidth: 1920, videoHeight: 1080};
     globalThis.api = {state, elements, startMatchLog, finishMatchLog, formatMatchLog, createDiagnosticIdentity,
       updatePickOverlayDetection, resetPickOverlayState, setPickOverlayOrderSlot, clearPickOverlaySlot,
-      flushPickOverlayPokemonResults, recordPickDisplayDiagnostic, recordPickDiagnosticEvent,
+      flushPickOverlayPokemonResults, recordPickDisplayDiagnostic, recordPickDiagnosticEvent, recordStatisticsDiagnostic,
       recordMatchLogFrame, clearReferenceImages, PICK_DIAGNOSTIC_CONFIG, PICK_DIAGNOSTIC_REASONS};
   })();`), context);
   const api = context.api;
   api.state.streamInfo = { width: 1920, height: 1080, isSixteenByNine: true };
   api.state.mode = "ready";
-  api.state.csvReady = true;
+  api.state.catalogReady = true;
   api.startMatchLog(clock.now, {});
   const match = api.state.matchLog.current;
   if (!logging) match.pickDiagnostic = null;
@@ -217,11 +217,15 @@ test("display wait transitions deduplicate and stale results cannot contaminate 
   assert.equal(h.diagnostic.reasons.recognition_wait.count, 1);
   recognition.resultsByRefIndex[0] = { matched: false };
   h.flushPickOverlayPokemonResults(); assert.equal(h.diagnostic.reasons.name_unresolved.count, 1);
-  h.state.csvReady = false; h.flushPickOverlayPokemonResults(); assert.equal(h.diagnostic.reasons.data_wait.count, 1);
-  h.state.csvReady = true; recognition.resultsByRefIndex[0] = { matched: true, pokemonName: "ピカチュウ" };
-  h.flushPickOverlayPokemonResults(); assert.equal(h.diagnostic.reasons.data_missing.count, 1);
-  h.state.pokemonMap.set("ピカチュウ", { name: "ピカチュウ" });
-  h.flushPickOverlayPokemonResults(); h.flushPickOverlayPokemonResults();
+  h.state.catalogReady = false; h.flushPickOverlayPokemonResults(); assert.equal(h.diagnostic.reasons.data_wait.count, 1);
+  h.state.catalogReady = true; recognition.resultsByRefIndex[0] = { matched: true, showdownId: "pikachu", pokemonName: "ピカチュウ" };
+  const event = { captureId: h.state.matchLog.references.enemy.captureId, matchId: h.match.diagnostic.matchId,
+    refIndex: 0, formId: "pikachu", statsId: "pikachu", rule: "Doubles" };
+  h.recordStatisticsDiagnostic({ ...event, state: "loading" });
+  assert.equal(h.diagnostic.reasons.stats_wait.count, 1);
+  h.recordStatisticsDiagnostic({ ...event, state: "absent" });
+  assert.equal(h.diagnostic.reasons.stats_absent.count, 1);
+  h.recordStatisticsDiagnostic({ ...event, state: "ready" });
   assert.equal(h.diagnostic.reasons.emitted.count, 1);
   h.finishMatchLog("completed", "WIN", h.clock.now);
   const frozen = JSON.stringify(h.match.pickDiagnostic);

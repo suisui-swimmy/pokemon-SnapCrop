@@ -1,4 +1,4 @@
-const CACHE_NAME = "pokemon-snapcrop-v1.6.7";
+const CACHE_NAME = "pokemon-snapcrop-v1.7.0";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,8 @@ const APP_SHELL = [
   "./app.js",
   "./pokemon-icon-matcher.js",
   "./pokemon-icon-worker.js",
+  "./battle-api.js",
+  "./battle-statistics.js",
   "./manifest.webmanifest",
   "./assets/ui/info.svg",
   "./assets/ui/reload.svg",
@@ -16,14 +18,19 @@ const APP_SHELL = [
   "./assets/ui/light-mode.svg",
   "./assets/ui/volume-2.svg",
   "./assets/ui/volume-x.svg",
-  "./data/pokemon-reference.csv",
-  "./data/pokemon-icon-reference.json",
+  "./data/pokemon-display-catalog.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
 const APP_SHELL_URLS = new Set(
   APP_SHELL.map((entry) => new URL(entry, self.registration.scope).href),
 );
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "remote-cache-policy") {
+    event.ports?.[0]?.postMessage({ cacheName: CACHE_NAME, externalCaching: false });
+  }
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -37,7 +44,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key.startsWith("pokemon-snapcrop-") && key !== CACHE_NAME)
           .map((key) => caches.delete(key)),
       ),
     ),
@@ -47,7 +54,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET") {
+  if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) {
     return;
   }
 
@@ -85,7 +92,7 @@ async function cacheFirst(request) {
 }
 
 async function cacheResponse(request, response) {
-  if (!response || response.status !== 200 || request.url.startsWith("chrome-extension://")) {
+  if (!response || response.status !== 200 || new URL(request.url).origin !== self.location.origin) {
     return;
   }
 
