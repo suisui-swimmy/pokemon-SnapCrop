@@ -93,13 +93,13 @@ test("statistics preserve rank and rates, filter then limit, and use English for
   ]);
 });
 
-test("automatic display waits then updates same block with source, date and compact provenance diagnostic", async () => {
+test("automatic display updates the same block with date and diagnostics but no repeated credit", async () => {
   const h = harness(); h.select(); await settle();
   assert.equal(h.entries.length, 1); assert.match(h.entries[0].textContent, /読み込み中/u);
   h.calls[0].resolve(ready()); await settle();
   assert.match(h.entries[0].textContent, /ドドゲザン［選出1／ダブル／2026-10-04］/u);
   assert.match(h.entries[0].textContent, /技 \| ドゲザン 97.4%/u);
-  assert.match(h.entries[0].textContent, /出典: Pokémon Champions Battle Data/u);
+  assert.doesNotMatch(h.entries[0].textContent, /出典:|Pokémon Champions Battle Data/u);
   assert.match(h.entries[0].textContent, /取得日時: 2026-10-04T00:00:00Z/u);
   const diagnostic = h.diagnostics.at(-1);
   assert.equal(diagnostic.state, "ready"); assert.equal(diagnostic.captureId, "capture-1"); assert.equal(diagnostic.matchId, "match-1");

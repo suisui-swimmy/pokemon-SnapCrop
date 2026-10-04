@@ -54,7 +54,7 @@ function workerHarness() {
   const context = vm.createContext({ URL, Set, Promise,
     self: { registration: { scope: "https://example.test/pokemon-SnapCrop/" }, location: { origin: "https://example.test" },
       addEventListener: (name, callback) => listeners.set(name, callback), clients: { claim() {} }, skipWaiting() {} },
-    caches: { keys: async () => ["pokemon-snapcrop-v1.6.7", "pokemon-snapcrop-v1.7.0", "another-app"], delete: async (key) => removed.push(key),
+    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.2", "another-app"], delete: async (key) => removed.push(key),
       match: async () => null, open: async () => ({ addAll: async () => {}, put: async (request) => puts.push(request.url) }) },
     fetch: async (request) => { fetched.push(request.url); return response; },
   });
@@ -71,7 +71,7 @@ test("Service Worker bypasses all external requests and only expires SnapCrop ca
   await h.context.cacheResponse({ url: "https://championsbattledata.com/api/pokemon" }, h.response);
   assert.deepEqual(h.puts, []);
   let activation; h.listeners.get("activate")({ waitUntil(promise) { activation = promise; } }); await activation;
-  assert.deepEqual(h.removed, ["pokemon-snapcrop-v1.6.7"]);
+  assert.deepEqual(h.removed, ["pokemon-snapcrop-v1.7.0"]);
   let loaded; h.listeners.get("fetch")({ request: { method: "GET", url: "https://example.test/pokemon-SnapCrop/app.js" }, respondWith(promise) { loaded = promise; } }); await loaded;
   assert.deepEqual(h.puts, ["https://example.test/pokemon-SnapCrop/app.js"]);
 });

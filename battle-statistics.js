@@ -8,7 +8,6 @@ export const DEFAULT_STATS_SETTINGS = Object.freeze({
 });
 const RULE_LABELS = { Singles: "シングル", Doubles: "ダブル" };
 const TRANSLATION_KINDS = { move: "move", ability: "ability", held_item: "item", stat_alignment: "nature" };
-const SOURCE_URL = "https://championsbattledata.com/";
 const toId = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/gu, "");
 const cloneSettings = (settings = DEFAULT_STATS_SETTINGS) => ({ ...settings, fields: [...settings.fields], top: { ...settings.top } });
 const fieldKey = (name) => Object.keys(STATS_FIELD_LABELS).find((key) => key === name || STATS_FIELD_LABELS[key] === name);
@@ -145,12 +144,6 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
     const body = dom.createElement("div");
     body.className = "terminal-statistics__body";
     body.textContent = lines.join("\n");
-    const source = dom.createElement("a");
-    source.className = "terminal-entry__link terminal-statistics__source";
-    source.href = SOURCE_URL;
-    source.target = "_blank";
-    source.rel = "noopener noreferrer";
-    source.textContent = "出典: Pokémon Champions Battle Data";
     const children = [heading];
     if (block.mapping?.shared) {
       const shared = dom.createElement("div");
@@ -165,7 +158,7 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
       fetched.textContent = `取得日時: ${result.fetchedAt}`;
       children.push(fetched);
     }
-    block.element.replaceChildren(...children, source);
+    block.element.replaceChildren(...children);
     if (block.appended) onUpdate(block.element);
   }
 

@@ -231,7 +231,7 @@ test("actual clear command suppresses current automatic results and late respons
   h.syncStatisticsSelection(); await settle();
   assert.equal(h.requests.length, 1); assert.match(h.output(), /バトル統計を読み込み中/u);
   h.submit("clear"); const cleared = h.output();
-  assert.match(cleared, /terminal の表示をクリアしました/u);
+  assert.equal(cleared, "");
   h.requests[0].resolve({ status: "ready", date: null, rows: [{ category: "move", rank: 1, canonicalName: "Kowtow Cleave", value: 97.4 }] });
   await settle(); h.syncStatisticsSelection(); await settle();
   assert.equal(h.output(), cleared); assert.equal(h.requests.length, 1);

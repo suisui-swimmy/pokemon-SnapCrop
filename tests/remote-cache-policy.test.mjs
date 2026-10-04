@@ -31,7 +31,7 @@ test("remote fetching is held until an old controller is replaced by the no-exte
   assert.equal(finished, false);
   h.serviceWorker.controller = { postMessage(message, ports) {
     assert.equal(message.type, "remote-cache-policy");
-    ports[0].postMessage({ cacheName: "pokemon-snapcrop-v1.7.0", externalCaching: false });
+    ports[0].postMessage({ cacheName: "pokemon-snapcrop-v1.7.2", externalCaching: false });
     ports[0].close();
   } };
   h.listeners.get("controllerchange")();

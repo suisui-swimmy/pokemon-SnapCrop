@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.0";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.2";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -526,10 +526,7 @@
     appendTerminalNotice(
       "command-hint",
       [
-        "[system] edit で範囲を調整、ready で待機できます。",
-        AUTO_SNAP_CONFIG.enabledByDefault
-          ? "[system] 自動 snap は ON です。状態は auto status / debug status / help で確認できます。"
-          : "[system] 自動 snap は OFF です。auto on で有効にできます。",
+        `[system] 自動撮影: ${state.autoSnap.enabled ? "ON" : "OFF"}。操作案内は help で確認できます。`,
       ],
       "system",
     );
@@ -737,6 +734,9 @@
       state.statistics?.settingsChanged(previous);
       if (previous.rule !== state.statsSettings.rule) prefetchRecognizedStatistics();
       refreshTerminalSuggestions();
+      const status = getStatisticsStatusLines();
+      appendTerminalEntry([/^stats\s+rule\s/iu.test(query) ? status[0] : status[1]], "system");
+      return true;
     }
     appendTerminalEntry(getStatisticsStatusLines(), "system");
     return true;
@@ -750,7 +750,7 @@
     const imageStatus = state.compatibilityReady ? "準備完了（互換処理）" : ({ ready: "準備完了", loading: "読み込み中", queued: "準備中", idle: "準備前", failed: "取得失敗", unsupported: "互換処理で準備中" }[state.pokemonIconWorkerState.prewarmStatus] || "準備中");
     return [`[stats] ルール: ${rule} / 最新`,
       `[stats] 表示: ${settings.fields.map((field) => `${labels[field]} ${settings.top[field] === "all" ? "掲載分すべて" : `上位${settings.top[field]}件`}`).join(" / ")} / 最低使用率 ${settings.min}%`,
-      `[stats] 比較画像: ${imageStatus} / 取得失敗時は api retry`];
+      `[stats] 比較画像: ${imageStatus}${imageStatus === "取得失敗" ? " / 再試行は api retry" : ""}`];
   }
 
   async function loadPokemonIconReference(force = false) {
@@ -921,10 +921,7 @@
         permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       } catch {
         audioAvailable = false;
-        appendTerminalEntry(
-          ["[system] カメラとマイクを同時に取得できなかったため、映像のみで開始を試みます。"],
-          "system",
-        );
+        appendTerminalDebug(["[debug] カメラとマイクを同時に取得できなかったため、映像のみで開始を試みます。"]);
         permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
       // Enumerate while the permission tracks are live so device names are exposed.
@@ -1233,19 +1230,15 @@
             "system",
           );
         } else if (activeVideoDevice && isObsDevice(activeVideoDevice)) {
-          appendTerminalEntry(
+          appendTerminalNotice(
+            "obs-video-only",
             [
               "[system] OBS Virtual Camera は映像のみです。音が必要な場合は音声入力を別で選んでください。",
             ],
             "system",
           );
         } else {
-          appendTerminalEntry(
-            [
-              "[system] 音声入力が未選択のため、映像のみで開始しました。",
-            ],
-            "system",
-          );
+          appendTerminalDebug(["[debug] 音声入力が未選択のため、映像のみで開始しました。"]);
         }
         syncAudioControls();
         await refreshDevices();
@@ -1363,27 +1356,14 @@
       state.streamInfo.isSixteenByNine ? "success" : "working",
     );
     if (state.streamInfo.isSixteenByNine) {
-      appendTerminalNotice(
-        "fixed-crop-16-9",
-        [
-          "[system] 16:9 入力を検出しました。左右クロップに固定プリセットを適用しました。",
-        ],
-        "system",
-      );
+      appendTerminalDebug(["[debug] 16:9 入力を検出しました。左右クロップに固定プリセットを適用しました。"]);
     }
     if (!state.streamInfo.isSixteenByNine) {
       resetPickOverlayState("非16:9入力", { redraw: false });
       appendTerminalNotice(
-        "aspect-4-3-generic",
-        [
-          "[system] 入力を検出しました。自動 snap を有効にするには 16:9 の映像入力が必要です。",
-        ],
-        "system",
-      );
-      appendTerminalNotice(
         "auto-unsupported-4-3",
         [
-          "[auto] 自動 snap は 16:9 入力にのみ対応しています。",
+          "[auto] 自動撮影は16:9入力のみ対応しています。手動撮影には snap both を使ってください。",
         ],
         "system",
       );
@@ -1468,7 +1448,7 @@
     appendTerminalNotice(
       "auto-manual-snap-shortcut-disabled",
       [
-        "[auto] Auto中は空 Enter / Ctrl + Enter の手動snapを止めています。",
+        "[auto] 自動撮影ON中は空 Enter / Ctrl + Enter を使えません。手動撮影には snap both を使ってください。",
       ],
       "system",
     );
@@ -1829,7 +1809,7 @@
         [
           "利用可能なコマンド: edit / ready / snap / snap my / snap enemy / snap both / snap clear / auto on / auto off / auto status / auto reset / faint status / faint reset / pick status / pick set <order> <slot> / pick clear <slot> / debug on / debug off / debug status / debug log export [番号] / debug icon export / stats rule / stats show <項目...> / stats top <項目> <件数|all> / stats min <使用率> / stats status / api retry / status / clear / cls / crop reset [my|enemy|both] / layout reset / help",
           "短縮コマンド: edit = e / ready = r / snap both = s / snap my = sm / snap enemy = se / pick status = p / ps / pick set = p <order> <slot> / pick clear = p clear <slot> / crop reset = cr / layout reset = lr",
-          "ショートカット: 空 Enter / Ctrl + Enter = snap both（Auto OFF中） / Esc = ready",
+          "ショートカット: 空 Enter = snap both（自動撮影OFF・ready中） / Ctrl + Enter = snap both（自動撮影OFF中） / Esc = ready",
         ],
         "system",
       );
@@ -1843,12 +1823,6 @@
 
     if (command === "clear" || command === "cls") {
       clearTerminalOutput();
-      appendTerminalEntry(
-        [
-          "[system] terminal の表示をクリアしました。",
-        ],
-        "system",
-      );
       return true;
     }
 
@@ -2940,7 +2914,7 @@
     refreshWorkspaceLayout();
     appendTerminalEntry(
       [
-        "[system] splitter で調整したレイアウトを初期状態に戻しました。",
+        "[system] レイアウトを初期状態に戻しました。",
       ],
       "system",
     );
@@ -3584,15 +3558,23 @@
         [
           nextMode === "edit"
             ? "[system] edit に入りました。ドラッグまたは右下ハンドルで範囲を調整できます。"
-            : "[system] ready に戻りました。クロップ調整を終えて待機中です。空 Enter または Ctrl + Enter で撮影できます。",
+            : `[system] ready に切り替えました。${getReadyGuidance()}`,
         ],
         "system",
       );
     }
   }
 
+  function getReadyGuidance() {
+    if (!state.videoReady || !state.stream) return "映像入力を待っています。";
+    if (state.autoSnap.enabled) return `自動撮影: ${getAutoStatusSummaryLabel()}。`;
+    return "空 Enter または Ctrl + Enter で撮影できます。";
+  }
+
   async function handleSnapCommand(target, options = {}) {
     const { source = "manual", reason = "" } = options;
+
+    const inputUnavailable = !state.videoReady || !state.stream;
 
     try {
       const message = performSnapCapture(target);
@@ -3608,7 +3590,9 @@
         appendTerminalDebug([`[debug] 自動撮影の詳細: ${reason}`]);
       }
     } catch (error) {
-      appendTerminalError("[error] 参照画像の更新に失敗しました。", error);
+      appendTerminalError(inputUnavailable
+        ? "[error] 映像入力を開始してから撮影してください。"
+        : "[error] 参照画像の更新に失敗しました。", error);
     }
   }
 
@@ -3734,7 +3718,7 @@
       syncAutoSnapMonitoring();
       appendTerminalEntry(
         [
-          "[auto] 検出状態をリセットしました。次の選出画面から再監視します。",
+          "[auto] 検出状態をリセットしました。",
         ],
         "system",
       );
@@ -3758,7 +3742,7 @@
     if (state.autoSnap.enabled === enabled) {
       appendTerminalEntry(
         [
-          enabled ? "[auto] すでに ON です。" : "[auto] すでに OFF です。",
+          enabled ? `[auto] すでにONです（${getAutoStatusSummaryLabel()}）。` : "[auto] すでにOFFです。",
         ],
         "system",
       );
@@ -3779,9 +3763,7 @@
       }
       appendTerminalEntry(
         [
-          state.streamInfo && !state.streamInfo.isSixteenByNine
-            ? "[auto] 自動 snap を ON にし、ready に切り替えました。16:9 入力に切り替わるまで監視は待機します。"
-            : "[auto] 自動 snap を ON にし、ready に切り替えました。クロップ調整を終えた待機状態で監視を始めます。",
+          `[auto] 自動撮影: ON（${getAutoStatusSummaryLabel()}）。`,
         ],
         "system",
       );
@@ -3791,7 +3773,7 @@
     stopAutoSnapMonitor();
     appendTerminalEntry(
       [
-        "[auto] 自動 snap を OFF にしました。",
+        "[auto] 自動撮影: OFF。",
       ],
       "system",
     );
@@ -4448,6 +4430,7 @@
     state.autoSnap.lastTriggerReason = "";
     state.autoSnap.lastResetReason = reason || "manual reset";
     state.autoSnap.lastSnapMode = "";
+    state.autoSnap.lastSnapFailed = false;
     resetBattleResultDetection(reason || "auto reset");
   }
 
@@ -4526,6 +4509,7 @@
       auto.lockedBaseline = null;
       auto.fallbackBuffer = null;
       auto.lastSnapMode = "";
+      auto.lastSnapFailed = false;
       auto.lastTriggerReason = "";
       auto.loadingSeenAt = now;
       auto.loadingLastSeenAt = now;
@@ -7553,12 +7537,6 @@
     auto.fallbackBuffer = bufferAutoFallbackReferences("waiting_icon_seen");
     auto.lastReason = `待機タイマーを検出 coverage=${formatAutoMetric(timerIconSignal.coverageScore)} spill=${formatAutoMetric(timerIconSignal.spillScore)} dark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY}`;
     recordMatchLogEvent("waiting", "[debug] 待機画面のタイマーを検出しました。", timerIconSignal, now);
-    appendTerminalEntry(
-      [
-        "[auto] 待機中画面を検出しました。自動で撮影します。",
-      ],
-      "system",
-    );
     appendTerminalDebug(
       [
         latched
@@ -7570,6 +7548,7 @@
     try {
       auto.phase = "snapped";
       auto.lastSnapMode = "waiting";
+      auto.lastSnapFailed = false;
       auto.lastTriggerReason = `iconCoverage=${formatAutoMetric(timerIconSignal.coverageScore)} iconSpill=${formatAutoMetric(timerIconSignal.spillScore)} iconDark=${formatAutoMetric(timerIconSignal.darkBackground)} offset=${timerIconSignal.offsetX},${timerIconSignal.offsetY} locked=${latched ? "yes" : "no"} phase=${sourcePhase}`;
       const message = performSnapCapture("both");
       appendTerminalEntry(
@@ -7581,6 +7560,7 @@
       appendTerminalDebug([`[debug] 自動撮影の詳細: ${auto.lastTriggerReason}`]);
     } catch (error) {
       appendTerminalError("[error] 自動 snap に失敗しました。", error);
+      auto.lastSnapFailed = true;
       auto.phase = latched ? "selection_locked" : "selection_active";
     }
 
@@ -7588,7 +7568,7 @@
   }
 
   function loadAutoTemplates() {
-    loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "読み込み中 画像の読み込みに失敗しました。");
+    loadAutoTemplate("loading", AUTO_TEMPLATE_PATHS.loading, "auto-loading-template-load-failed", "読み込み画面の判定画像を読み込めませんでした。");
     loadAutoTemplate("selectionTimer", AUTO_TEMPLATE_PATHS.selectionTimer, "auto-selection-template-load-failed", "選出タイマー画像の読み込みに失敗しました。");
     loadAutoTemplate("waitingTimer", AUTO_TEMPLATE_PATHS.waitingTimer, "auto-waiting-template-load-failed", "待機タイマー画像の読み込みに失敗しました。");
   }
@@ -7631,7 +7611,7 @@
       image.onerror = () => {
         appendTerminalNotice(
           `pick-overlay-badge-${order}-load-failed`,
-          [`[error] 相手選手番号バッジ ${order} の読み込みに失敗しました。`],
+          [`[error] 相手選出番号バッジ ${order} の読み込みに失敗しました。`],
           "error",
         );
       };
@@ -8147,11 +8127,13 @@
     const auto = state.autoSnap;
     auto.phase = "snapped";
     auto.lastSnapMode = "fallback";
+    auto.lastSnapFailed = false;
     auto.lastTriggerReason = kind === "battle_hud"
       ? "battle HUD が先に来たため waiting icon frame を使用"
       : "battle HUD が先に来たため waiting icon frame を使用";
 
     if (!auto.fallbackBuffer?.frames) {
+      auto.lastSnapFailed = true;
       appendTerminalError("[error] 自動 snap に失敗しました。");
       appendTerminalDebug([`[debug] 予備経路に切り替えましたが、待機中タイマーを検出したフレームを保持できていません。(${auto.lastTriggerReason})`]);
       return;
@@ -8171,6 +8153,7 @@
     } catch (error) {
       appendTerminalError("[error] 自動 snap に失敗しました。", error);
       appendTerminalDebug(["[debug] 予備経路で保持していたフレームの適用に失敗しました。"]);
+      auto.lastSnapFailed = true;
     }
   }
 
@@ -8192,7 +8175,7 @@
       `[auto] 前回の結果: ${getAutoLastResultSummary()}`,
     ];
 
-    if (!state.streamInfo?.isSixteenByNine) {
+    if (state.streamInfo && !state.streamInfo.isSixteenByNine) {
       lines.push("[auto] 16:9 入力以外では自動認識は利用できません。");
     }
 
@@ -8210,12 +8193,12 @@
       return "停止中";
     }
 
-    if (!state.streamInfo?.isSixteenByNine) {
-      return "16:9 入力待ち";
-    }
-
     if (!state.videoReady || !state.stream) {
       return "映像待ち";
+    }
+
+    if (!state.streamInfo?.isSixteenByNine) {
+      return "16:9 入力待ち";
     }
 
     if (state.mode !== "ready") {
@@ -8242,6 +8225,7 @@
   }
 
   function getAutoLastResultSummary() {
+    if (state.autoSnap.lastSnapFailed) return "撮影に失敗しました。";
     if (state.autoSnap.lastSnapMode === "fallback") {
       return "予備経路で撮影しました。";
     }
@@ -9102,6 +9086,7 @@
       lastTriggerReason: "",
       lastResetReason: "initial",
       lastSnapMode: "",
+      lastSnapFailed: false,
       detectorCanvas: null,
       detectorContext: null,
       iconDetectorCanvas: null,

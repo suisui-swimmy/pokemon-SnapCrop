@@ -22,10 +22,16 @@ function createHarness({ debug = true } = {}) {
     updatePickOverlayDetection = () => {};
     updateBattleResultDetection = () => {};
     refreshCropPanels = () => {};
+    renderCropOverlays = () => {};
+    syncAutoSnapMonitoring = () => {};
+    startPreviewLoop = () => {};
+    stopPreviewLoop = () => {};
     bufferAutoFallbackReferences = () => null;
     appendTerminalEntry = (lines) => logs.push(...lines);
     appendTerminalDebug = (lines) => { if (state.debugMode) logs.push(...lines); };
     performSnapCapture = (target) => {
+      if (!state.videoReady || !state.stream) throw new Error("simulated missing input");
+      if (globalThis.captureFails) throw new Error("simulated capture failure");
       captures.push(target);
       state.references = { my: { match: "new" }, enemy: { match: "new" } };
       return "左右の参照画像を更新しました。";
@@ -33,6 +39,8 @@ function createHarness({ debug = true } = {}) {
     globalThis.api = {
       state, runAutoSnapDetection, resetAutoSnapCycle,
       getAutoStatusLines, canRunAutoSnapMonitor,
+      setMode, setAutoSnapEnabled, runManualSnapShortcut, handleSnapCommand,
+      triggerAutoFallback,
     };
   })();`);
   assert.notEqual(instrumented, appSource);
@@ -75,8 +83,59 @@ function createHarness({ debug = true } = {}) {
     api.runAutoSnapDetection(now);
     return api.state.autoSnap.phase;
   }
-  return { ...api, step, logs, captures, auto: api.state.autoSnap };
+  return { ...api, step, logs, captures, auto: api.state.autoSnap, context };
 }
+
+test("ready guidance follows actual shortcut availability and input readiness", async () => {
+  const h = createHarness({ debug: false });
+  for (const enabled of [true, false]) {
+    h.auto.enabled = enabled; h.state.mode = "edit"; h.logs.length = 0;
+    h.setMode("ready");
+    assert.equal(h.logs.some((line) => line.includes("空 Enter または Ctrl + Enter で撮影できます")), !enabled);
+    const before = h.captures.length;
+    await h.runManualSnapShortcut("both");
+    assert.equal(h.captures.length - before, enabled ? 0 : 1);
+  }
+  h.auto.enabled = true;
+  await h.handleSnapCommand("both");
+  assert.equal(h.captures.length, 2, "explicit snap still works with AUTO on");
+  h.state.stream = null; h.state.videoReady = false; h.state.mode = "edit"; h.logs.length = 0;
+  h.setMode("ready");
+  assert.match(h.logs.join("\n"), /映像入力を待っています/u);
+  assert.match(h.getAutoStatusLines().join("\n"), /状態: 映像待ち/u);
+  await h.handleSnapCommand("both");
+  assert.match(h.logs.join("\n"), /映像入力を開始してから/u);
+  assert.equal(h.captures.length, 2);
+  h.auto.enabled = false; h.logs.length = 0;
+  h.setAutoSnapEnabled(true);
+  assert.match(h.logs.join("\n"), /ON（映像待ち）/u);
+  h.state.videoReady = true; h.state.stream = {}; h.state.streamInfo.isSixteenByNine = false;
+  h.state.mode = "edit"; h.logs.length = 0; h.setMode("ready");
+  assert.match(h.logs.join("\n"), /16:9 入力待ち/u);
+  assert.doesNotMatch(h.logs.join("\n"), /撮影できます/u);
+});
+
+test("normal automatic capture emits one success line and failures never report success", () => {
+  const h = createHarness({ debug: false });
+  h.step("loading", 1000); h.step("selection", 2000); h.logs.length = 0;
+  h.context.captureFails = true;
+  h.step("waiting", 3000);
+  assert.match(h.getAutoStatusLines().join("\n"), /前回の結果: 撮影に失敗/u);
+  assert.doesNotMatch(h.getAutoStatusLines().join("\n"), /撮影しました/u);
+  h.context.captureFails = false; h.logs.length = 0;
+  h.step("waiting", 4000);
+  assert.deepEqual(h.logs, ["[auto] 左右の参照画像を更新しました。"]);
+  assert.match(h.getAutoStatusLines().join("\n"), /撮影しました/u);
+  h.auto.fallbackBuffer = null; h.triggerAutoFallback("battle_hud");
+  assert.match(h.getAutoStatusLines().join("\n"), /前回の結果: 撮影に失敗/u);
+  h.auto.fallbackBuffer = { frames: {} }; h.context.captureFails = true;
+  h.triggerAutoFallback("battle_hud");
+  assert.match(h.getAutoStatusLines().join("\n"), /前回の結果: 撮影に失敗/u);
+  h.context.captureFails = false; h.triggerAutoFallback("battle_hud");
+  assert.match(h.getAutoStatusLines().join("\n"), /前回の結果: 予備経路で撮影しました/u);
+  h.resetAutoSnapCycle("test");
+  assert.match(h.getAutoStatusLines().join("\n"), /前回の結果: まだありません/u);
+});
 
 for (const elapsed of [5999, 6000, 6001]) {
   test(`matching selection at loading + ${elapsed}ms reaches capture`, () => {
