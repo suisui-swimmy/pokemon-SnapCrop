@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.2";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.3";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -9820,6 +9820,9 @@
   function buildPokemonSearchEntry(pokemon) {
     const searchKeys = [];
     addPokemonSearchKey(searchKeys, pokemon.name, "official", 0);
+    // A shared Japanese label is equally exact for every declared form. Do not
+    // prefer the form without a UI suffix over one with a variant label.
+    addPokemonSearchKey(searchKeys, pokemon.displayNameJa, "official", 0);
     addPokemonSearchKey(searchKeys, pokemon.canonicalName, "official", 0);
     addPokemonSearchKey(searchKeys, pokemon.id, "official", 0);
     const aliases = pokemon.aliases || (Array.isArray(pokemon.searchText) ? pokemon.searchText : String(pokemon.searchText || "").split(/\s+/u));

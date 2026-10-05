@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
 import {
   DEFAULT_STATS_SETTINGS, STATS_STORAGE_KEY, restoreStatsSettings, parseStatsCommand,
   getStatsCommandSuggestions, formatStatisticsRows, createStatisticsPresenter,
@@ -90,6 +91,31 @@ test("statistics preserve rank and rates, filter then limit, and use English for
     row("ability", 1, "Defiant", 99.1), row("ability", 2, "Uncertain", 1.1), row("stat_alignment", 1, "Adamant", 0.9)];
   assert.deepEqual(formatStatisticsRows({ rows }, config, catalog), [
     "技 | ドゲザン 97.44% | Second 85%", "特性 | まけんき 99.1% | Uncertain 1.1%", "持ち物 | 掲載なし", "性格 | 条件に合うデータなし",
+  ]);
+});
+
+test("statistics render reviewed public API names and variant labels while preserving scope status", async () => {
+  const generated = JSON.parse(fs.readFileSync(new URL("../data/pokemon-display-catalog.json", import.meta.url), "utf8"));
+  const data = { ...ready(), rows: [
+    row("move", 1, "Hidden Power Fire", 80), row("move", 2, "Hidden Power Ice", 20),
+    row("ability", 1, "As One (Glastrier)", 60), row("ability", 2, "As One (Spectrier)", 40),
+    row("held_item", 1, "Golisopite", 55), row("held_item", 2, "Dragoninite", 25), row("held_item", 3, "Absolite Z", 20),
+    row("stat_alignment", 1, "Adamant", 82), row("stat_alignment", 2, "Modest", 18),
+  ] };
+  assert.deepEqual(formatStatisticsRows(data, settings(), generated), [
+    "技 | めざめるパワー（ほのお） 80% | めざめるパワー（こおり） 20%",
+    "特性 | じんばいったい（ブリザポス） 60% | じんばいったい（レイスポス） 40%",
+    "持ち物 | グソクムシャナイト 55% | カイリュナイト 25% | アブソルナイトZ 20%",
+    "性格 | いじっぱり 82% | ひかえめ 18%",
+  ]);
+  const h = harness({ catalog: generated }); h.select(); await settle();
+  h.calls[0].resolve({ ...ready(), rows: [row("move", 1, "Paleo Wave", 50), row("move", 2, "Baddy Bad", 40), row("move", 3, "Future Unknown Move", 10)] });
+  await settle();
+  assert.match(h.entries[0].textContent, /Paleo Wave 50% \| Baddy Bad 40% \| Future Unknown Move 10%/u);
+  assert.deepEqual(h.diagnostics.at(-1).translationIssues, [
+    { category: "move", id: "paleowave", status: "out-of-scope" },
+    { category: "move", id: "baddybad", status: "unsupported" },
+    { category: "move", id: "futureunknownmove", status: "not-found" },
   ]);
 });
 

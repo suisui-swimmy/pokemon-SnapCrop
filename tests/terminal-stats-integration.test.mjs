@@ -224,6 +224,33 @@ test("storage denial keeps commands and the real statistics presenter usable", a
   assert.equal(h.elements.terminalInput.value, ""); assert.equal(h.dom.activeElement, h.elements.terminalInput);
 });
 
+test("reviewed shared names require form selection and detailed labels resolve their original IDs", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.key("Escape");
+  for (const [query, ids] of [
+    ["ゲッコウガ", ["greninja", "greninjabond"]],
+    ["イワンコ", ["rockruff", "rockruffdusk"]],
+    ["メガニャオニクス", ["meowsticmmega", "meowsticfmega"]],
+  ]) {
+    h.type(query);
+    assert.equal(h.findExactPokemonMatch(query), null, query);
+    assert.equal(h.resolveTerminalSubmission(query).query, query);
+    const found = new Set(h.state.suggestions.map((entry) => entry.id));
+    for (const id of ids) assert.ok(found.has(id), id);
+    assert.equal(h.state.selectedSuggestionIndex, -1);
+    h.key("Tab");
+    assert.ok(found.has(h.resolveTerminalSubmission(query).query));
+  }
+  for (const [query, id] of [
+    ["ゲッコウガ（きずなへんげ）", "greninjabond"], ["Greninja", "greninja"],
+    ["メガニャオニクス（オス）", "meowsticmmega"], ["メガニャオニクス（メス）", "meowsticfmega"],
+    ["イダイトウ オスのすがた", "basculegion"], ["イダイトウ メスのすがた", "basculegionf"],
+    ["アブソル メガアブソル", "absolmega"],
+  ]) {
+    assert.equal(h.findExactPokemonMatch(query)?.id, id, query);
+    h.type(query); assert.equal(h.resolveTerminalSubmission(query).query, id);
+  }
+});
+
 test("actual clear command suppresses current automatic results and late responses", async () => {
   const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル"); h.beginCapture();
   h.state.pokemonIconRecognition.resultsByRefIndex[0] = { matched: true, showdownId: "kingambit", pokemonName: "ドドゲザン" };

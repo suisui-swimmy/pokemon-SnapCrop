@@ -29,10 +29,82 @@ test("statistics translation dictionaries include new abilities and 性格 witho
   assert.equal(catalog.translations.nature.adamant.name, "いじっぱり");
   assert.equal(catalog.translations.move.kowtowcleave.name, "ドゲザン");
   assert.equal(catalog.translations.item.chopleberry.name, "ヨプのみ");
-  assert.equal(catalog.translations.item.golisopite.name, "Golisopite");
-  assert.equal(catalog.translations.item.golisopite.status, "adapter-temporary");
-  assert.equal(pokemon.get("basculegion").name, "Basculegion");
-  assert.equal(pokemon.get("basculegion").translationStatus, "needs-confirmation");
+  for (const [id, name] of [
+    ["golisopite", "グソクムシャナイト"], ["dragoninite", "カイリュナイト"],
+    ["absolitez", "アブソルナイトZ"], ["garchompitez", "ガブリアスナイトZ"],
+  ]) {
+    assert.equal(catalog.translations.item[id].name, name);
+    assert.equal(catalog.translations.item[id].status, "localized");
+  }
+  assert.equal(catalog.translations.type.stellar.name, "ステラ");
+  assert.equal(pokemon.get("basculegion").name, "イダイトウ オスのすがた");
+  assert.equal(pokemon.get("basculegionf").name, "イダイトウ メスのすがた");
+  assert.equal(pokemon.get("basculegion").translationStatus, "localized");
+  assert.equal(pokemon.get("absolmega").name, "メガアブソル");
+  assert.ok(pokemon.get("absolmega").aliases.includes("アブソル メガアブソル"));
+});
+
+test("shared Japanese labels retain separate IDs and explicit variant labels for display and search", () => {
+  for (const [id, name, variant] of [
+    ["greninjabond", "ゲッコウガ", "きずなへんげ"],
+    ["rockruffdusk", "イワンコ", "マイペース"],
+    ["meowsticmmega", "メガニャオニクス", "オス"],
+    ["meowsticfmega", "メガニャオニクス", "メス"],
+  ]) {
+    const entry = pokemon.get(id);
+    assert.equal(entry.name, `${name}（${variant}）`);
+    assert.equal(entry.displayNameJa, name);
+    assert.equal(entry.variantLabelJa, variant);
+    assert.ok(entry.aliases.includes(name));
+    assert.ok(entry.aliases.includes(entry.name));
+  }
+  assert.equal(pokemon.get("greninja").name, "ゲッコウガ");
+  assert.equal(pokemon.get("rockruff").variantLabelJa, undefined);
+  assert.equal(catalog.translations.move.hiddenpower.name, "めざめるパワー");
+  assert.equal(catalog.translations.move.hiddenpowerfire.name, "めざめるパワー（ほのお）");
+  assert.equal(catalog.translations.move.hiddenpowerice.name, "めざめるパワー（こおり）");
+  assert.equal(Object.keys(catalog.translations.move).filter((id) => id.startsWith("hiddenpower")).length, 17);
+  assert.equal(catalog.translations.ability.asoneglastrier.name, "じんばいったい（ブリザポス）");
+  assert.equal(catalog.translations.ability.asonespectrier.name, "じんばいったい（レイスポス）");
+});
+
+test("public API scope classifications remain distinct from missing translations", () => {
+  for (const [entry, category] of [
+    [pokemon.get("ababo"), "cap"], [pokemon.get("pokestarblackdoor"), "pokestar"],
+    [pokemon.get("missingno"), "glitch"], [catalog.translations.move.paleowave, "cap"],
+    [catalog.translations.item.crucibellite, "cap"],
+  ]) {
+    assert.equal(entry.status || entry.translationStatus, "out-of-scope");
+    assert.equal(entry.name, entry.canonicalName);
+    assert.equal(entry.category, category);
+    assert.equal(entry.reason, "outside-localization-scope");
+    assert.ok(entry.noteJa);
+    assert.equal(entry.displayNameJa, undefined);
+  }
+  assert.equal(catalog.translations.move.baddybad.status, "unsupported");
+  assert.equal(catalog.translations.move.baddybad.name, "Baddy Bad");
+  assert.equal(catalog.translations.move.baddybad.reason, "missing-japanese-mapping");
+  assert.equal(catalog.translations.ability.noability.name, "特性なし");
+  assert.equal(catalog.translations.ability.noability.labelKind, "ui-label");
+  assert.equal(catalog.translations.move.nomove, undefined, "calc-only placeholders are not Showdown moves");
+});
+
+test("all six kinds match the public API snapshot coverage", () => {
+  assert.equal(catalog.provenance.localization.schemaVersion, 2);
+  const sets = { pokemon: catalog.pokemon, ...Object.fromEntries(Object.entries(catalog.translations).map(([kind, entries]) => [kind, Object.values(entries)])) };
+  const total = { localized: 0, "needs-confirmation": 0, unsupported: 0, "out-of-scope": 0 };
+  assert.deepEqual(Object.keys(sets).sort(), ["ability", "item", "move", "nature", "pokemon", "type"]);
+  for (const [kind, entries] of Object.entries(sets)) {
+    const counts = { localized: 0, "needs-confirmation": 0, unsupported: 0, "out-of-scope": 0 };
+    for (const entry of entries) {
+      const status = entry.status || entry.translationStatus;
+      assert.ok(Object.hasOwn(counts, status));
+      counts[status] += 1;
+      total[status] += 1;
+    }
+    assert.deepEqual(counts, catalog.provenance.localization.summary[kind], kind);
+  }
+  assert.deepEqual(total, { localized: 3350, "needs-confirmation": 0, unsupported: 13, "out-of-scope": 125 });
 });
 
 test("catalog is names/classification only and contains reproducible provenance and license", () => {

@@ -8,7 +8,6 @@ import { createShowdownClassificationResolver, loadShowdownClassificationData } 
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const readJson = (filename) => JSON.parse(fs.readFileSync(filename, "utf8"));
-const idOf = (name) => String(name).toLowerCase().replace(/[^a-z0-9]/gu, "");
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 
 // Execute the upstream display APIs, including their overrides, without copying
@@ -30,12 +29,29 @@ async function loadLocalization(sourceRoot) {
     },
   });
   try {
-    const display = await import(pathToFileURL(path.join(sourceRoot, "src/showdown.ts")).href);
-    const resolver = await import(pathToFileURL(path.join(sourceRoot, "src/localization/resolver.ts")).href);
-    return { ...display, ...resolver };
+    return await import(pathToFileURL(path.join(sourceRoot, "src/showdown.ts")).href);
   } finally {
     hooks.deregister();
   }
+}
+
+function resolveDisplay(locale, entry) {
+  const result = locale.resolveShowdownDisplayNameJa(entry.kind, entry.showdownId);
+  // Catalog entries have exact, reviewed external IDs. A missing/ambiguous
+  // result here is a source mismatch, not a reason to silently change identity.
+  if (result.showdownId !== entry.showdownId || result.showdownName !== entry.showdownName) {
+    throw new Error(`Display identity mismatch: ${entry.kind}:${entry.showdownId}`);
+  }
+  const localized = result.status === "localized";
+  const fields = {
+    name: localized
+      ? result.displayNameJa + (result.variantLabelJa ? `（${result.variantLabelJa}）` : "")
+      : entry.showdownName,
+  };
+  for (const key of ["displayNameJa", "variantLabelJa", "labelKind", "category", "noteJa", "reason"]) {
+    if (result[key] !== undefined) fields[key] = result[key];
+  }
+  return { result, fields };
 }
 
 export async function buildDisplayCatalog({ root = ROOT } = {}) {
@@ -57,19 +73,19 @@ export async function buildDisplayCatalog({ root = ROOT } = {}) {
   const aliases = readJson(path.join(localeRoot, "src/data/overrides/ja-aliases.json")).entries;
   const aliasByKey = new Map(aliases.map((entry) => [`${entry.kind}:${entry.id}`, entry.aliasesJa || []]));
   const pokemon = sourceCatalog.entries.filter((entry) => entry.kind === "pokemon").map((entry) => {
-    const display = locale.resolveShowdownDisplayNameJa("pokemon", entry.showdownId);
+    const { result: display, fields } = resolveDisplay(locale, entry);
     const classification = classify.resolve(entry.showdownId);
-    const name = display.status === "localized" ? display.displayNameJa : entry.showdownName;
     const explicitAliases = mapping.aliases.filter((alias) => alias.kind === "pokemon" && alias.targetId === entry.showdownId).map((alias) => alias.inputId);
     const names = [...new Set([
-      name, entry.showdownName, entry.showdownId, ...explicitAliases,
+      fields.name, ...(display.status === "localized" ? [display.displayNameJa] : []),
+      entry.showdownName, entry.showdownId, ...explicitAliases,
       ...(display.status === "localized" && display.dictionaryRef
         ? aliasByKey.get(`pokemon:${display.dictionaryRef.id}`) || [] : []),
     ])];
     return {
       id: entry.showdownId,
       canonicalName: entry.showdownName,
-      name,
+      ...fields,
       searchText: names.join(" "),
       aliases: names,
       translationStatus: display.status,
@@ -81,29 +97,23 @@ export async function buildDisplayCatalog({ root = ROOT } = {}) {
   }).sort((a, b) => a.id.localeCompare(b.id, "en"));
   const translations = {};
   for (const kind of ["move", "ability", "item", "nature", "type"]) {
-    const options = readJson(path.join(localeRoot, `src/data/generated/${kind}-options.gen.json`));
-    const names = ["ability", "type"].includes(kind)
-      ? sourceCatalog.entries.filter((entry) => entry.kind === kind).map((entry) => entry.showdownName)
-      : options.entries.map((entry) => entry.showdownName);
-    translations[kind] = Object.fromEntries(names.sort().map((canonicalName) => {
-      const external = ["ability", "type"].includes(kind);
-      const result = external
-        ? locale.resolveShowdownDisplayNameJa(kind, canonicalName)
-        : locale.resolveEntity(kind, canonicalName);
-      const localized = external ? result.status === "localized"
-        : ["exact", "alias"].includes(result.status) && result.sourceStatus === "supported";
-      return [idOf(canonicalName), {
-        canonicalName,
-        name: localized ? result.displayNameJa : canonicalName,
-        status: localized ? "localized" : result.sourceStatus || result.status,
+    const entries = sourceCatalog.entries.filter((entry) => entry.kind === kind)
+      .sort((a, b) => a.showdownId.localeCompare(b.showdownId, "en"));
+    translations[kind] = Object.fromEntries(entries.map((entry) => {
+      const { result, fields } = resolveDisplay(locale, entry);
+      return [entry.showdownId, {
+        canonicalName: entry.showdownName,
+        ...fields,
+        status: result.status,
       }];
     }));
   }
   const files = [
     "src/data/generated/showdown-display.gen.json", "src/data/generated/showdown-catalog.gen.json",
     "src/data/overrides/ja-label-overrides.json", "src/data/overrides/ja-aliases.json",
-    "src/data/overrides/showdown-display-overrides.json", "src/localization/showdownDisplay.ts",
-    "src/localization/displayNameRules.ts", "src/localization/resolver.ts", "src/localization/normalizeJa.ts",
+    "src/data/overrides/showdown-display-overrides.json", "src/data/overrides/showdown-pokemon-names.json",
+    "src/showdown.ts", "src/localization/showdownDisplay.ts", "src/localization/showdownTypes.ts",
+    "src/localization/displayNameRules.ts",
     ...["pokemon", "move", "ability", "item", "nature", "type"].map((kind) => `src/data/generated/${kind}-options.gen.json`),
   ];
   const hashes = Object.fromEntries(files.map((filename) => {
