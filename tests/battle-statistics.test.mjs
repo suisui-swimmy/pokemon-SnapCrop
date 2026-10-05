@@ -10,7 +10,7 @@ const catalog = {
   pokemon: [
     { id: "kingambit", canonicalName: "Kingambit", name: "ドドゲザン", translationStatus: "localized" },
     { id: "charizard", canonicalName: "Charizard", name: "リザードン", translationStatus: "localized" },
-    { id: "charizardmegax", canonicalName: "Charizard-Mega-X", name: "メガリザードンX", translationStatus: "localized" },
+    { id: "charizardmegax", canonicalName: "Charizard-Mega-X", name: "メガリザードンＸ", translationStatus: "localized" },
   ],
   translations: {
     move: { kowtowcleave: { name: "ドゲザン", status: "localized" } },
@@ -105,7 +105,7 @@ test("statistics render reviewed public API names and variant labels while prese
   assert.deepEqual(formatStatisticsRows(data, settings(), generated), [
     "技 | めざめるパワー（ほのお） 80% | めざめるパワー（こおり） 20%",
     "特性 | じんばいったい（ブリザポス） 60% | じんばいったい（レイスポス） 40%",
-    "持ち物 | グソクムシャナイト 55% | カイリュナイト 25% | アブソルナイトZ 20%",
+    "持ち物 | グソクムシャナイト 55% | カイリュナイト 25% | アブソルナイトＺ 20%",
     "性格 | いじっぱり 82% | ひかえめ 18%",
   ]);
   const h = harness({ catalog: generated }); h.select(); await settle();

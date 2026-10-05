@@ -31,7 +31,7 @@ test("statistics translation dictionaries include new abilities and 性格 witho
   assert.equal(catalog.translations.item.chopleberry.name, "ヨプのみ");
   for (const [id, name] of [
     ["golisopite", "グソクムシャナイト"], ["dragoninite", "カイリュナイト"],
-    ["absolitez", "アブソルナイトZ"], ["garchompitez", "ガブリアスナイトZ"],
+    ["absolitez", "アブソルナイトＺ"], ["garchompitez", "ガブリアスナイトＺ"],
   ]) {
     assert.equal(catalog.translations.item[id].name, name);
     assert.equal(catalog.translations.item[id].status, "localized");
@@ -42,6 +42,27 @@ test("statistics translation dictionaries include new abilities and 性格 witho
   assert.equal(pokemon.get("basculegion").translationStatus, "localized");
   assert.equal(pokemon.get("absolmega").name, "メガアブソル");
   assert.ok(pokemon.get("absolmega").aliases.includes("アブソル メガアブソル"));
+});
+
+test("mega Pokemon and Mega Stone display suffixes consistently use fullwidth X/Y/Z", () => {
+  for (const [pokemonId, pokemonName, itemId, itemName] of [
+    ["charizardmegax", "メガリザードンＸ", "charizarditex", "リザードナイトＸ"],
+    ["charizardmegay", "メガリザードンＹ", "charizarditey", "リザードナイトＹ"],
+    ["mewtwomegax", "メガミュウツーＸ", "mewtwonitex", "ミュウツナイトＸ"],
+    ["mewtwomegay", "メガミュウツーＹ", "mewtwonitey", "ミュウツナイトＹ"],
+    ["raichumegax", "メガライチュウＸ", "raichunitex", "ライチュウナイトＸ"],
+    ["raichumegay", "メガライチュウＹ", "raichunitey", "ライチュウナイトＹ"],
+    ["absolmegaz", "メガアブソルＺ", "absolitez", "アブソルナイトＺ"],
+    ["garchompmegaz", "メガガブリアスＺ", "garchompitez", "ガブリアスナイトＺ"],
+    ["lucariomegaz", "メガルカリオＺ", "lucarionitez", "ルカリオナイトＺ"],
+  ]) {
+    assert.equal(pokemon.get(pokemonId).name, pokemonName);
+    assert.equal(pokemon.get(pokemonId).displayNameJa, pokemonName);
+    assert.equal(catalog.translations.item[itemId].name, itemName);
+    assert.equal(catalog.translations.item[itemId].displayNameJa, itemName);
+  }
+  assert.deepEqual(catalog.pokemon.filter((entry) => entry.isMega && /[XYZ]$/u.test(entry.name)), []);
+  assert.deepEqual(Object.values(catalog.translations.item).filter((entry) => /ナイト[XYZ]$/u.test(entry.name)), []);
 });
 
 test("shared Japanese labels retain separate IDs and explicit variant labels for display and search", () => {

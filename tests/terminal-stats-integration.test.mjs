@@ -231,6 +231,32 @@ test("storage denial keeps commands and the real statistics presenter usable", a
   assert.equal(h.elements.terminalInput.value, ""); assert.equal(h.dom.activeElement, h.elements.terminalInput);
 });
 
+test("halfwidth and fullwidth mega suffix inputs resolve the same ID and show fullwidth names", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル");
+  const ids = ["charizardmegax", "charizardmegay", "raichumegax", "raichumegay", "absolmegaz"];
+  h.state.remoteIndex = { statsById: Object.fromEntries(ids.map((id) => [id, { statsId: id, availableCurrent: { Doubles: true } }])) };
+  h.rebuildPokemonSearchIndex("ready");
+  for (const [id, label] of [
+    ["charizardmegax", "メガリザードンＸ"], ["charizardmegay", "メガリザードンＹ"],
+    ["raichumegax", "メガライチュウＸ"], ["raichumegay", "メガライチュウＹ"],
+    ["absolmegaz", "メガアブソルＺ"],
+  ]) {
+    const halfwidth = label.replace(/[ＸＹＺ]$/u, (letter) => String.fromCharCode(letter.charCodeAt(0) - 0xfee0));
+    for (const input of [label, halfwidth]) {
+      assert.equal(h.findExactPokemonMatch(input)?.id, id, input);
+      h.type(input);
+      assert.equal(h.state.suggestions[0].name, label);
+      assert.equal(h.resolveTerminalSubmission(input).query, id);
+    }
+  }
+  h.submit("メガアブソルZ"); await settle();
+  h.requests[0].resolve({ status: "ready", date: null, rows: [
+    { category: "held_item", rank: 1, canonicalName: "Absolite Z", value: 100 },
+  ] }); await settle();
+  assert.match(h.output(), /メガアブソルＺ［ダブル／最新］/u);
+  assert.match(h.output(), /持ち物 \| アブソルナイトＺ 100%/u);
+});
+
 test("reviewed shared names require form selection and detailed labels resolve their original IDs", async () => {
   const h = harness(); await h.loadDisplayCatalog(); h.key("Escape");
   for (const [query, ids] of [

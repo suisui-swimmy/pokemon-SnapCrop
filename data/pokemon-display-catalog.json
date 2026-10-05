@@ -4,9 +4,9 @@
     "generatedBy": "tools/generate-display-catalog.mjs",
     "usage": "display-only",
     "localization": {
-      "revision": "7a020a6cdebc92a4b21e7172f2f050afe6c22c28",
+      "revision": "db15bc7ed5c8cbbfab48362b8b7dc0d5a83368dc",
       "schemaVersion": 2,
-      "dataVersion": "showdown-display-275e0c58c5895438",
+      "dataVersion": "showdown-display-e7f3c35b34326c92",
       "showdownCommit": "3661ce40bf9001d185ce078b8920e12304204609",
       "usage": "display-only",
       "summary": {
@@ -48,11 +48,11 @@
         }
       },
       "files": {
-        "src/data/generated/showdown-display.gen.json": "e9dd6cde196df1a368de9c9e63fd162e6a35b087ba2557ed232de36ba514a855",
+        "src/data/generated/showdown-display.gen.json": "1ff8a0b05910a6f7ae2956c8e4c029719702ac821e79bbf7258bcf7d2917c0e0",
         "src/data/generated/showdown-catalog.gen.json": "58aa180f4cff8151df896a6b0139ba6b782b055a91ca27b6a20cb71191e55dae",
-        "src/data/overrides/ja-label-overrides.json": "6e51a518f531bb42635762f057fd6d906703b453526342dab169f4118d57358d",
+        "src/data/overrides/ja-label-overrides.json": "4127a877777eec0347f656a166c41b6a42e681aadb8ba3b746a84b4360711223",
         "src/data/overrides/ja-aliases.json": "c40c50d42d175af1e4e231ecd78e7dc9458c794e5f6bbbd1fbcc04d200ed6666",
-        "src/data/overrides/showdown-display-overrides.json": "a0dda5b72c90fc0a885f17aeee31d041da9cf4cf675b703a4734ea11c92b1e14",
+        "src/data/overrides/showdown-display-overrides.json": "c0aa5eef912931e9c2414da734b96e001624d704038d51f801d80fbd583071c8",
         "src/data/overrides/showdown-pokemon-names.json": "50403443a0df6e3d9130a5d6b2ae025596d684220fccf2cbea73db5319fcfd2e",
         "src/showdown.ts": "09bc02462f1dc810676733e9fa6ef7a025f099d6a4612e56b0b8049a31f1ac97",
         "src/localization/showdownDisplay.ts": "78c465125dabb397f987540e40429be7158c6aa1dbed07c46e11a19ab8c8bcbd",
@@ -198,11 +198,11 @@
     {
       "id": "absolmegaz",
       "canonicalName": "Absol-Mega-Z",
-      "name": "メガアブソルZ",
-      "displayNameJa": "メガアブソルZ",
-      "searchText": "メガアブソルZ Absol-Mega-Z absolmegaz アブソル メガアブソルZ",
+      "name": "メガアブソルＺ",
+      "displayNameJa": "メガアブソルＺ",
+      "searchText": "メガアブソルＺ Absol-Mega-Z absolmegaz アブソル メガアブソルZ",
       "aliases": [
-        "メガアブソルZ",
+        "メガアブソルＺ",
         "Absol-Mega-Z",
         "absolmegaz",
         "アブソル メガアブソルZ"
@@ -8532,11 +8532,11 @@
     {
       "id": "garchompmegaz",
       "canonicalName": "Garchomp-Mega-Z",
-      "name": "メガガブリアスZ",
-      "displayNameJa": "メガガブリアスZ",
-      "searchText": "メガガブリアスZ Garchomp-Mega-Z garchompmegaz ガブリアス メガガブリアスZ",
+      "name": "メガガブリアスＺ",
+      "displayNameJa": "メガガブリアスＺ",
+      "searchText": "メガガブリアスＺ Garchomp-Mega-Z garchompmegaz ガブリアス メガガブリアスZ",
       "aliases": [
-        "メガガブリアスZ",
+        "メガガブリアスＺ",
         "Garchomp-Mega-Z",
         "garchompmegaz",
         "ガブリアス メガガブリアスZ"
@@ -12711,11 +12711,11 @@
     {
       "id": "lucariomegaz",
       "canonicalName": "Lucario-Mega-Z",
-      "name": "メガルカリオZ",
-      "displayNameJa": "メガルカリオZ",
-      "searchText": "メガルカリオZ Lucario-Mega-Z lucariomegaz ルカリオ メガルカリオZ",
+      "name": "メガルカリオＺ",
+      "displayNameJa": "メガルカリオＺ",
+      "searchText": "メガルカリオＺ Lucario-Mega-Z lucariomegaz ルカリオ メガルカリオZ",
       "aliases": [
-        "メガルカリオZ",
+        "メガルカリオＺ",
         "Lucario-Mega-Z",
         "lucariomegaz",
         "ルカリオ メガルカリオZ"
@@ -18617,11 +18617,11 @@
     {
       "id": "raichumegax",
       "canonicalName": "Raichu-Mega-X",
-      "name": "メガライチュウX",
-      "displayNameJa": "メガライチュウX",
-      "searchText": "メガライチュウX Raichu-Mega-X raichumegax ライチュウ メガライチュウX",
+      "name": "メガライチュウＸ",
+      "displayNameJa": "メガライチュウＸ",
+      "searchText": "メガライチュウＸ Raichu-Mega-X raichumegax ライチュウ メガライチュウX",
       "aliases": [
-        "メガライチュウX",
+        "メガライチュウＸ",
         "Raichu-Mega-X",
         "raichumegax",
         "ライチュウ メガライチュウX"
@@ -18635,11 +18635,11 @@
     {
       "id": "raichumegay",
       "canonicalName": "Raichu-Mega-Y",
-      "name": "メガライチュウY",
-      "displayNameJa": "メガライチュウY",
-      "searchText": "メガライチュウY Raichu-Mega-Y raichumegay ライチュウ メガライチュウY",
+      "name": "メガライチュウＹ",
+      "displayNameJa": "メガライチュウＹ",
+      "searchText": "メガライチュウＹ Raichu-Mega-Y raichumegay ライチュウ メガライチュウY",
       "aliases": [
-        "メガライチュウY",
+        "メガライチュウＹ",
         "Raichu-Mega-Y",
         "raichumegay",
         "ライチュウ メガライチュウY"
@@ -35051,8 +35051,8 @@
       },
       "absolitez": {
         "canonicalName": "Absolite Z",
-        "name": "アブソルナイトZ",
-        "displayNameJa": "アブソルナイトZ",
+        "name": "アブソルナイトＺ",
+        "displayNameJa": "アブソルナイトＺ",
         "status": "localized"
       },
       "absorbbulb": {
@@ -36049,8 +36049,8 @@
       },
       "garchompitez": {
         "canonicalName": "Garchompite Z",
-        "name": "ガブリアスナイトZ",
-        "displayNameJa": "ガブリアスナイトZ",
+        "name": "ガブリアスナイトＺ",
+        "displayNameJa": "ガブリアスナイトＺ",
         "status": "localized"
       },
       "gardevoirite": {
@@ -36523,8 +36523,8 @@
       },
       "lucarionitez": {
         "canonicalName": "Lucarionite Z",
-        "name": "ルカリオナイトZ",
-        "displayNameJa": "ルカリオナイトZ",
+        "name": "ルカリオナイトＺ",
+        "displayNameJa": "ルカリオナイトＺ",
         "status": "localized"
       },
       "luckypunch": {
@@ -37189,14 +37189,14 @@
       },
       "raichunitex": {
         "canonicalName": "Raichunite X",
-        "name": "ライチュウナイトX",
-        "displayNameJa": "ライチュウナイトX",
+        "name": "ライチュウナイトＸ",
+        "displayNameJa": "ライチュウナイトＸ",
         "status": "localized"
       },
       "raichunitey": {
         "canonicalName": "Raichunite Y",
-        "name": "ライチュウナイトY",
-        "displayNameJa": "ライチュウナイトY",
+        "name": "ライチュウナイトＹ",
+        "displayNameJa": "ライチュウナイトＹ",
         "status": "localized"
       },
       "rarebone": {

@@ -54,7 +54,7 @@ function workerHarness() {
   const context = vm.createContext({ URL, Set, Promise,
     self: { registration: { scope: "https://example.test/pokemon-SnapCrop/" }, location: { origin: "https://example.test" },
       addEventListener: (name, callback) => listeners.set(name, callback), clients: { claim() {} }, skipWaiting() {} },
-    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.4", "another-app"], delete: async (key) => removed.push(key),
+    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.5", "another-app"], delete: async (key) => removed.push(key),
       match: async () => null, open: async () => ({ addAll: async () => {}, put: async (request) => puts.push(request.url) }) },
     fetch: async (request) => { fetched.push(request.url); return response; },
   });
