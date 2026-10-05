@@ -132,7 +132,7 @@ export function parseBattleIndex(raw, { catalog } = {}) {
       statsId: own(statsById, form.id) ? statsById[form.id].statsId : null,
     };
   }).sort((a, b) => a.id.localeCompare(b.id, "en"));
-  if (icons.length === 0) invalid("比較画像が一覧にありません。");
+  if (icons.length === 0 && explicit.size === 0) invalid("比較画像や統計の対応が一覧にありません。");
   return {
     dataVersion: raw.dataVersion,
     generatedAt: typeof raw.generatedAt === "string" ? raw.generatedAt : null,

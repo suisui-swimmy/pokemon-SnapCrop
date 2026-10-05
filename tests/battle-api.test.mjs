@@ -66,6 +66,17 @@ test("index allows known provider pre-evolutions and keeps uncertain labels in E
   assert.equal(parsed.icons.find((entry) => entry.id === "aegislash").pokemonName, "Aegislash");
 });
 
+test("statistics-only index retains current availability without requiring comparison images", () => {
+  const raw = indexFixture();
+  raw.pokemon[0].summary.forms = [];
+  const parsed = parseBattleIndex(raw, { catalog });
+  assert.deepEqual(parsed.icons, []);
+  assert.equal(parsed.statsById.aegislash.availableCurrent.Doubles, true);
+  assert.equal(parsed.statsById.aegislash.availableCurrent.Singles, false);
+  assert.equal(parsed.statsById.aegislashblade.statsId, "aegislash");
+  assert.throws(() => parseBattleIndex({ dataVersion: "empty", pokemon: [{}] }, { catalog }), /比較画像や統計の対応/u);
+});
+
 test("invalid source URLs, conflicting mappings and malformed index are rejected", () => {
   for (const path of ["https://other.test/pokemon_champions_assets/pokemon/A.png", "//other.test/A.png", "/pokemon_champions_assets/pokemon/../../A.png", "/pokemon_champions_assets/pokemon/A.png?keep=forever", "/pokemon_champions_assets/pokemon/A%2fB.png", "/pokemon_champions_assets/pokemon/A.webp"]) {
     assert.throws(() => validateBattleAssetUrl(path), { code: "invalid-asset" });

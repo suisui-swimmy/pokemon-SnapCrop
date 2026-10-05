@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.3";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.4";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -422,6 +422,8 @@
     rulePicker: false, catalogLoading: false, statsPrefetchKey: "", compatibilityReady: false, candidateCache: new Map(),
     pokemonMap: new Map(),
     pokemonSearchIndex: [],
+    pokemonSearchIds: new Set(),
+    pokemonSearchStatus: "loading",
     catalogReady: false,
     stream: null,
     mediaStartInProgress: false,
@@ -655,7 +657,7 @@
         return fetch(...args);
       } });
       state.pokemonMap = new Map(catalog.pokemon.map((entry) => [entry.id, entry]));
-      state.pokemonSearchIndex = catalog.pokemon.map(buildPokemonSearchEntry);
+      rebuildPokemonSearchIndex();
       state.statistics = statsModule.createStatisticsPresenter({
         api: state.api, catalog, getIndex: () => state.remoteIndex, getIndexError: () => state.pokemonIconReferenceLoadFailed ? new Error("一覧取得失敗") : null, getSettings: () => state.statsSettings,
         appendElement: appendTerminalElement,
@@ -732,7 +734,10 @@
       try { localStorage.setItem(state.statsModule.STATS_STORAGE_KEY, JSON.stringify(state.statsSettings)); }
       catch { appendTerminalEntry(["[system] 設定を保存できませんでした。このページでは適用します。"], "system"); }
       state.statistics?.settingsChanged(previous);
-      if (previous.rule !== state.statsSettings.rule) prefetchRecognizedStatistics();
+      if (previous.rule !== state.statsSettings.rule) {
+        rebuildPokemonSearchIndex();
+        prefetchRecognizedStatistics();
+      }
       refreshTerminalSuggestions();
       const status = getStatisticsStatusLines();
       appendTerminalEntry([/^stats\s+rule\s/iu.test(query) ? status[0] : status[1]], "system");
@@ -755,9 +760,17 @@
 
   async function loadPokemonIconReference(force = false) {
     const startedAt = getPerformanceDebugNow();
+    rebuildPokemonSearchIndex("loading");
+    refreshTerminalSuggestions();
     try {
       state.pokemonIconReferenceLoadFailed = false;
       const index = await (force ? state.api.retryIndex() : state.api.loadIndex());
+      // Statistics/search availability comes from the index, independently of
+      // whether any of its images are eligible for automatic recognition.
+      state.remoteIndex = index;
+      rebuildPokemonSearchIndex("ready");
+      refreshTerminalSuggestions();
+      state.statistics?.retry();
       const manifest = { ...index, stats: { rawCandidateCount: index.icons.length, canonicalCandidateCount: index.icons.length } };
       const manifestEntries = Array.isArray(manifest?.icons)
         ? manifest.icons
@@ -778,8 +791,6 @@
         throw new Error("ポケモン名認識の候補データが空です。");
       }
 
-      state.remoteIndex = index;
-      state.statistics?.retry();
       state.pokemonIconManifest = manifest;
       state.pokemonIconReferenceEntries = entries;
       state.pokemonIconReferenceReady = true;
@@ -794,6 +805,10 @@
         scheduleEnemyReferencePokemonRecognition();
       }
     } catch (error) {
+      if (state.pokemonSearchStatus === "loading") {
+        rebuildPokemonSearchIndex("failed");
+        refreshTerminalSuggestions();
+      }
       state.pokemonIconReferenceReady = false;
       state.pokemonIconReferenceLoadFailed = true;
       state.statistics?.retry();
@@ -1407,11 +1422,18 @@
         return null;
       }
 
+      if (state.pokemonSearchStatus !== "ready") {
+        appendTerminalEntry([state.pokemonSearchStatus === "failed"
+          ? "[system] 使用率の一覧を取得できませんでした。api retry で再試行してください。"
+          : "[system] 使用率の一覧を読み込み中です。少し待ってから検索してください。"], "system");
+        return null;
+      }
+
       const pokemon = state.pokemonMap.get(submission.query);
-      if (!pokemon) {
+      if (!pokemon || !state.pokemonSearchIds.has(pokemon.id)) {
         appendTerminalEntry(
           [
-            "[error] 該当するポケモンが見つかりません。コマンドを確認したい場合は help を入力してください。",
+            "[error] 使用率が掲載されている検索対象に見つかりません。ルールは stats rule、コマンドは help で確認できます。",
           ],
           "error",
         );
@@ -9816,6 +9838,21 @@
     return /obs|virtual camera/i.test(device.label || "");
   }
 
+
+  function rebuildPokemonSearchIndex(status = state.pokemonSearchStatus) {
+    state.pokemonSearchStatus = status;
+    const rule = state.statsSettings?.rule;
+    const mappings = state.remoteIndex?.statsById;
+    const entries = status === "ready" && mappings ? (state.catalog?.pokemon || []).filter((entry) => {
+      if (!Object.hasOwn(mappings, entry.id)) return false;
+      const mapping = mappings[entry.id];
+      if (!mapping?.statsId) return false;
+      const available = mapping.availableCurrent;
+      return rule ? available?.[rule] === true : available?.Singles === true || available?.Doubles === true;
+    }) : [];
+    state.pokemonSearchIds = new Set(entries.map((entry) => entry.id));
+    state.pokemonSearchIndex = entries.map(buildPokemonSearchEntry);
+  }
 
   function buildPokemonSearchEntry(pokemon) {
     const searchKeys = [];

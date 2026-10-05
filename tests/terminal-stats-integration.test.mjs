@@ -56,6 +56,7 @@ function harness({ storageThrows = false, catalogResponse = null } = {}) {
   dom.createTextNode = (text) => { const node = new Element("text", dom); node.textContent = text; return node; };
   const remoteApi = {
     getStats(statsId, rule) { const pending = deferred(); requests.push({ statsId, rule, ...pending }); return pending.promise; },
+    loadIndex: async () => { throw new Error("fixture index unavailable"); },
   };
   const stats = { ...statisticsModule, createStatisticsPresenter: (options) => statisticsModule.createStatisticsPresenter({ ...options, document: dom }) };
   const context = vm.createContext({
@@ -68,8 +69,9 @@ function harness({ storageThrows = false, catalogResponse = null } = {}) {
     .replace('import("./battle-statistics.js")', "Promise.resolve(globalThis.testStatsModule)")
     .replace(/\}\)\(\);\s*$/u, `
       scrollTerminalToBottom = () => {};
+      const realLoadPokemonIconReference = loadPokemonIconReference;
       loadPokemonIconReference = async () => {};
-      globalThis.app = { state, elements, loadDisplayCatalog,
+      globalThis.app = { state, elements, loadDisplayCatalog, realLoadPokemonIconReference, rebuildPokemonSearchIndex,
         handleTerminalInputKeydown, handleTerminalInputChange, handleTerminalSubmit,
         handleTerminalCompositionStart, handleTerminalCompositionEnd,
         handleTerminalCommand, refreshTerminalSuggestions, resolveTerminalSubmission,
@@ -77,7 +79,7 @@ function harness({ storageThrows = false, catalogResponse = null } = {}) {
         recordStatisticsDiagnostic, startMatchLog, finishMatchLog };
     })();`);
   vm.runInContext(source, context);
-  const h = { ...context.app, dom, context, requests, storageValues };
+  const h = { ...context.app, dom, context, requests, storageValues, remoteApi };
   Object.assign(h.elements, {
     terminalInput: dom.createElement("input"), terminalOutput: dom.createElement("output"),
     terminalSuggestions: dom.createElement("suggestions"), terminalGhost: dom.createElement("ghost"),
@@ -85,7 +87,12 @@ function harness({ storageThrows = false, catalogResponse = null } = {}) {
     video: { videoWidth: 1920, videoHeight: 1080 },
   });
   h.elements.terminalInput.focus();
-  h.state.remoteIndex = { statsById: Object.fromEntries(["kingambit", "charizard", "taurospaldeaaqua"].map((id) => [id, { statsId: id, shared: false, availableCurrent: { Singles: true, Doubles: true } }])) };
+  h.state.remoteIndex = { statsById: Object.fromEntries([
+    "kingambit", "charizard", "taurospaldeaaqua", "taurospaldeablaze", "taurospaldeacombat",
+    "greninja", "greninjabond", "rockruff", "rockruffdusk", "meowsticmmega", "meowsticfmega",
+    "basculegion", "basculegionf", "absolmega",
+  ].map((id) => [id, { statsId: id, shared: false, availableCurrent: { Singles: true, Doubles: true } }])) };
+  h.state.pokemonSearchStatus = "ready";
   h.type = (value) => { h.elements.terminalInput.value = value; h.handleTerminalInputChange(); };
   h.key = (key, extra = {}) => {
     const event = { key, isComposing: false, shiftKey: false, prevented: false, stopped: false,
@@ -281,4 +288,90 @@ test("statistics diagnostics reject stale captures and cannot mutate completed o
   const next = h.state.matchLog.current; const nextBaseline = JSON.stringify(next);
   h.recordStatisticsDiagnostic(event);
   assert.equal(JSON.stringify(next), nextBaseline); assert.equal(JSON.stringify(match), completed);
+});
+
+test("search whitelist follows API current-rule availability including explicitly shared forms", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.key("Escape");
+  h.state.remoteIndex = { statsById: {
+    kingambit: { statsId: "kingambit", availableCurrent: { Singles: true, Doubles: false } },
+    charizardmegax: { statsId: "charizard", shared: true, availableCurrent: { Singles: false, Doubles: true } },
+    basculegion: { statsId: "basculegion", availableCurrent: { Singles: false, Doubles: false } },
+    pikachu: { statsId: "pikachu" },
+    eevee: { availableCurrent: { Singles: true, Doubles: true } },
+    futureunknown: { statsId: "futureunknown", availableCurrent: { Singles: true, Doubles: true } },
+  } };
+  h.rebuildPokemonSearchIndex("ready");
+  assert.deepEqual([...h.state.pokemonSearchIds].sort(), ["charizardmegax", "kingambit"]);
+  assert.equal(h.findExactPokemonMatch("ドドゲザン")?.id, "kingambit");
+  assert.equal(h.findExactPokemonMatch("ピカチュウ"), null);
+  assert.equal(h.getPokemonSuggestions("ピカ").length, 0);
+  h.submit("stats rule シングル");
+  assert.deepEqual([...h.state.pokemonSearchIds], ["kingambit"]);
+  h.submit("stats rule ダブル");
+  assert.deepEqual([...h.state.pokemonSearchIds], ["charizardmegax"]);
+  assert.equal(h.findExactPokemonMatch("ドドゲザン"), null);
+  h.submit("メガリザードンX"); await settle();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].statsId, "charizard");
+  assert.equal(h.requests[0].rule, "Doubles");
+});
+
+test("unlisted species cannot bypass search by Japanese, English, ID or stale selected suggestion", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル");
+  for (const query of ["ピカチュウ", "Pikachu", "pikachu"]) {
+    h.submit(query); await settle();
+    assert.match(h.output(), /使用率が掲載されている検索対象に見つかりません/u);
+  }
+  h.type("ドドゲザン"); h.key("Tab");
+  h.state.remoteIndex = { statsById: {} }; h.rebuildPokemonSearchIndex();
+  // Even an obsolete UI selection must fail the final submission guard.
+  h.handleTerminalSubmit({ preventDefault() {} }); await settle();
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.dom.activeElement, h.elements.terminalInput);
+});
+
+test("index loading/failure fail closed; successful retry refreshes typed suggestions without changing focus or caret", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル");
+  const refreshed = { icons: [], statsById: {
+    pikachu: { statsId: "pikachu", availableCurrent: { Singles: true, Doubles: true } },
+  } };
+  let pending = deferred(); h.remoteApi.loadIndex = () => pending.promise;
+  let loading = h.realLoadPokemonIconReference();
+  assert.equal(h.state.pokemonSearchStatus, "loading");
+  assert.equal(h.state.pokemonSearchIndex.length, 0);
+  h.submit("kingambit"); assert.match(h.output(), /使用率の一覧を読み込み中/u);
+  pending.reject(new Error("offline")); await loading;
+  assert.equal(h.state.pokemonSearchStatus, "failed");
+  h.submit("kingambit"); assert.match(h.output(), /使用率の一覧を取得できませんでした。api retry/u);
+  assert.equal(h.requests.length, 0);
+  pending = deferred(); h.remoteApi.retryIndex = () => pending.promise;
+  loading = h.realLoadPokemonIconReference(true);
+  h.type("ピカ"); h.elements.terminalInput.setSelectionRange(1, 1);
+  pending.resolve(refreshed); await loading;
+  assert.equal(h.state.pokemonSearchStatus, "ready");
+  assert.equal(h.elements.terminalInput.value, "ピカ");
+  assert.equal(h.elements.terminalInput.selectionStart, 1);
+  assert.equal(h.dom.activeElement, h.elements.terminalInput);
+  assert.equal(h.state.suggestions[0].id, "pikachu");
+  assert.equal(h.findExactPokemonMatch("ドドゲザン"), null);
+  // Search statistics do not require an image candidate (or successful image preparation).
+  assert.equal(h.state.pokemonIconReferenceReady, false);
+  h.key("Tab"); h.key("Enter"); await settle();
+  assert.equal(h.requests[0].statsId, "pikachu");
+});
+
+test("a successful empty API whitelist stays empty and index refresh does not interrupt IME", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル");
+  h.type("ピカ"); h.handleTerminalCompositionStart();
+  h.remoteApi.loadIndex = async () => ({ icons: [], statsById: {} });
+  await h.realLoadPokemonIconReference();
+  assert.equal(h.state.pokemonSearchStatus, "ready");
+  assert.equal(h.state.pokemonSearchIds.size, 0);
+  assert.equal(h.state.suggestions.length, 0);
+  assert.equal(h.state.isComposing, true);
+  assert.equal(h.elements.terminalInput.value, "ピカ");
+  h.handleTerminalCompositionEnd();
+  h.submit("kingambit"); await settle();
+  assert.equal(h.requests.length, 0);
+  assert.match(h.output(), /検索対象に見つかりません/u);
 });
