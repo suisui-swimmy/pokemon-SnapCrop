@@ -104,12 +104,17 @@ export function translateStatsName(catalog, category, canonicalName) {
 export function formatStatisticsRows(data, settings, catalog) {
   return settings.fields.map((category) => {
     const rows = (data.rows || []).filter((row) => row.category === category);
-    if (!rows.length) return `${STATS_FIELD_LABELS[category]} | 掲載なし`;
     const eligible = rows.filter((row) => row.value === null ? settings.min === 0 : typeof row.value === "number" && Number.isFinite(row.value) && row.value >= settings.min)
       .sort((a, b) => a.rank - b.rank);
     const selected = settings.top[category] === "all" ? eligible : eligible.slice(0, settings.top[category]);
-    if (!selected.length) return `${STATS_FIELD_LABELS[category]} | 条件に合うデータなし`;
-    return `${STATS_FIELD_LABELS[category]} | ${selected.map((row) => `${translateStatsName(catalog, category, row.canonicalName)} ${row.value === null ? "使用率不明" : row.percentage || `${row.value}%`}`).join(" | ")}`;
+    return {
+      label: STATS_FIELD_LABELS[category],
+      rows: selected.map((row) => ({
+        name: translateStatsName(catalog, category, row.canonicalName),
+        rate: row.value === null ? "使用率不明" : row.percentage || `${row.value}%`,
+      })),
+      emptyMessage: rows.length ? "条件に合うデータなし" : "掲載なし",
+    };
   });
 }
 
@@ -143,7 +148,48 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
     heading.textContent = `> ${entry?.name || entry?.canonicalName || block.formId}［${block.source === "auto" ? `選出${block.order}／` : ""}${RULE_LABELS[block.settings.rule] || "ルール未選択"}${result?.date ? `／${result.date}` : "／最新"}］`;
     const body = dom.createElement("div");
     body.className = "terminal-statistics__body";
-    body.textContent = lines.join("\n");
+    if (result?.status === "ready") {
+      body.className += " terminal-statistics__tables";
+      body.replaceChildren(...formatStatisticsRows(result, block.settings, catalog).map((group) => {
+        const table = dom.createElement("table");
+        table.className = "terminal-statistics__table";
+        const caption = dom.createElement("caption");
+        caption.textContent = group.label;
+        const head = dom.createElement("thead");
+        const headerRow = dom.createElement("tr");
+        headerRow.replaceChildren(...["名前", "使用率"].map((label) => {
+          const cell = dom.createElement("th");
+          cell.scope = "col";
+          cell.textContent = label;
+          return cell;
+        }));
+        head.replaceChildren(headerRow);
+        const rows = dom.createElement("tbody");
+        rows.replaceChildren(...group.rows.map(({ name, rate }) => {
+          const row = dom.createElement("tr");
+          const nameCell = dom.createElement("th");
+          nameCell.scope = "row";
+          nameCell.textContent = name;
+          const rateCell = dom.createElement("td");
+          rateCell.textContent = rate;
+          row.replaceChildren(nameCell, rateCell);
+          return row;
+        }));
+        if (!group.rows.length) {
+          const row = dom.createElement("tr");
+          const cell = dom.createElement("td");
+          cell.colSpan = 2;
+          cell.className = "terminal-statistics__empty";
+          cell.textContent = group.emptyMessage;
+          row.replaceChildren(cell);
+          rows.replaceChildren(row);
+        }
+        table.replaceChildren(caption, head, rows);
+        return table;
+      }));
+    } else {
+      body.textContent = lines.join("\n");
+    }
     const children = [heading];
     if (block.mapping?.shared) {
       const shared = dom.createElement("div");
@@ -217,7 +263,7 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
       } else {
         block.status = "ready";
         block.data = result;
-        paint(block, formatStatisticsRows(result, block.settings, catalog), result);
+        paint(block, [], result);
         const translationIssues = result.rows.filter((row) => block.settings.fields.includes(row.category)).flatMap((row) => {
           const id = toId(row.canonicalName);
           const translation = catalog.translations?.[TRANSLATION_KINDS[row.category]]?.[id];
@@ -293,7 +339,7 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
         if (previousRule === block.settings.rule && block.data) {
           paint(block, block.data.status === "absent"
             ? ["このルールの最新統計は掲載されていません。"]
-            : formatStatisticsRows(block.data, block.settings, catalog), block.data);
+            : [], block.data);
           continue;
         }
         void update(block);

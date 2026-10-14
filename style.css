@@ -1304,3 +1304,42 @@ html[data-theme="light"] .terminal-entry--system {
 .terminal-statistics__heading { font-weight: 700; }
 .terminal-statistics__body { white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
 .terminal-statistics__shared { font-size: 0.85em; }
+.terminal-statistics__tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: start;
+  gap: 10px 14px;
+  margin: 6px 0;
+  white-space: normal;
+}
+.terminal-statistics__table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: inherit;
+  font: inherit;
+}
+.terminal-statistics__table caption {
+  padding: 3px 8px;
+  text-align: left;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--success-strong) 8%, transparent);
+  border-bottom: 1px solid var(--success-strong);
+}
+.terminal-statistics__table th,
+.terminal-statistics__table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.terminal-statistics__table tbody th { font-weight: 400; }
+.terminal-statistics__table tr > :nth-child(2) {
+  width: 7.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.terminal-statistics__table thead { color: var(--muted); }
+.terminal-statistics__empty { color: var(--muted); }
+.terminal-statistics__fetched { font-size: 0.85em; color: var(--muted); }

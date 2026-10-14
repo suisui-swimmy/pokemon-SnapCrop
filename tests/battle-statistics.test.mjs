@@ -90,7 +90,10 @@ test("statistics preserve rank and rates, filter then limit, and use English for
   const rows = [row("move", 3, "Third", 60), row("move", 1, "Kowtow Cleave", 97.44), row("move", 2, "Second", 85),
     row("ability", 1, "Defiant", 99.1), row("ability", 2, "Uncertain", 1.1), row("stat_alignment", 1, "Adamant", 0.9)];
   assert.deepEqual(formatStatisticsRows({ rows }, config, catalog), [
-    "技 | ドゲザン 97.44% | Second 85%", "特性 | まけんき 99.1% | Uncertain 1.1%", "持ち物 | 掲載なし", "性格 | 条件に合うデータなし",
+    { label: "技", rows: [{ name: "ドゲザン", rate: "97.44%" }, { name: "Second", rate: "85%" }], emptyMessage: "条件に合うデータなし" },
+    { label: "特性", rows: [{ name: "まけんき", rate: "99.1%" }, { name: "Uncertain", rate: "1.1%" }], emptyMessage: "条件に合うデータなし" },
+    { label: "持ち物", rows: [], emptyMessage: "掲載なし" },
+    { label: "性格", rows: [], emptyMessage: "条件に合うデータなし" },
   ]);
 });
 
@@ -102,16 +105,16 @@ test("statistics render reviewed public API names and variant labels while prese
     row("held_item", 1, "Golisopite", 55), row("held_item", 2, "Dragoninite", 25), row("held_item", 3, "Absolite Z", 20),
     row("stat_alignment", 1, "Adamant", 82), row("stat_alignment", 2, "Modest", 18),
   ] };
-  assert.deepEqual(formatStatisticsRows(data, settings(), generated), [
-    "技 | めざめるパワー（ほのお） 80% | めざめるパワー（こおり） 20%",
-    "特性 | じんばいったい（ブリザポス） 60% | じんばいったい（レイスポス） 40%",
-    "持ち物 | グソクムシャナイト 55% | カイリュナイト 25% | アブソルナイトＺ 20%",
-    "性格 | いじっぱり 82% | ひかえめ 18%",
+  assert.deepEqual(formatStatisticsRows(data, settings(), generated).map((group) => group.rows), [
+    [{ name: "めざめるパワー（ほのお）", rate: "80%" }, { name: "めざめるパワー（こおり）", rate: "20%" }],
+    [{ name: "じんばいったい（ブリザポス）", rate: "60%" }, { name: "じんばいったい（レイスポス）", rate: "40%" }],
+    [{ name: "グソクムシャナイト", rate: "55%" }, { name: "カイリュナイト", rate: "25%" }, { name: "アブソルナイトＺ", rate: "20%" }],
+    [{ name: "いじっぱり", rate: "82%" }, { name: "ひかえめ", rate: "18%" }],
   ]);
   const h = harness({ catalog: generated }); h.select(); await settle();
   h.calls[0].resolve({ ...ready(), rows: [row("move", 1, "Paleo Wave", 50), row("move", 2, "Baddy Bad", 40), row("move", 3, "Future Unknown Move", 10)] });
   await settle();
-  assert.match(h.entries[0].textContent, /Paleo Wave 50% \| Baddy Bad 40% \| Future Unknown Move 10%/u);
+  assert.match(h.entries[0].textContent, /Paleo Wave\n50%\nBaddy Bad\n40%\nFuture Unknown Move\n10%/u);
   assert.deepEqual(h.diagnostics.at(-1).translationIssues, [
     { category: "move", id: "paleowave", status: "out-of-scope" },
     { category: "move", id: "baddybad", status: "unsupported" },
@@ -124,7 +127,16 @@ test("automatic display updates the same block with date and diagnostics but no 
   assert.equal(h.entries.length, 1); assert.match(h.entries[0].textContent, /読み込み中/u);
   h.calls[0].resolve(ready()); await settle();
   assert.match(h.entries[0].textContent, /ドドゲザン［選出1／ダブル／2026-10-04］/u);
-  assert.match(h.entries[0].textContent, /技 \| ドゲザン 97.4%/u);
+  const tables = h.entries[0].children[1].children;
+  assert.deepEqual(tables.map((table) => table.tagName), ["table", "table", "table", "table"]);
+  assert.deepEqual(tables.map((table) => table.children[0].textContent), ["技", "特性", "持ち物", "性格"]);
+  const headers = tables[0].children[1].children[0].children;
+  assert.deepEqual(headers.map((cell) => [cell.textContent, cell.scope]), [["名前", "col"], ["使用率", "col"]]);
+  const cells = tables[0].children[2].children[0].children;
+  assert.equal(cells[0].scope, "row");
+  assert.deepEqual(cells.map((cell) => cell.textContent), ["ドゲザン", "97.4%"]);
+  assert.equal(tables[1].children[2].children[0].children[0].colSpan, 2);
+  assert.match(tables[1].textContent, /掲載なし/u);
   assert.doesNotMatch(h.entries[0].textContent, /出典:|Pokémon Champions Battle Data/u);
   assert.match(h.entries[0].textContent, /取得日時: 2026-10-04T00:00:00Z/u);
   const diagnostic = h.diagnostics.at(-1);
@@ -138,8 +150,8 @@ test("unknown rates remain unknown, precision is preserved and withheld translat
   const data = { ...ready(), rows: [row("move", 1, "Kowtow Cleave", 97.432),
     { category: "ability", rank: 1, canonicalName: "Uncertain", value: null, percentage: null }] };
   h.calls[0].resolve(data); await settle();
-  assert.match(h.entries[0].textContent, /ドゲザン 97.432%/u);
-  assert.match(h.entries[0].textContent, /Uncertain 使用率不明/u);
+  assert.match(h.entries[0].textContent, /ドゲザン\n97.432%/u);
+  assert.match(h.entries[0].textContent, /Uncertain\n使用率不明/u);
   assert.doesNotMatch(h.entries[0].textContent, /仮訳/u);
   assert.deepEqual(h.diagnostics.at(-1).translationIssues, [{ category: "ability", id: "uncertain", status: "unverified" }]);
   h.settings.min = 1; h.presenter.settingsChanged();
@@ -151,10 +163,10 @@ test("display-only settings repaint existing data without requesting statistics 
   h.calls[0].resolve({ ...ready(), rows: [row("move", 1, "Kowtow Cleave", 97.4), row("stat_alignment", 1, "Adamant", 82)] }); await settle();
   h.settings.fields = ["stat_alignment"]; h.settings.top.stat_alignment = 1; h.settings.min = 90;
   h.presenter.settingsChanged(); await settle();
-  assert.equal(h.calls.length, 1); assert.match(h.entries[0].textContent, /性格 \| 条件に合うデータなし/u);
-  assert.doesNotMatch(h.entries[0].textContent, /技 \|/u);
+  assert.equal(h.calls.length, 1); assert.match(h.entries[0].textContent, /性格\n名前\n使用率\n条件に合うデータなし/u);
+  assert.deepEqual(h.entries[0].children[1].children.map((table) => table.children[0].textContent), ["性格"]);
   h.settings.min = 0; h.presenter.settingsChanged(); await settle();
-  assert.equal(h.calls.length, 1); assert.match(h.entries[0].textContent, /いじっぱり 82%/u);
+  assert.equal(h.calls.length, 1); assert.match(h.entries[0].textContent, /いじっぱり\n82%/u);
 });
 
 test("no rule, pending index, failed index and explicitly absent statistics are distinct", async () => {

@@ -227,7 +227,7 @@ test("storage denial keeps commands and the real statistics presenter usable", a
   h.submit("ドドゲザン"); await settle();
   assert.equal(h.requests.length, 1); assert.equal(h.requests[0].statsId, "kingambit"); assert.equal(h.requests[0].rule, "Doubles");
   h.requests[0].resolve({ status: "ready", date: null, rows: [{ category: "move", rank: 1, canonicalName: "Kowtow Cleave", value: 97.4 }] });
-  await settle(); assert.match(h.output(), /技 \| ドゲザン 97.4%/u);
+  await settle(); assert.match(h.output(), /技\n名前\n使用率\nドゲザン\n97.4%/u);
   assert.equal(h.elements.terminalInput.value, ""); assert.equal(h.dom.activeElement, h.elements.terminalInput);
 });
 
@@ -254,7 +254,7 @@ test("halfwidth and fullwidth mega suffix inputs resolve the same ID and show fu
     { category: "held_item", rank: 1, canonicalName: "Absolite Z", value: 100 },
   ] }); await settle();
   assert.match(h.output(), /メガアブソルＺ［ダブル／最新］/u);
-  assert.match(h.output(), /持ち物 \| アブソルナイトＺ 100%/u);
+  assert.match(h.output(), /持ち物\n名前\n使用率\nアブソルナイトＺ\n100%/u);
 });
 
 test("reviewed shared names require form selection and detailed labels resolve their original IDs", async () => {
