@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.7";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.8";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -1690,12 +1690,42 @@
       appendHighlightedSuggestionName(name, suggestion.name, query);
 
       row.append(name);
+      if (!suggestion.command && suggestion.id) {
+        const details = state.statsModule.formatPokemonDetails(state.catalog, state.pokemonMap.get(suggestion.id));
+        row.classList.add("terminal-suggestion--pokemon");
+        const identity = document.createElement("span");
+        identity.className = "terminal-suggestion__identity";
+        row.replaceChildren(identity);
+        identity.append(name);
+        if (details.types.length) {
+          const types = document.createElement("span");
+          types.className = "terminal-suggestion__types";
+          appendSuggestionTypeChips(types, details.types);
+          identity.append(types);
+        }
+        if (details.baseStats) {
+          const stats = document.createElement("span");
+          stats.className = "terminal-suggestion__base-stats";
+          stats.textContent = details.baseStats.text;
+          stats.title = details.baseStats.title;
+          stats.setAttribute("aria-label", details.baseStats.label);
+          row.append(stats);
+        }
+      }
       fragment.append(row);
     });
 
     elements.terminalSuggestions.append(fragment);
     elements.terminalSuggestions.classList.remove("is-hidden");
     elements.terminalSuggestions.setAttribute("aria-hidden", "false");
+    const selectedRow = elements.terminalSuggestions.children[state.selectedSuggestionIndex];
+    if (selectedRow) {
+      const list = elements.terminalSuggestions;
+      const top = selectedRow.offsetTop;
+      const bottom = top + selectedRow.offsetHeight;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    }
   }
 
   function appendHighlightedSuggestionName(container, name, query) {

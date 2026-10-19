@@ -118,6 +118,7 @@ test("real rule picker cycles with Tab/ShiftTab and submits full command on Ente
   const h = harness(); await h.loadDisplayCatalog();
   assert.equal(h.state.rulePicker, true);
   assert.deepEqual(Array.from(h.state.suggestions, (item) => item.name), ["シングル", "ダブル"]);
+  assert.ok(h.elements.terminalSuggestions.children.every(row => row.children.length === 1));
   assert.equal(h.key("Tab").prevented, true);
   assert.equal(h.state.selectedSuggestionIndex, 0);
   h.key("Tab"); assert.equal(h.state.selectedSuggestionIndex, 1);
@@ -129,6 +130,39 @@ test("real rule picker cycles with Tab/ShiftTab and submits full command on Ente
   assert.equal(h.elements.terminalInput.value, "");
   assert.match(h.output(), /> stats rule シングル/u);
   assert.equal(h.dom.activeElement, h.elements.terminalInput);
+});
+
+test("Pokemon suggestions show each form's types and stats without fetching or changing keyboard selection", async () => {
+  const h = harness(); await h.loadDisplayCatalog(); h.submit("stats rule ダブル");
+  for (const id of ["charizardmegax", "charizardmegay"]) h.state.remoteIndex.statsById[id] = {
+    statsId: "charizard", shared: true, availableCurrent: { Singles: true, Doubles: true },
+  };
+  h.rebuildPokemonSearchIndex(); h.type("リザ");
+  assert.equal(h.state.suggestions.length, 3);
+  for (const [id, types, stats] of [
+    ["charizard", ["ほのお", "ひこう"], "78-84-78-109-85-100 (534)"],
+    ["charizardmegax", ["ほのお", "ドラゴン"], "78-130-111-130-85-100 (634)"],
+    ["charizardmegay", ["ほのお", "ひこう"], "78-104-78-159-115-100 (634)"],
+  ]) {
+    const index = h.state.suggestions.findIndex(entry => entry.id === id);
+    const row = h.elements.terminalSuggestions.children[index];
+    assert.deepEqual(Array.from(row.children[0].children[1].children, chip => chip.textContent), types);
+    assert.equal(row.children[1].textContent, stats);
+    assert.match(row.children[1].getAttribute("aria-label"), /種族値: HP 78、攻撃/u);
+  }
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.elements.terminalInput.value, "リザ");
+  h.key("Tab"); const first = h.state.suggestions[0].id;
+  assert.equal(h.resolveTerminalSubmission("リザ").query, first);
+  h.key("Tab"); h.key("Tab", { shiftKey: true });
+  assert.equal(h.resolveTerminalSubmission("リザ").query, first);
+  assert.equal(h.dom.activeElement, h.elements.terminalInput);
+  h.key("Escape"); assert.equal(h.state.suggestions.length, 0);
+  h.type("リザ"); h.key("Tab"); h.key("Enter"); await settle();
+  assert.equal(h.requests.length, 1); assert.equal(h.requests[0].statsId, "charizard");
+  assert.equal(h.dom.activeElement, h.elements.terminalInput);
+  h.type("stats rule");
+  assert.ok(h.elements.terminalSuggestions.children.every(row => row.children.length === 1));
 });
 
 test("rule picker Escape defers selection and composition keys never select or submit", async () => {

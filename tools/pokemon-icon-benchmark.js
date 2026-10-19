@@ -5,7 +5,7 @@ import {
   createBenchmarkLabelResolver,
 } from "./pokemon-icon-benchmark-metadata.mjs";
 
-const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.7.7";
+const BENCHMARK_APP_VERSION = "pokemon-snapcrop-v1.7.8";
 
 const elements = {
   files: document.getElementById("bundle-files"),

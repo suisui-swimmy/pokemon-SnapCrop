@@ -1121,10 +1121,13 @@ html[data-theme="light"] .terminal-entry--system {
 }
 
 .terminal-suggestions {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   margin: 0 0 4px;
   padding: 6px 8px;
   border: 1px solid var(--suggestion-border);
@@ -1133,6 +1136,11 @@ html[data-theme="light"] .terminal-entry--system {
 
 .terminal-suggestions.is-hidden {
   display: none;
+}
+
+/* Give visible choices space before the scrollable log, while keeping input visible. */
+.terminal-log:has(+ .terminal-suggestions:not(.is-hidden)) {
+  flex-basis: 0;
 }
 
 .terminal-suggestion {
@@ -1165,9 +1173,33 @@ html[data-theme="light"] .terminal-entry--system {
 .terminal-suggestion__types {
   display: inline-flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 4px;
   min-width: 0;
+}
+
+.terminal-suggestion--pokemon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.terminal-suggestion__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.terminal-suggestion__identity .terminal-suggestion__name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.terminal-suggestion__base-stats {
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .terminal-suggestion__type-chip {
