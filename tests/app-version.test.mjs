@@ -28,7 +28,7 @@ test("app, benchmark, and Service Worker versions stay synchronized", () => {
     /const CACHE_NAME = "(pokemon-snapcrop-v[^"]+)"/u,
     "Service Worker",
   );
-  assert.equal(appVersion, "pokemon-snapcrop-v1.7.9");
+  assert.equal(appVersion, "pokemon-snapcrop-v1.7.10");
   assert.equal(benchmarkVersion, appVersion);
   assert.equal(cacheVersion, appVersion);
 });
