@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
 import { harness, samples, best } from "./helpers/faint-harness.mjs";
 
 test("debug-off diagnostics record shape, identity and three consecutive observations", () => {
@@ -22,15 +23,20 @@ test("debug-off diagnostics record shape, identity and three consecutive observa
   assert.equal(entry.captureId, h.state.matchLog.references.enemy.captureId);
   assert.equal(entry.matchId, h.match.diagnostic.matchId);
   assert.equal(row.crops.percent.width, 57);
-  h.step(); assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "already_fainted");
+  h.step(); assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "mark_consumed");
 });
 
-test("all image conditions including mark shape are required", () => {
-  for (const [part, property, value] of [["icon", "pink", 0.4], ["color", "red", 0.4],
-    ["percent", "white", 0.01], ["icon", "shape", { matched: false }], ["icon", "shape", undefined]]) {
-    const h = harness(); h.context.inputs[0][part][property] = value; h.repeat(5);
-    assert.equal(h.pick.faintedByRefIndex[0], false, part + "." + property);
+test("mark shape is required while background, colour ratios and percent are diagnostic only", () => {
+  for (const shape of [{ templateReady: true, matched: false }, { templateReady: false, matched: true }, undefined]) {
+    const h = harness(); h.context.inputs[0].icon.shape = shape; h.repeat(5);
+    assert.equal(h.pick.faintedByRefIndex[0], false);
   }
+  for (const [part, key, value] of [["icon", "pink", 0.8], ["color", "red", 0.8], ["percent", "white", 0]]) {
+    const h = harness(); h.context.inputs[0][part][key] = value; h.repeat();
+    assert.equal(h.pick.faintedByRefIndex[0], true);
+  }
+  const h = harness(); h.context.inputs[0].color = null; h.context.inputs[0].percent = null; h.repeat();
+  assert.equal(h.pick.faintedByRefIndex[0], true);
 });
 
 test("strong and weak signals both need three uninterrupted observations", () => {
@@ -64,42 +70,39 @@ test("reported unselected Hatterene guess cannot replace fainted Milotic", () =>
   h.context.inputs[1] = samples("normal"); h.repeat(2, [best(2), best(0)]);
   h.pick.faintedByRefIndex[0] = true;
   h.step([best(2), { refIndex: 1, tier: "weak", bestScore: 0.7052829892, margin: 0.1412609886 }]);
-  assert.equal(h.pick.faintSlotCacheByHudIndex[1], null);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[1].refIndex, 0);
   h.context.inputs[1] = samples(); h.step([], 7839); h.repeat(3, []);
   assert.equal(h.pick.faintedByRefIndex[1], false);
-  assert.ok(h.diagnostic.reasons.unselected_slot.count > 0);
 });
 
-test("a conflicting weak selected candidate invalidates the old occupant", () => {
-  const h = harness(); h.step([best(2, "weak")]);
-  assert.equal(h.pick.faintSlotCacheByHudIndex[0], null);
-  h.repeat(4, []); assert.equal(h.pick.faintedByRefIndex.some(Boolean), false);
+test("a weak competing candidate cannot replace or erase a confirmed occupant", () => {
+  const h = harness(); h.context.inputs[0] = samples("normal"); h.step([best(2, "weak")]);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[0].refIndex, 0);
+  h.context.inputs[0] = samples(); h.repeat(3, []);
+  assert.equal(h.pick.faintedByRefIndex[0], true); assert.equal(h.pick.faintedByRefIndex[2], false);
 });
 
-test("recent mapping bridges a dark faint HUD, but expires without pending revival", () => {
-  const h = harness(); h.repeat(3, [], 250, [{ ready: false }, { ready: false }]);
-  assert.equal(h.pick.faintedByRefIndex[0], true);
-  const stale = harness(); stale.step([], 2300); stale.repeat(3, []);
-  assert.equal(stale.pick.faintedByRefIndex.some(Boolean), false);
-  assert.equal(stale.pick.faintSlotCacheByHudIndex[0], null);
-  const first = stale.diagnostic.comparisons[0].hud[0];
-  assert.ok(first.cacheBefore.ageMs > 2200);
-  assert.equal(first.cacheAfter, null);
-});
-
-test("blocked screens invalidate mapping even inside the comparison interval", () => {
-  const h = harness(); h.repeat(2); h.step([], 50, [], false);
-  assert.equal(h.pick.faintSlotCacheByHudIndex[0], null);
-  assert.equal(h.pick.pendingFaintsByHudIndex[0], null);
-  h.step([], 250, [], false);
-  assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "screen_blocked");
-  h.repeat(4, []); assert.equal(h.pick.faintedByRefIndex.some(Boolean), false);
-});
-
-test("disappearing HUD anchors invalidate the remembered occupant", () => {
+test("a verified occupant survives a 158-second animation without another identity reading", () => {
   const h = harness(); h.context.inputs[0] = samples("normal"); h.context.inputs[0].percent.white = 0;
-  h.step([]); assert.equal(h.pick.faintSlotCacheByHudIndex[0], null);
-  h.context.inputs[0] = samples(); h.repeat(4, []); assert.equal(h.pick.faintedByRefIndex[0], false);
+  h.step([], 158000, [{ ready: false }, { ready: false }]);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[0].refIndex, 0);
+  h.context.inputs[0] = samples(); h.repeat(3, [], 250, [{ ready: false }, { ready: false }]);
+  assert.equal(h.pick.faintedByRefIndex[0], true);
+  assert.ok(h.diagnostic.reasons.accepted.first.cacheBefore.ageMs > 158000);
+});
+
+test("a fixed faint mark confirms the retained occupant when the scene colour gate is unavailable", () => {
+  const h = harness(); h.repeat(3, [best(2)], 250, [{ ready: true }], false);
+  assert.equal(h.pick.faintedByRefIndex[0], true); assert.equal(h.pick.faintedByRefIndex[2], false);
+  assert.equal(h.diagnostic.reasons.accepted.first.screenAllowed, false);
+});
+
+test("hidden HUD resets a pending faint but retains the occupant", () => {
+  const h = harness(); h.repeat(2); h.context.inputs[0] = samples("normal"); h.context.inputs[0].percent.white = 0;
+  h.step([]); assert.equal(h.pick.faintSlotCacheByHudIndex[0].refIndex, 0);
+  assert.equal(h.pick.pendingFaintsByHudIndex[0], null);
+  h.context.inputs[0] = samples(); h.repeat(2, []); assert.equal(h.pick.faintedByRefIndex[0], false);
+  h.step([]); assert.equal(h.pick.faintedByRefIndex[0], true);
 });
 
 test("the four-slot safety limit prevents a fifth faint flag", () => {
@@ -123,10 +126,10 @@ test("a simulated double battle confirms 3 -> 1 -> 5 -> 6 and leaves unselected 
 test("missing mapping and failed ROI remain distinct", () => {
   const h = harness({ stable: false }); h.step([]);
   assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "missing_slot");
-  h.context.inputs[0].color = null; h.repeat(2);
+  h.context.inputs[0].icon = null; h.repeat(2);
   let row = h.diagnostic.comparisons.at(-1).hud[0];
   assert.equal(row.outcome, "roi_read_failed");
-  assert.equal(row.samples.color, null); assert.equal(row.samples.icon.white, 0.25);
+  assert.equal(row.samples.icon, null); assert.equal(row.samples.color.red, 0.02);
   h.elements.video.videoWidth = 0; h.elements.video.videoHeight = 0; h.repeat(2);
   row = h.diagnostic.comparisons.at(-1).hud[0];
   assert.equal(row.crops.icon, null);
@@ -166,9 +169,9 @@ test("bounded rings export new evidence without images or history mutation", () 
   assert.equal(h.diagnostic.comparisons.length, 7200); assert.equal(h.diagnostic.comparisonDropped, 3);
   assert.equal(h.diagnostic.events.length, 256); assert.ok(h.diagnostic.eventDropped > 0);
   assert.equal(h.match.events.length, 1); assert.equal(h.match.pickDiagnostic.comparisonCount, 0);
-  assert.equal(h.diagnostic.reasons.already_fainted.count, 7200); assert.equal(h.diagnostic.reasons.accepted.first.at, 1750);
+  assert.equal(h.diagnostic.reasons.mark_consumed.count, 7200); assert.equal(h.diagnostic.reasons.accepted.first.at, 1750);
   const before = JSON.stringify(h.diagnostic), text = h.formatMatchLog(h.match);
-  assert.equal(JSON.stringify(h.diagnostic), before); assert.match(text, /"version":2/u);
+  assert.equal(JSON.stringify(h.diagnostic), before); assert.match(text, /"version":3/u);
   assert.doesNotMatch(text, /data:image|"dataUrl"|"imageData"|"mask"/u);
   const rows = text.split("--- 瀕死の詳細判定 ---")[1].split(/\r?\n--- /u)[0].trim().split("\r\n");
   assert.equal(JSON.parse(rows[0].slice(25)).comparison, 4); assert.equal(JSON.parse(rows.at(-1).slice(25)).comparison, 7203);
@@ -182,6 +185,82 @@ test("logging ON/OFF has identical state, output and image-read count", () => {
   }
   assert.equal(JSON.stringify(on.pick), JSON.stringify(off.pick));
   assert.deepEqual(on.output, off.output); assert.equal(on.context.sampleCalls, off.context.sampleCalls);
+});
+
+test("a strong conflicting identity suspends fallback until a confirmed identity resolves it", () => {
+  const h = harness(); h.step([best(2)]);
+  assert.equal(h.pick.faintedByRefIndex[0], false);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[0].conflictingRefIndex, 2);
+  h.repeat(4, []);
+  assert.equal(h.pick.faintedByRefIndex.some(Boolean), false);
+  assert.equal(h.diagnostic.comparisons.at(-1).hud[0].resolved.source, "mapping-conflict");
+  h.repeat(2, [best(2)]); h.repeat(2, []);
+  assert.equal(h.pick.faintedByRefIndex[2], true);
+  assert.equal(h.pick.faintedByRefIndex[0], false);
+});
+
+test("a strong unselected conflict is held without becoming a faint target", () => {
+  const h = harness(); h.repeat(4, [best(5)]); h.repeat(4, []);
+  assert.equal(h.pick.faintedByRefIndex.some(Boolean), false);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[0].refIndex, 0);
+  h.repeat(3, [best(0)]);
+  assert.equal(h.pick.faintedByRefIndex[0], true);
+  assert.equal(h.pick.faintSlotCacheByHudIndex[0].conflictingRefIndex, null);
+});
+
+test("one persistent mark cannot mark a second occupant, including across a one-frame dropout", () => {
+  const h = harness(); h.repeat(); h.repeat(5, [best(2)]);
+  assert.equal(h.pick.faintedByRefIndex[2], false);
+  h.context.inputs[0] = samples("normal"); h.step([]);
+  h.context.inputs[0] = samples(); h.repeat(4, []);
+  assert.equal(h.pick.faintedByRefIndex[2], false);
+  h.context.inputs[0] = samples("normal"); h.repeat(2, []);
+  h.context.inputs[0] = samples(); h.repeat(3, []);
+  assert.equal(h.pick.faintedByRefIndex[2], true);
+  assert.equal(h.diagnostic.reasons.accepted.count, 2);
+});
+
+test("failed template reads cannot rearm a consumed mark", () => {
+  const h = harness(); h.repeat(); h.repeat(2, [best(2)]);
+  h.context.inputs[0].icon.shape = { templateReady: false, matched: false }; h.repeat(4, []);
+  h.context.inputs[0] = samples(); h.repeat(4, []);
+  assert.equal(h.pick.faintedByRefIndex[2], false);
+});
+
+test("simultaneous faint marks on the two HUDs are independent", () => {
+  const h = harness(); h.context.inputs[1] = samples(); h.repeat();
+  assert.deepEqual(Array.from(h.pick.faintedByRefIndex), [true, true, false, false, false, false]);
+  assert.equal(h.diagnostic.reasons.accepted.count, 2);
+});
+
+test("reset discards retained occupants and consumed marks", () => {
+  const h = harness(); h.repeat(); h.resetFaintOverlayState("reset", { redraw: false });
+  h.repeat(4, []);
+  assert.equal(h.pick.faintedByRefIndex.some(Boolean), false);
+  assert.ok(h.pick.faintMarksByHudIndex.every(mark => !mark.consumed));
+  assert.ok(h.pick.faintSlotCacheByHudIndex.every(cache => !cache));
+});
+
+test("the recorded 1546-comparison match confirms exactly 3 -> 1 -> 5 -> 6", () => {
+  const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/faint-mark-replay.json", import.meta.url), "utf8"));
+  const h = harness({ stable: false, selected: [0, 0, 0, 0, 0, 0] });
+  for (const [elapsed, orders, screenAllowed, hud] of fixture.frames) {
+    h.pick.ordersByRefIndex = [...orders];
+    h.context.inputs = hud.map(([, , , , , matched, ready]) => {
+      const values = samples("normal");
+      // Recorded shape decisions drive the replay. Other colours deliberately do not resemble a faint HUD.
+      values.color.red = 1; values.percent.white = 0;
+      values.icon.shape = { matched, templateReady: ready };
+      return values;
+    });
+    h.clock.now = 1000 + elapsed - 250;
+    h.step(hud.map(([refIndex, tier, score, margin]) => ({ refIndex: refIndex ?? -1, tier: tier ?? "", bestScore: score ?? 0, margin: margin ?? 0 })),
+      250, hud.map(([, , , , ready]) => ready == null ? null : { ready }), screenAllowed);
+  }
+  const accepted = h.diagnostic.comparisons.flatMap(row => row.hud.filter(item => item.outcome === "accepted").map(item => item.resolved.refIndex + 1));
+  assert.equal(h.diagnostic.comparisonCount, 1546);
+  assert.deepEqual(Array.from(accepted), fixture.expectedSlots);
+  assert.deepEqual(Array.from(h.pick.faintedByRefIndex), [true, false, true, false, true, true]);
 });
 
 function markImage(shift = 0, shuffled = false) {

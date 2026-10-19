@@ -872,6 +872,17 @@ html:not([data-theme="light"]) .video-stage {
   background: var(--battle-accent-bg);
 }
 
+.debug-overlay--faint {
+  border-color: var(--timer-accent-border);
+  background: transparent;
+}
+
+.debug-overlay--faint .debug-overlay__label {
+  top: 100%;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .crop-preview-shell {
   position: relative;
   display: grid;

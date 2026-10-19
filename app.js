@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.10";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.11";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -373,6 +373,7 @@
     missing_slot: "対象ポケモンの枠を特定できない", roi_read_failed: "瀕死判定範囲の読み取り失敗",
     already_fainted: "瀕死表示済み", not_matched: "瀕死の画像条件が不成立",
     screen_blocked: "対戦以外の画面のため保留", unselected_slot: "選出未確定のため保留", faint_limit: "瀕死表示の上限",
+    mark_consumed: "同じ瀕死マークは処理済み",
     pending: "瀕死条件の一致回数待ち", accepted: "瀕死表示を確定",
     mapping_changed: "HUDとポケモンの対応元・対象が変化", candidate_changed: "一致待ちの対象変更",
     pending_kept: "一致待ちを一時保持", pending_expired: "一致待ちの保持期限切れ",
@@ -385,7 +386,8 @@
     minimumMatchMs: 500,
     maxObservationGapMs: 750,
     mappingRequiredStreak: 2,
-    slotCacheTtlMs: 2200,
+    markClearStreak: 2,
+    markClearMinimumMs: 250,
     iconTemplatePaths: [
       "./assets/auto/faint-roi-samples/enemy-hud-left-faint-icon-fainted.png",
       "./assets/auto/faint-roi-samples/enemy-hud-right-faint-icon-fainted.png",
@@ -399,13 +401,6 @@
       hudDarkMin: 0.08,
       hudMeanPeakMax: 0.45,
       percentWhiteMin: 0.12,
-    },
-    strongThresholds: {
-      iconPinkMax: 0.10,
-      iconWhiteMin: 0.16,
-      hudRedMax: 0.08,
-      hudDarkMin: 0.12,
-      hudMeanPeakMax: 0.36,
     },
     hudRois: [
       {
@@ -593,6 +588,8 @@
       battleResultRight: document.getElementById("debug-overlay-result-right"),
       pickHudLeft: document.getElementById("debug-overlay-pick-hud-left"),
       pickHudRight: document.getElementById("debug-overlay-pick-hud-right"),
+      faintIconLeft: document.getElementById("debug-overlay-faint-icon-left"),
+      faintIconRight: document.getElementById("debug-overlay-faint-icon-right"),
     };
     elements.terminalPanel = document.querySelector(".terminal-panel");
     elements.terminalScreen = document.getElementById("terminal-screen");
@@ -3224,6 +3221,8 @@
     renderDebugOverlayBox(elements.autoDebugOverlays.battleResultRight, roiCrops.battleResultRight, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudLeft, roiCrops.pickHudLeft, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudRight, roiCrops.pickHudRight, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.faintIconLeft, roiCrops.faintIconLeft, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.faintIconRight, roiCrops.faintIconRight, displayedRect, scaleX, scaleY);
   }
 
   function shouldShowAutoDebugOverlays() {
@@ -3271,6 +3270,8 @@
       battleResultRight: getBattleResultRoiCrop("right"),
       pickHudLeft: getPickOverlayHudCrop(0),
       pickHudRight: getPickOverlayHudCrop(1),
+      faintIconLeft: getFaintHudRoiCrop(0, "faintIcon"),
+      faintIconRight: getFaintHudRoiCrop(1, "faintIcon"),
     };
   }
 
@@ -3814,6 +3815,7 @@
     if (!enabled) {
       resetPickOverlayState("auto off");
     }
+    renderCropOverlays();
 
     if (enabled) {
       if (state.mode !== "ready") {
@@ -7137,9 +7139,6 @@
 
   function updateFaintDetection(bestByHudIndex = [], hudGateStates = [], now = Date.now(), screenAllowed = true) {
     const pickOverlay = state.autoSnap.pickOverlay;
-    if (!screenAllowed) {
-      FAINT_DETECTION_CONFIG.hudRois.forEach((_, hudIndex) => clearFaintHudTracking(hudIndex));
-    }
     if (now - pickOverlay.lastFaintCompareAt < FAINT_DETECTION_CONFIG.compareIntervalMs) {
       return;
     }
@@ -7154,14 +7153,23 @@
       const best = bestByHudIndex[hudIndex] || {};
       const gateState = hudGateStates[hudIndex];
       const observation = beginFaintDiagnosticHud(diagnosticComparison, hudIndex, best, gateState);
-      const resolvedRef = screenAllowed
-        ? resolveFaintHudRefIndex(hudIndex, best, gateState, now)
-        : { refIndex: -1, source: "screen-blocked", tier: "" };
+      // Scene colours gate fresh identity observations, not an already verified faint mark.
+      const resolvedRef = resolveFaintHudRefIndex(hudIndex, screenAllowed ? best : {}, screenAllowed ? gateState : null, now);
       const refIndex = resolvedRef.refIndex;
       const signal = getFaintHudSignal(hudIndex, observation?.read);
       if (observation) {
         observation.resolved = { ...resolvedRef };
         observation.signal = signal;
+        observation.screenAllowed = screenAllowed;
+      }
+      updateFaintMarkPresence(hudIndex, signal, now);
+
+      if (signal?.matched && pickOverlay.faintMarksByHudIndex[hudIndex].consumed) {
+        pickOverlay.pendingFaintsByHudIndex[hudIndex] = null;
+        pickOverlay.lastFaintSummaries[hudIndex] = "同じ瀕死マークは処理済み";
+        summaryKeyParts.push(`hud${hudIndex + 1}:mark-consumed`);
+        recordFaintDiagnosticOutcome(observation, "mark_consumed");
+        return;
       }
 
       if (refIndex < 0) {
@@ -7170,8 +7178,7 @@
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:missing:${resolvedRef.source}`);
         debugLines.push(`[debug] faint HUD${hudIndex + 1}: ${summary}`);
-        recordFaintDiagnosticOutcome(observation, !screenAllowed ? "screen_blocked"
-          : resolvedRef.source === "unselected" ? "unselected_slot" : "missing_slot");
+        recordFaintDiagnosticOutcome(observation, resolvedRef.source === "unselected" ? "unselected_slot" : "missing_slot");
         return;
       }
 
@@ -7182,7 +7189,7 @@
         return;
       }
       if (!signal) {
-        clearFaintHudTracking(hudIndex);
+        pickOverlay.pendingFaintsByHudIndex[hudIndex] = null;
         const summary = `${slotLabel} ROI読み取り失敗`;
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
         summaryKeyParts.push(`hud${hudIndex + 1}:read-failed:${refIndex}`);
@@ -7192,6 +7199,7 @@
       }
 
       if (pickOverlay.faintedByRefIndex[refIndex]) {
+        if (signal.matched) pickOverlay.faintMarksByHudIndex[hudIndex].consumed = true;
         pickOverlay.pendingFaintsByHudIndex[hudIndex] = null;
         const summary = `${slotLabel} 確定済み ${signal.summary}`;
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
@@ -7202,8 +7210,6 @@
       }
 
       if (!signal.matched) {
-        // Losing both fixed HUD anchors invalidates the remembered occupant.
-        if (!signal.checks.iconShapeMatched && !signal.checks.percentVisible) clearFaintHudTracking(hudIndex);
         pickOverlay.pendingFaintsByHudIndex[hudIndex] = null;
         const summary = `${slotLabel} watch ${signal.summary}`;
         pickOverlay.lastFaintSummaries[hudIndex] = summary;
@@ -7244,6 +7250,7 @@
           return;
         }
         pickOverlay.faintedByRefIndex[refIndex] = true;
+        pickOverlay.faintMarksByHudIndex[hudIndex].consumed = true;
         pickOverlay.pendingFaintsByHudIndex[hudIndex] = null;
         didMarkFainted = true;
         const summary = `${slotLabel} accepted ${signal.summary}`;
@@ -7279,29 +7286,32 @@
     const pick = state.autoSnap.pickOverlay;
     const refIndex = Number.isInteger(best.refIndex) ? best.refIndex : -1;
     const matchTier = best.tier || getPickOverlayMatchTier(best.bestScore || 0, best.margin || 0);
-    const cached = getFreshFaintHudSlotCache(hudIndex, now);
-    if (refIndex >= 0 && matchTier && gateState?.ready) {
-      if (cached && cached.refIndex !== refIndex) clearFaintHudTracking(hudIndex);
+    const cached = getFaintHudSlotCache(hudIndex);
+    if (refIndex >= 0 && matchTier === "strong" && gateState?.ready) {
+      // A credible conflict suspends the old occupant until either identity is verified.
+      if (cached && cached.refIndex !== refIndex) {
+        cached.conflictingRefIndex = refIndex;
+        pick.pendingFaintsByHudIndex[hudIndex] = null;
+      }
       if (!pick.ordersByRefIndex[refIndex]) {
-        clearFaintHudTracking(hudIndex);
+        pick.faintMappingCandidatesByHudIndex[hudIndex] = null;
         return { refIndex: -1, source: "unselected", tier: matchTier };
       }
-      if (matchTier === "strong") {
-        const previous = pick.faintMappingCandidatesByHudIndex[hudIndex];
-        const streak = previous?.refIndex === refIndex
-          && now - previous.lastSeenAt <= FAINT_DETECTION_CONFIG.maxObservationGapMs ? previous.streak + 1 : 1;
-        pick.faintMappingCandidatesByHudIndex[hudIndex] = { refIndex, streak, lastSeenAt: now };
-        if (streak >= FAINT_DETECTION_CONFIG.mappingRequiredStreak || cached?.refIndex === refIndex) {
-          rememberFaintHudSlot(hudIndex, refIndex, matchTier, now);
-          return { refIndex, source: "live", tier: matchTier };
-        }
-        return { refIndex: -1, source: "mapping-pending", tier: matchTier };
+      const previous = pick.faintMappingCandidatesByHudIndex[hudIndex];
+      const streak = previous?.refIndex === refIndex
+        && now - previous.lastSeenAt <= FAINT_DETECTION_CONFIG.maxObservationGapMs ? previous.streak + 1 : 1;
+      pick.faintMappingCandidatesByHudIndex[hudIndex] = { refIndex, streak, lastSeenAt: now };
+      if (streak >= FAINT_DETECTION_CONFIG.mappingRequiredStreak || cached?.refIndex === refIndex) {
+        rememberFaintHudSlot(hudIndex, refIndex, matchTier, now);
+        return { refIndex, source: "live", tier: matchTier };
       }
+      return { refIndex: -1, source: "mapping-pending", tier: matchTier };
     }
 
     pick.faintMappingCandidatesByHudIndex[hudIndex] = null;
-    const remaining = getFreshFaintHudSlotCache(hudIndex, now);
+    const remaining = getFaintHudSlotCache(hudIndex);
     if (remaining) {
+      if (remaining.conflictingRefIndex != null) return { refIndex: -1, source: "mapping-conflict", tier: "" };
       return { refIndex: remaining.refIndex, source: "cache", tier: remaining.tier };
     }
 
@@ -7313,17 +7323,17 @@
       refIndex,
       tier,
       lastSeenAt: now,
+      conflictingRefIndex: null,
     };
   }
 
-  function getFreshFaintHudSlotCache(hudIndex, now = Date.now()) {
+  function getFaintHudSlotCache(hudIndex) {
     const cached = state.autoSnap.pickOverlay.faintSlotCacheByHudIndex[hudIndex];
     if (!cached) {
       return null;
     }
 
-    if (!state.autoSnap.pickOverlay.ordersByRefIndex[cached.refIndex]
-      || now - cached.lastSeenAt > FAINT_DETECTION_CONFIG.slotCacheTtlMs) {
+    if (!state.autoSnap.pickOverlay.ordersByRefIndex[cached.refIndex]) {
       clearFaintHudTracking(hudIndex);
       return null;
     }
@@ -7336,6 +7346,24 @@
     pick.faintSlotCacheByHudIndex[hudIndex] = null;
     pick.faintMappingCandidatesByHudIndex[hudIndex] = null;
     pick.pendingFaintsByHudIndex[hudIndex] = null;
+  }
+
+  function createFaintMarkState() {
+    return { consumed: false, absentStreak: 0, firstAbsentAt: 0, lastAbsentAt: 0 };
+  }
+
+  function updateFaintMarkPresence(hudIndex, signal, now) {
+    const mark = state.autoSnap.pickOverlay.faintMarksByHudIndex[hudIndex];
+    if (!signal?.templateReady || signal.matched) {
+      mark.absentStreak = 0;
+      return;
+    }
+    const consecutive = mark.absentStreak > 0 && now - mark.lastAbsentAt <= FAINT_DETECTION_CONFIG.maxObservationGapMs;
+    mark.absentStreak = consecutive ? mark.absentStreak + 1 : 1;
+    if (!consecutive) mark.firstAbsentAt = now;
+    mark.lastAbsentAt = now;
+    if (mark.absentStreak >= FAINT_DETECTION_CONFIG.markClearStreak
+      && now - mark.firstAbsentAt >= FAINT_DETECTION_CONFIG.markClearMinimumMs) mark.consumed = false;
   }
 
   function getFaintHudSignal(hudIndex, diagnosticRead = null) {
@@ -7351,7 +7379,7 @@
     const color = sampleFaintHudRoi(elements.video, colorCrop);
     const percent = sampleFaintHudRoi(elements.video, percentCrop);
     if (diagnosticRead) diagnosticRead.samples = { icon, color, percent };
-    if (!icon || !color || !percent) {
+    if (!icon) {
       return null;
     }
 
@@ -7359,33 +7387,27 @@
     const iconMatched = icon.pink <= thresholds.iconPinkMax
       && icon.red >= thresholds.iconRedMin
       && icon.white >= thresholds.iconWhiteMin;
-    const colorMatched = color.red <= thresholds.hudRedMax
+    const colorMatched = Boolean(color && color.red <= thresholds.hudRedMax
       && color.dark >= thresholds.hudDarkMin
-      && color.meanPeak <= thresholds.hudMeanPeakMax;
-    const percentVisible = percent.white >= thresholds.percentWhiteMin;
+      && color.meanPeak <= thresholds.hudMeanPeakMax);
+    const percentVisible = Boolean(percent && percent.white >= thresholds.percentWhiteMin);
     const iconShapeMatched = icon.shape?.matched === true;
-    const matched = iconMatched && colorMatched && percentVisible && iconShapeMatched;
-    const strongThresholds = FAINT_DETECTION_CONFIG.strongThresholds;
-    const strong = matched
-      && icon.pink <= strongThresholds.iconPinkMax
-      && icon.white >= strongThresholds.iconWhiteMin
-      && color.red <= strongThresholds.hudRedMax
-      && color.dark >= strongThresholds.hudDarkMin
-      && color.meanPeak <= strongThresholds.hudMeanPeakMax;
+    // Colour ratios and percent visibility remain diagnostic information only.
+    const matched = icon.shape?.templateReady === true && iconShapeMatched;
     const key = [
       iconMatched ? "icon" : "no-icon",
       colorMatched ? "color" : "no-color",
       percentVisible ? "percent" : "no-percent",
       iconShapeMatched ? "shape" : "no-shape",
-      strong ? "strong" : "weak",
     ].join("+");
 
     return {
       matched,
+      templateReady: icon.shape?.templateReady === true,
       checks: { iconMatched, colorMatched, percentVisible, iconShapeMatched },
-      strength: strong ? "strong" : "weak",
+      strength: matched ? "strong" : "weak",
       key,
-      summary: `icon=${formatFaintMetric(icon)} color=${formatFaintMetric(color)} pctWhite=${formatAutoMetric(percent.white)} shape=${iconShapeMatched ? "yes" : "no"}`,
+      summary: `icon=${formatFaintMetric(icon)} color=${color ? formatFaintMetric(color) : "missing"} pctWhite=${formatAutoMetric(percent?.white)} shape=${iconShapeMatched ? "yes" : "no"}`,
     };
   }
 
@@ -8493,6 +8515,7 @@
       faintedByRefIndex: PICK_OVERLAY_CONFIG.referenceRois.map(() => false),
       faintSlotCacheByHudIndex: FAINT_DETECTION_CONFIG.hudRois.map(() => null),
       faintMappingCandidatesByHudIndex: FAINT_DETECTION_CONFIG.hudRois.map(() => null),
+      faintMarksByHudIndex: FAINT_DETECTION_CONFIG.hudRois.map(() => createFaintMarkState()),
       nextOrder: 1,
       pendingMatchesByHudIndex: PICK_OVERLAY_CONFIG.hudRois.map(() => null),
       pendingFaintsByHudIndex: FAINT_DETECTION_CONFIG.hudRois.map(() => null),
@@ -8556,7 +8579,7 @@
 
   function createFaintDiagnosticState() {
     return {
-      version: 2, config: JSON.parse(JSON.stringify({ ...FAINT_DETECTION_CONFIG, ...FAINT_DIAGNOSTIC_CONFIG })),
+      version: 3, config: JSON.parse(JSON.stringify({ ...FAINT_DETECTION_CONFIG, ...FAINT_DIAGNOSTIC_CONFIG })),
       comparisons: [], comparisonCount: 0, comparisonCursor: 0, comparisonDropped: 0,
       events: [], eventCount: 0, eventCursor: 0, eventDropped: 0,
       reasons: Object.fromEntries(Object.keys(FAINT_DIAGNOSTIC_REASONS).map((reason) => [reason, {
@@ -8573,7 +8596,7 @@
 
   function copyFaintDiagnosticCache(cache, now) {
     return cache ? { refIndex: cache.refIndex, tier: cache.tier, lastSeenAt: cache.lastSeenAt,
-      ageMs: now - cache.lastSeenAt } : null;
+      ageMs: now - cache.lastSeenAt, conflictingRefIndex: cache.conflictingRefIndex ?? null } : null;
   }
 
   function captureFaintDiagnosticState() {
@@ -8581,6 +8604,7 @@
     const now = Date.now();
     return { fainted: [...pick.faintedByRefIndex],
       pending: pick.pendingFaintsByHudIndex.map((item) => copyFaintDiagnosticPending(item, now)),
+      marks: pick.faintMarksByHudIndex.map((mark) => ({ ...mark })),
       cache: pick.faintSlotCacheByHudIndex.map((item) => copyFaintDiagnosticCache(item, now)) };
   }
 
@@ -8602,6 +8626,7 @@
       gate: gate ? { ready: gate.ready, reason: gate.key, mean: gate.mean ?? null,
         contrast: gate.contrast ?? null, brightRatio: gate.brightRatio ?? null } : null,
       cacheBefore: copyFaintDiagnosticCache(pick.faintSlotCacheByHudIndex[hudIndex], now),
+      markBefore: { ...pick.faintMarksByHudIndex[hudIndex] },
       pendingBefore: copyFaintDiagnosticPending(pick.pendingFaintsByHudIndex[hudIndex], now) };
   }
 
@@ -8639,6 +8664,8 @@
             : pendingAfter ? "counting" : "none";
     const row = {
       hudIndex, outcome, candidate: observation.candidate, gate: observation.gate,
+      screenAllowed: observation.screenAllowed, markBefore: observation.markBefore,
+      markAfter: { ...pick.faintMarksByHudIndex[hudIndex] },
       resolved: { ...resolved, refIndex: resolved.refIndex < 0 ? null : resolved.refIndex },
       cacheBefore: observation.cacheBefore,
       cacheAfter: copyFaintDiagnosticCache(pick.faintSlotCacheByHudIndex[hudIndex], context.at),
@@ -8692,9 +8719,10 @@
     return [
       "", "--- 瀕死診断の設定・集計 ---",
       "refIndexは相手画像の上から0〜5、hudIndexは対戦HUDの左0/右1。nullは未取得・未確定。",
-      "percentVisibleは白い画素の量による文字の存在確認で、0%の数字認識ではありません。",
+      "色の割合・percentVisibleは診断用で、確定条件には使いません。percentVisibleは0%の数字認識ではありません。",
       "icon.shapeは瀕死マークの形の一致度。画像条件は3回連続かつ500ms以上の成立が必要。",
-      "resolved.source: live=安定した今回の照合、cache=2200ms以内の対応、mapping-pending=対応の連続確認待ち、unselected=選出未確定、screen-blocked=画面保留、missing=不明。",
+      "resolved.source: live=安定した今回の照合、cache=場にいる相手の保持、mapping-pending=対応の連続確認待ち、mapping-conflict=強い別候補との矛盾、unselected=選出未確定、missing=不明。",
+      "markBefore/Afterは同じマークの処理済み状態と消失確認回数。2回連続・250ms以上の消失で次のマークを受け付けます。",
       "at/lastSeenAtはUTCのミリ秒、matchElapsedMsは記録開始からの経過、ageMsは対応・一致待ちの経過。current以外の画像は集計を分離。",
       `理由コード: ${JSON.stringify(FAINT_DIAGNOSTIC_REASONS)}`,
       JSON.stringify({ version: diagnostic.version, config: diagnostic.config, comparisonCount: diagnostic.comparisonCount,
@@ -9277,6 +9305,7 @@
     pickOverlay.faintedByRefIndex = PICK_OVERLAY_CONFIG.referenceRois.map(() => false);
     pickOverlay.faintSlotCacheByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => null);
     pickOverlay.faintMappingCandidatesByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => null);
+    pickOverlay.faintMarksByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => createFaintMarkState());
     pickOverlay.pendingFaintsByHudIndex = FAINT_DETECTION_CONFIG.hudRois.map(() => null);
     pickOverlay.lastFaintCompareAt = 0;
     pickOverlay.lastFaintSummaries = FAINT_DETECTION_CONFIG.hudRois.map(() => reason || "未評価");
