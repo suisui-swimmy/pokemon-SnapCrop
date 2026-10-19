@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.6";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.7";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -661,6 +661,7 @@
       state.statistics = statsModule.createStatisticsPresenter({
         api: state.api, catalog, getIndex: () => state.remoteIndex, getIndexError: () => state.pokemonIconReferenceLoadFailed ? new Error("一覧取得失敗") : null, getSettings: () => state.statsSettings,
         appendElement: appendTerminalElement,
+        renderTypeChips: appendSuggestionTypeChips,
         onUpdate: () => { if (state.terminalLogAutoFollow) scrollTerminalToBottom(); },
         onDiagnostic: recordStatisticsDiagnostic,
       });

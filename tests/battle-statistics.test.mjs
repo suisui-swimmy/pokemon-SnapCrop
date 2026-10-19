@@ -35,6 +35,7 @@ class Element {
   get textContent() { return this.text + this.children.map((child) => child.textContent).join("\n"); }
   replaceChildren(...children) { this.children = children; this.text = ""; }
   remove() { this.removed = true; }
+  setAttribute(key, value) { (this.attributes ||= {})[key] = String(value); }
 }
 function harness(options = {}) {
   const h = { settings: settings(), index, indexError: null, calls: [], entries: [], updates: [], diagnostics: [] };
@@ -48,6 +49,33 @@ function harness(options = {}) {
   h.select = (formId = "kingambit", order = 1) => h.presenter.setAutomaticSelections([{ refIndex: 0, order, formId }]);
   return h;
 }
+
+test("headers use the selected form's types and stats even when usage is shared or unavailable", async () => {
+  const generated = JSON.parse(fs.readFileSync(new URL("../data/pokemon-display-catalog.json", import.meta.url), "utf8"));
+  const h = harness({ catalog: generated, getIndex: () => ({ statsById: {
+    staraptor: { statsId: "staraptor", shared: false },
+    staraptormega: { statsId: "staraptor", shared: true },
+  } }) });
+  h.select("staraptor"); await settle();
+  assert.match(h.entries[0].children[0].textContent, /ノーマル \/ ひこう/u);
+  assert.match(h.entries[0].children[0].textContent, /85-120-70-50-60-100 \(485\)/u);
+  h.calls[0].resolve(ready()); await settle();
+  h.presenter.addManual("staraptormega"); await settle();
+  assert.equal(h.calls[1].statsId, "staraptor");
+  const header = h.entries[1].children[0];
+  assert.match(header.textContent, /かくとう \/ ひこう/u);
+  assert.match(header.textContent, /85-140-100-60-90-110 \(585\)/u);
+  assert.match(header.children[1].attributes["aria-label"], /HP 85、攻撃 140、防御 100、特攻 60、特防 90、素早さ 110、合計 585/u);
+  h.calls[1].reject(Error("offline")); await settle();
+  assert.match(h.entries[1].textContent, /85-140-100-60-90-110 \(585\)/u);
+  assert.match(h.entries[1].textContent, /api retry/u);
+});
+
+test("headers omit unavailable species details instead of inventing types or zero stats", () => {
+  const h = harness(); h.select();
+  assert.equal(h.entries[0].children[0].children.length, 1);
+  assert.doesNotMatch(h.entries[0].children[0].textContent, /undefined|NaN|0-0-0/u);
+});
 
 test("settings restore is safe, validates persisted values and retains hidden-category counts", () => {
   assert.equal(STATS_STORAGE_KEY, "pokemon-snapcrop.stats-settings.v1");
@@ -126,7 +154,7 @@ test("automatic display updates the same block with date and diagnostics but no 
   const h = harness(); h.select(); await settle();
   assert.equal(h.entries.length, 1); assert.match(h.entries[0].textContent, /読み込み中/u);
   h.calls[0].resolve(ready()); await settle();
-  assert.match(h.entries[0].textContent, /ドドゲザン［選出1／ダブル／2026-10-04］/u);
+  assert.match(h.entries[0].textContent, /ドドゲザン\n［選出1／ダブル／2026-10-04］/u);
   const tables = h.entries[0].children[1].children;
   assert.deepEqual(tables.map((table) => table.tagName), ["table", "table", "table", "table"]);
   assert.deepEqual(tables.map((table) => table.children[0].textContent), ["技", "特性", "持ち物", "性格"]);

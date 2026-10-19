@@ -14,7 +14,7 @@ HTML / CSS / JavaScript による静的Webアプリです。バックエンド�
 | [pokemon-icon-matcher.js](../pokemon-icon-matcher.js) | アイコンの前景抽出、候補探索、照合、採用判定 |
 | [battle-api.js](../battle-api.js) | 外部データの取得、候補・統計の検証、同時通信数・再試行の制御 |
 | [battle-statistics.js](../battle-statistics.js) | 統計の設定、コマンド候補、非同期のterminal表示 |
-| [data/pokemon-display-catalog.json](../data/pokemon-display-catalog.json) | Showdown ID・フォーム分類・検索別名・日本語表示辞書 |
+| [data/pokemon-display-catalog.json](../data/pokemon-display-catalog.json) | Showdown ID・フォーム分類・タイプ・種族値・検索別名・日本語表示辞書 |
 | [assets/auto/](../assets/auto/) | 画面判定用テンプレート画像 |
 | [manifest.webmanifest](../manifest.webmanifest) / [sw.js](../sw.js) | PWA設定とService Workerによるキャッシュ |
 | [tools/](../tools/) / [tests/](../tests/) | データ生成・検証、認識ベンチマーク、Nodeテスト |
@@ -76,6 +76,9 @@ API一覧から保持するのは識別子、画像URL、統計との明示的�
 認識したフォームIDと統計のIDは別に管理します。提供元の `battleName` / `pokemonPages` に明示された対応だけを使用し、フォーム接尾辞を削って通常種へ落とす推測はしません。統計が共通なら「統計: ○○と共通」と表示します。APIに最新統計がないルール、404、通信失敗、不正な応答は区別します。
 
 ### 表示設定と名称
+
+- タイプと種族値は表示辞書の固定版Showdown `data/pokedex.ts` から生成した `types` / `baseStats` を使います。分類リゾルバーで明示された別名・見た目違いを解決し、`isCosmeticForme` の定義がある場合だけ共通元の値を継承します。元データが不完全なら生成を停止します。表示時は統計共有先の `statsId` ではなく、表示対象の `formId` を参照します。
+- タイプ名は `translations.type` で日本語化し、`app.js` の `POKEMON_TYPE_COLORS` とチップ生成処理を使います。種族値は `hp / atk / def / spa / spd / spe` 順と合計を表示し、読上げ用ラベルにも項目名を付けます。古い辞書などで基本情報が欠ける場合は該当表示を省略します。統計通信の失敗でも取得済みの基本情報は表示します。
 
 - 内部の項目は `move` → 技、`ability` → 特性、`held_item` → 持ち物、`stat_alignment` → **性格**。率はAPIの値を小数1桁で表示し、再正規化しません。
 - 初期ルールは未選択。最初の候補からTab/Shift+Tabで選んでEnterで確定、Escで保留できます。`stats rule` で再表示します。

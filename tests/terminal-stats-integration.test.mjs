@@ -253,7 +253,7 @@ test("halfwidth and fullwidth mega suffix inputs resolve the same ID and show fu
   h.requests[0].resolve({ status: "ready", date: null, rows: [
     { category: "held_item", rank: 1, canonicalName: "Absolite Z", value: 100 },
   ] }); await settle();
-  assert.match(h.output(), /メガアブソルＺ［ダブル／最新］/u);
+  assert.match(h.output(), /メガアブソルＺ\nあく\nゴースト\n［ダブル／最新］/u);
   assert.match(h.output(), /持ち物\n名前\n使用率\nアブソルナイトＺ\n100%/u);
 });
 

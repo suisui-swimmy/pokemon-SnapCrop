@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { registerHooks } from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { createShowdownClassificationResolver, loadShowdownClassificationData } from "./pokemon-showdown-classification.mjs";
+import { createShowdownClassificationResolver, loadShowdownClassificationData, toShowdownId } from "./pokemon-showdown-classification.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const readJson = (filename) => JSON.parse(fs.readFileSync(filename, "utf8"));
@@ -54,6 +54,21 @@ function resolveDisplay(locale, entry) {
   return { result, fields };
 }
 
+export function getPokemonDisplayDetails(pokedex, id) {
+  const entry = pokedex[id];
+  // Only Showdown's explicit cosmetic-form declaration permits inheritance.
+  const base = entry?.isCosmeticForme ? pokedex[toShowdownId(entry.baseSpecies)] : null;
+  const types = entry?.types ?? base?.types;
+  const stats = entry?.baseStats ?? base?.baseStats;
+  const keys = ["hp", "atk", "def", "spa", "spd", "spe"];
+  if (!Array.isArray(types) || !types.length || types.length > 2
+    || types.some((type) => typeof type !== "string" || !type)
+    || keys.some((key) => !Number.isSafeInteger(stats?.[key]) || stats[key] < 0)) {
+    throw new Error(`Missing or invalid Pokemon display details: ${id}`);
+  }
+  return { types: [...types], baseStats: Object.fromEntries(keys.map((key) => [key, stats[key]])) };
+}
+
 export async function buildDisplayCatalog({ root = ROOT } = {}) {
   const localeRoot = path.join(root, "others/damage-calc-ja-layer");
   const showdownRoot = path.join(root, "others/pokemon-showdown");
@@ -86,6 +101,7 @@ export async function buildDisplayCatalog({ root = ROOT } = {}) {
       id: entry.showdownId,
       canonicalName: entry.showdownName,
       ...fields,
+      ...getPokemonDisplayDetails(source.pokedex, classification?.showdownId || entry.showdownId),
       searchText: names.join(" "),
       aliases: names,
       translationStatus: display.status,

@@ -119,7 +119,7 @@ export function formatStatisticsRows(data, settings, catalog) {
 }
 
 /** Presenter owns only its result blocks. The caller owns input focus, scrolling and the terminal log. */
-export function createStatisticsPresenter({ api, catalog, getIndex, getIndexError = () => null, getSettings, appendElement, onUpdate = () => {}, onDiagnostic = () => {}, document: dom = globalThis.document }) {
+export function createStatisticsPresenter({ api, catalog, getIndex, getIndexError = () => null, getSettings, appendElement, renderTypeChips = (container, types) => { container.textContent = types.join(" / "); }, onUpdate = () => {}, onDiagnostic = () => {}, document: dom = globalThis.document }) {
   const pokemon = new Map(catalog.pokemon.map((entry) => [entry.id, entry]));
   const automatic = new Map();
   const manual = new Set();
@@ -145,7 +145,36 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
     const entry = pokemon.get(block.formId);
     const heading = dom.createElement("div");
     heading.className = "terminal-statistics__heading";
-    heading.textContent = `> ${entry?.name || entry?.canonicalName || block.formId}［${block.source === "auto" ? `選出${block.order}／` : ""}${RULE_LABELS[block.settings.rule] || "ルール未選択"}${result?.date ? `／${result.date}` : "／最新"}］`;
+    const identity = dom.createElement("span");
+    identity.className = "terminal-statistics__identity";
+    const name = dom.createElement("span");
+    name.textContent = `> ${entry?.name || entry?.canonicalName || block.formId}`;
+    const context = dom.createElement("span");
+    context.textContent = `［${block.source === "auto" ? `選出${block.order}／` : ""}${RULE_LABELS[block.settings.rule] || "ルール未選択"}${result?.date ? `／${result.date}` : "／最新"}］`;
+    const identityParts = [name];
+    if (entry?.types?.length) {
+      const chips = dom.createElement("span");
+      chips.className = "terminal-statistics__types";
+      const types = entry.types.map((type) => {
+        const translated = catalog.translations?.type?.[toId(type)];
+        return translated?.status === "localized" ? translated.name : type;
+      });
+      renderTypeChips(chips, types);
+      identityParts.push(chips);
+    }
+    identity.replaceChildren(...identityParts, context);
+    const headingParts = [identity];
+    const stats = ["hp", "atk", "def", "spa", "spd", "spe"].map((key) => entry?.baseStats?.[key]);
+    if (stats.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      const baseStats = dom.createElement("span");
+      baseStats.className = "terminal-statistics__base-stats";
+      const total = stats.reduce((sum, value) => sum + value, 0);
+      baseStats.textContent = `${stats.join("-")} (${total})`;
+      baseStats.title = "種族値: HP・攻撃・防御・特攻・特防・素早さ（合計）";
+      baseStats.setAttribute("aria-label", `種族値: ${["HP", "攻撃", "防御", "特攻", "特防", "素早さ"].map((label, i) => `${label} ${stats[i]}`).join("、")}、合計 ${total}`);
+      headingParts.push(baseStats);
+    }
+    heading.replaceChildren(...headingParts);
     const body = dom.createElement("div");
     body.className = "terminal-statistics__body";
     if (result?.status === "ready") {

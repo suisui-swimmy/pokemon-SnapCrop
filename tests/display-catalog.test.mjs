@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { getPokemonDisplayDetails } from "../tools/generate-display-catalog.mjs";
 const catalog = JSON.parse(fs.readFileSync(new URL("../data/pokemon-display-catalog.json", import.meta.url), "utf8"));
 const pokemon = new Map(catalog.pokemon.map((entry) => [entry.id, entry]));
 
@@ -128,10 +129,10 @@ test("all six kinds match the public API snapshot coverage", () => {
   assert.deepEqual(total, { localized: 3350, "needs-confirmation": 0, unsupported: 13, "out-of-scope": 125 });
 });
 
-test("catalog is names/classification only and contains reproducible provenance and license", () => {
+test("catalog contains display data, reproducible provenance and license without remote usage data", () => {
   assert.equal(catalog.schemaVersion, 1);
   assert.equal(pokemon.size, catalog.pokemon.length);
-  const forbiddenKeys = new Set(["artwork", "baseStats", "types", "moves", "image_path", "percentage", "percentage_value"]);
+  const forbiddenKeys = new Set(["artwork", "moves", "image_path", "percentage", "percentage_value"]);
   function inspect(value) {
     if (!value || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) { assert.equal(forbiddenKeys.has(key), false, key); inspect(child); }
@@ -141,4 +142,26 @@ test("catalog is names/classification only and contains reproducible provenance 
   assert.equal(catalog.provenance.usage, "display-only");
   assert.equal(catalog.provenance.showdown.revision, catalog.provenance.localization.showdownCommit);
   assert.match(fs.readFileSync(new URL("../data/showdown-LICENSE.txt", import.meta.url), "utf8"), /MIT License/);
+});
+
+test("display details retain form-specific types and six stats for every catalog entry", () => {
+  for (const entry of catalog.pokemon) {
+    assert.ok(entry.types.length >= 1 && entry.types.length <= 2, entry.id);
+    assert.deepEqual(Object.keys(entry.baseStats), ["hp", "atk", "def", "spa", "spd", "spe"]);
+    assert.ok(Object.values(entry.baseStats).every(value => Number.isSafeInteger(value) && value >= 0), entry.id);
+  }
+  assert.deepEqual(pokemon.get("staraptor").types, ["Normal", "Flying"]);
+  assert.deepEqual(Object.values(pokemon.get("staraptor").baseStats), [85, 120, 70, 50, 60, 100]);
+  assert.deepEqual(pokemon.get("staraptormega").types, ["Fighting", "Flying"]);
+  assert.deepEqual(Object.values(pokemon.get("staraptormega").baseStats), [85, 140, 100, 60, 90, 110]);
+  assert.notDeepEqual(pokemon.get("aegislash").baseStats, pokemon.get("aegislashblade").baseStats);
+  assert.deepEqual(pokemon.get("vivillonicysnow").baseStats, pokemon.get("vivillon").baseStats);
+});
+
+test("display generation only inherits explicitly cosmetic forms and rejects incomplete stats", () => {
+  const source = { base: { types: ["Normal"], baseStats: { hp: 1, atk: 2, def: 3, spa: 4, spd: 5, spe: 6 } },
+    cosmetic: { isCosmeticForme: true, baseSpecies: "Base" }, other: { baseSpecies: "Base" } };
+  assert.deepEqual(getPokemonDisplayDetails(source, "cosmetic"), source.base);
+  assert.throws(() => getPokemonDisplayDetails(source, "other"), /Missing or invalid/);
+  assert.throws(() => getPokemonDisplayDetails(source, "unknown"), /Missing or invalid/);
 });

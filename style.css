@@ -1301,7 +1301,27 @@ html[data-theme="light"] .terminal-entry--system {
 
 /* Statistics remain in the terminal and wrap without widening the workspace. */
 .terminal-entry--statistics { min-width: 0; overflow-wrap: anywhere; }
-.terminal-statistics__heading { font-weight: 700; }
+.terminal-statistics__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  font-weight: 700;
+}
+.terminal-statistics__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.terminal-statistics__types { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.terminal-statistics__base-stats {
+  margin-left: auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .terminal-statistics__body { white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
 .terminal-statistics__shared { font-size: 0.85em; }
 .terminal-statistics__tables {
@@ -1342,4 +1362,4 @@ html[data-theme="light"] .terminal-entry--system {
 }
 .terminal-statistics__table thead { color: var(--muted); }
 .terminal-statistics__empty { color: var(--muted); }
-.terminal-statistics__fetched { font-size: 0.85em; color: var(--muted); }
+.terminal-statistics__fetched { font-size: 0.85em; color: var(--muted); text-align: right; }

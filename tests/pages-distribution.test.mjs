@@ -45,7 +45,7 @@ test("every local runtime asset reference is included in Pages", () => {
   assert.equal(catalog.provenance.usage, "display-only");
   assert.ok(PUBLIC_FILES.includes("data/showdown-LICENSE.txt"));
   const serialized = JSON.stringify(catalog);
-  assert.doesNotMatch(serialized, /data:image|pokemon_champions_assets|image_path|baseStats|"artwork"/u);
+  assert.doesNotMatch(serialized, /data:image|pokemon_champions_assets|image_path|"artwork"|percentage_value/u);
 });
 
 function workerHarness() {
@@ -54,7 +54,7 @@ function workerHarness() {
   const context = vm.createContext({ URL, Set, Promise,
     self: { registration: { scope: "https://example.test/pokemon-SnapCrop/" }, location: { origin: "https://example.test" },
       addEventListener: (name, callback) => listeners.set(name, callback), clients: { claim() {} }, skipWaiting() {} },
-    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.6", "another-app"], delete: async (key) => removed.push(key),
+    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.7", "another-app"], delete: async (key) => removed.push(key),
       match: async () => null, open: async () => ({ addAll: async () => {}, put: async (request) => puts.push(request.url) }) },
     fetch: async (request) => { fetched.push(request.url); return response; },
   });
