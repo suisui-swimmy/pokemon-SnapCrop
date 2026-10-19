@@ -210,7 +210,9 @@ test("no rule, pending index, failed index and explicitly absent statistics are 
 
 test("shared statistics only use explicit provider mapping; availability prevents unnecessary fetch", async () => {
   const h = harness(); h.select("charizardmegax"); await settle();
-  assert.equal(h.calls[0].statsId, "charizard"); assert.match(h.entries[0].textContent, /リザードンと共通/u);
+  assert.equal(h.calls[0].statsId, "charizard"); assert.match(h.entries[0].children[0].textContent, /［選出1／ダブル／最新］\(参照: リザードン\)/u);
+  assert.equal(h.entries[0].children[1].className, "terminal-statistics__body");
+  assert.doesNotMatch(h.entries[0].textContent, /統計:|と共通/u);
   h.calls[0].resolve(ready()); await settle();
   h.index = { statsById: { kingambit: { statsId: "kingambit", availableCurrent: { Doubles: false } } } };
   h.select(); await settle(); assert.equal(h.calls.length, 1); assert.match(h.entries.at(-1).textContent, /掲載されていません/u);

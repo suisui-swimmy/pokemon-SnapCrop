@@ -1355,7 +1355,6 @@ html[data-theme="light"] .terminal-entry--system {
   white-space: nowrap;
 }
 .terminal-statistics__body { white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
-.terminal-statistics__shared { font-size: 0.85em; }
 .terminal-statistics__tables {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));

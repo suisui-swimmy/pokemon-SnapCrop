@@ -167,6 +167,9 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
     name.textContent = `> ${entry?.name || entry?.canonicalName || block.formId}`;
     const context = dom.createElement("span");
     context.textContent = `［${block.source === "auto" ? `選出${block.order}／` : ""}${RULE_LABELS[block.settings.rule] || "ルール未選択"}${result?.date ? `／${result.date}` : "／最新"}］`;
+    if (block.mapping?.shared) {
+      context.textContent += `(参照: ${pokemon.get(block.statsId)?.name || block.mapping.statsName || block.statsId})`;
+    }
     const identityParts = [name];
     if (details.types.length) {
       const chips = dom.createElement("span");
@@ -229,14 +232,7 @@ export function createStatisticsPresenter({ api, catalog, getIndex, getIndexErro
     } else {
       body.textContent = lines.join("\n");
     }
-    const children = [heading];
-    if (block.mapping?.shared) {
-      const shared = dom.createElement("div");
-      shared.className = "terminal-statistics__shared";
-      shared.textContent = `統計: ${pokemon.get(block.statsId)?.name || block.mapping.statsName || block.statsId}と共通`;
-      children.push(shared);
-    }
-    children.push(body);
+    const children = [heading, body];
     if (result?.fetchedAt) {
       const fetched = dom.createElement("div");
       fetched.className = "terminal-statistics__fetched";
