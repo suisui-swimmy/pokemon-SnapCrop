@@ -28,6 +28,7 @@ function harness({ logging = true } = {}) {
     document: { addEventListener() {} }, window: { cancelAnimationFrame() {} } });
   vm.runInContext(source.replace(/\}\)\(\);\s*$/u, `
     // Keep the real gate, scoring, candidate selection, streak and assignment paths.
+    samplePickOverlayHudPresence = (_, index) => globalThis.presenceInputs?.[index] || { visible: true, readCount: 1 };
     samplePickOverlayHudCandidates = () => {
       const input = globalThis.hudInputs[globalThis.hudCursor++];
       return input ? [{sample: input, gateState: evaluatePickOverlayHudGate(input), offsetX: -3, offsetY: 0}] : [];
@@ -127,6 +128,40 @@ test("HUD quality rejection preserves raw measurements and no fabricated scores"
   assert.equal(row.bestScore, null);
 });
 
+test("missing opponent HUD clears pending matches and prevents scenery comparisons", () => {
+  const h = harness(); h.step();
+  h.context.presenceInputs = [{ visible: false, readCount: 9 }, { visible: false, readCount: 9 }];
+  h.step();
+  assert.equal(h.diagnostic.reasons.hud_not_visible.count, 1);
+  assert.equal(h.diagnostic.reasons.hud_not_visible.last.hudPresence[0].visible, false);
+  assert.equal(h.pick.pendingMatchesByHudIndex.some(Boolean), false);
+  assert.equal(h.pick.ordersByRefIndex.some(Boolean), false);
+  assert.equal(h.diagnostic.comparisonCount, 1);
+  h.context.presenceInputs = null;
+  h.step();
+  assert.equal(h.pick.ordersByRefIndex.some(Boolean), false, "old confirmation must not survive HUD loss");
+});
+
+test("one visible opponent HUD can be assigned independently", () => {
+  const h = harness();
+  h.context.presenceInputs = [{ visible: false, readCount: 9 }, { visible: true, readCount: 1 }];
+  h.context.hudInputs = [basis(1)];
+  h.step(); h.step();
+  assert.deepEqual(Array.from(h.pick.ordersByRefIndex), [0, 1, 0, 0, 0, 0]);
+  assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "hud_not_visible");
+});
+
+test("HUD absence checks respect the comparison interval", () => {
+  const h = harness();
+  h.context.presenceInputs = [{ visible: false }, { visible: false }];
+  h.step();
+  for (let i = 0; i < 4; i += 1) h.step(50);
+  assert.equal(h.diagnostic.reasons.hud_not_visible.count, 1);
+  assert.equal(h.diagnostic.reasons.interval_wait.count, 4);
+  h.step(50);
+  assert.equal(h.diagnostic.reasons.hud_not_visible.count, 2);
+});
+
 test("score, margin, weak collision and strong collision use real scoring decisions", () => {
   const cases = [[scored(0.68, 0.52), "threshold_rejected"], [scored(0.82, 0.80), "threshold_rejected"],
     [scored(0.72, 0.56), "contested"]];
@@ -161,6 +196,43 @@ test("weak matches retain their three-comparison requirement and selected-positi
   assert.equal(row.decisionStreak, 3);
   assert.equal(row.candidateGate.mean, 100);
   assert.equal(row.offsetX, -3);
+});
+
+test("simultaneous partners keep left-to-right order across HUD-only to battle transition", () => {
+  const h = harness();
+  h.context.hudInputs = [scored(0.86, 0.52), basis(1)];
+  h.metrics.battleHud = { blue: 0, white: 0, chroma: 0, bright: 0 };
+  h.step();
+  assert.equal(h.pick.pendingMatchesByHudIndex[0], null);
+  assert.equal(h.pick.pendingMatchesByHudIndex[1].streak, 1);
+  h.metrics.battleHud = { blue: 0.7, white: 0.2, chroma: 0.1, bright: 0.7 };
+  h.step();
+  assert.deepEqual(Array.from(h.pick.ordersByRefIndex), [0, 0, 0, 0, 0, 0]);
+  assert.equal(h.diagnostic.comparisons.at(-1).hud[1].outcome, "order_wait");
+  h.step();
+  assert.deepEqual(Array.from(h.pick.ordersByRefIndex), [1, 2, 0, 0, 0, 0]);
+  assert.equal(h.diagnostic.hud[0].current.accepted, 1);
+  assert.equal(h.diagnostic.hud[1].current.accepted, 1);
+});
+
+test("an unrecognised visible partner cannot block a confirmed pick indefinitely", () => {
+  const h = harness();
+  h.context.hudInputs = [scored(0.65, 0.52), basis(1)];
+  h.step(); h.step();
+  assert.equal(h.pick.ordersByRefIndex[1], 0);
+  h.step(); h.step(); h.step();
+  assert.equal(h.pick.ordersByRefIndex[1], 1);
+  assert.equal(h.pick.ordersByRefIndex[0], 0);
+});
+
+test("a candidate lost during order waiting is never assigned from stale confirmation", () => {
+  const h = harness();
+  h.context.hudInputs = [scored(0.65, 0.52), basis(1)];
+  h.step(); h.step();
+  h.context.hudInputs = [basis(2), scored(0.65, 0.52)];
+  h.step(); h.step(); h.step(); h.step(); h.step();
+  assert.equal(h.pick.ordersByRefIndex[1], 0);
+  assert.equal(h.pick.ordersByRefIndex[2], 1);
 });
 
 test("blocked observations aggregate by second without repeating unchanged events", () => {

@@ -51,14 +51,16 @@ test("every local runtime asset reference is included in Pages", () => {
 function workerHarness() {
   const listeners = new Map(); const puts = []; const removed = []; const fetched = [];
   const response = { status: 200, clone() { return this; } };
+  const workerSource = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const currentCache = workerSource.match(/const CACHE_NAME = "([^"]+)"/u)[1];
   const context = vm.createContext({ URL, Set, Promise,
     self: { registration: { scope: "https://example.test/pokemon-SnapCrop/" }, location: { origin: "https://example.test" },
       addEventListener: (name, callback) => listeners.set(name, callback), clients: { claim() {} }, skipWaiting() {} },
-    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", "pokemon-snapcrop-v1.7.11", "another-app"], delete: async (key) => removed.push(key),
+    caches: { keys: async () => ["pokemon-snapcrop-v1.7.0", currentCache, "another-app"], delete: async (key) => removed.push(key),
       match: async () => null, open: async () => ({ addAll: async () => {}, put: async (request) => puts.push(request.url) }) },
     fetch: async (request) => { fetched.push(request.url); return response; },
   });
-  vm.runInContext(fs.readFileSync(path.join(ROOT, "sw.js"), "utf8"), context);
+  vm.runInContext(workerSource, context);
   return { context, listeners, puts, removed, fetched, response };
 }
 

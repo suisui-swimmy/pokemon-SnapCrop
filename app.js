@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.11";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.12";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -237,7 +237,33 @@
     requiredHudOnlyStreak: 4,
     requiredWeakStreak: 3,
     gateGraceMs: 1500,
+    simultaneousWindowMs: 750,
     maxOrders: 4,
+    hudPresence: {
+      sampleWidth: 96,
+      sampleHeight: 32,
+      offsets: [0, -12, 12],
+      topBorderMin: 0.40,
+      bottomBorderMin: 0.18,
+      hpLineMin: 0.12,
+      nameWhiteMin: 0.04,
+      rois: [
+        { x: 1080 / 1920, y: 31 / 1080, width: 414 / 1920, height: 134 / 1080 },
+        { x: 1490 / 1920, y: 31 / 1080, width: 398 / 1920, height: 134 / 1080 },
+      ],
+    },
+    foreground: {
+      redGreenMin: 35,
+      redBlueMin: 20,
+      minFraction: 0.12,
+      maxFraction: 0.88,
+      minOverlap: 0.70,
+      detailScoreMin: 0.75,
+      detailContrastMin: 6,
+      insetX: 3,
+      insetTop: 2,
+      insetBottom: 5,
+    },
     thresholds: {
       scoreMin: 0.80,
       marginMin: 0.05,
@@ -357,10 +383,12 @@
     no_reference: "相手参照画像なし", phase_wait: "撮影後の監視段階待ち",
     interval_wait: "通常の比較間隔待ち", screen_blocked: "画面判定で比較を保留",
     video_missing: "入力サイズなし", hud_read_failed: "HUD画像の読み取り失敗",
+    hud_not_visible: "相手HUDの枠・名前帯・HP欄を確認できない",
     hud_quality_rejected: "HUDの明るさ・明暗差が不足", reference_read_failed: "参照画像の読み取り失敗",
     compared: "比較実行", no_candidate: "比較候補なし", threshold_rejected: "スコア・点差の採用条件不足",
     contested: "同じ参照枠への候補競合", already_assigned: "採番済み", pending: "連続一致待ち",
     accepted: "自動採番確定", order_limit: "採番上限", candidate_changed: "連続一致の候補変更",
+    order_wait: "同時登場の順番確認待ち",
     pending_cleared: "連続一致の解除", grace_kept: "画面判定待ちで連続一致を一時保持",
     grace_expired: "連続一致の保持期限切れ", reset: "採番状態の初期化",
     manual_set: "手動採番・移動", manual_clear: "手動解除",
@@ -497,6 +525,7 @@
     pokemonIconRequestSequence: 0,
     pokemonIconSampleCanvas: null,
     pokemonIconSampleContext: null,
+    pickHudPresenceCanvas: null,
     autoSnap: createAutoSnapState(),
     faintIconTemplates: FAINT_DETECTION_CONFIG.iconTemplatePaths.map(() => null),
     battleResultTemplate: createPendingAutoTemplate(),
@@ -5221,7 +5250,7 @@
       : (battleHudSignal.hudOnlyAllowed ? "hud-only" : "");
     if (observation) observation.mode = pickGateMode || null;
 
-    if (now - pickOverlay.lastCompareAt < PICK_OVERLAY_CONFIG.compareIntervalMs) {
+    if (now - Math.max(pickOverlay.lastCompareAt, pickOverlay.lastHudCheckAt) < PICK_OVERLAY_CONFIG.compareIntervalMs) {
       if (observation) observation.reason = "interval_wait";
       updateFaintDetection([], [], now, Boolean(pickGateMode));
       pickOverlay.lastGateReason = "比較待ち";
@@ -5268,13 +5297,19 @@
     pickOverlay.lastGateReason = pickGateMode === "hud-only"
       ? "battle HUDなし / HUD-only品質確認中"
       : "battle HUD一致 / HUD品質確認中";
-    const hudSampleSets = PICK_OVERLAY_CONFIG.hudRois.map((roi) => samplePickOverlayHudCandidates(
-      elements.video,
-      getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
-      dimensions,
-    ));
+    pickOverlay.lastHudCheckAt = now;
+    const hudPresence = PICK_OVERLAY_CONFIG.hudPresence.rois.map((_, hudIndex) =>
+      samplePickOverlayHudPresence(elements.video, hudIndex, dimensions));
+    if (observation) observation.hudPresence = hudPresence;
+    const hudSampleSets = PICK_OVERLAY_CONFIG.hudRois.map((roi, hudIndex) => hudPresence[hudIndex].visible
+      ? samplePickOverlayHudCandidates(
+        elements.video,
+        getPickOverlayNormalizedRect(roi, dimensions.width, dimensions.height),
+        dimensions,
+      ) : []);
     if (observation) observation.readCounts = hudSampleSets.map((candidates) => candidates.length);
-    if (hudSampleSets.some((candidates) => !candidates.length)) {
+    if (hudPresence.some((presence) => presence.readFailed)
+      || hudSampleSets.some((candidates, index) => hudPresence[index].visible && !candidates.length)) {
       if (observation) observation.reason = "hud_read_failed";
       updateFaintDetection([], [], now, Boolean(pickGateMode));
       clearPickOverlayPendingMatches();
@@ -5288,13 +5323,19 @@
       return;
     }
 
-    const hudGateStates = hudSampleSets.map((candidates) => evaluatePickOverlayHudCandidateGate(candidates));
+    const hudGateStates = hudSampleSets.map((candidates, index) => hudPresence[index].visible
+      ? evaluatePickOverlayHudCandidateGate(candidates)
+      : { ready: false, key: "hud-not-visible", summary: "相手HUD表示なし", reasonCount: 1 });
+    hudPresence.forEach((presence, index) => {
+      if (!presence.visible) pickOverlay.pendingMatchesByHudIndex[index] = null;
+    });
     if (observation) observation.gates = hudGateStates;
     const readyHudIndexes = hudGateStates
       .map((gateState, hudIndex) => (gateState.ready ? hudIndex : -1))
       .filter((hudIndex) => hudIndex >= 0);
     if (!readyHudIndexes.length) {
-      if (observation) observation.reason = "hud_quality_rejected";
+      if (observation) observation.reason = hudPresence.some((presence) => presence.visible)
+        ? "hud_quality_rejected" : "hud_not_visible";
       updateFaintDetection([], hudGateStates, now, Boolean(pickGateMode));
       const keptPending = keepPickOverlayPendingThroughGate(now);
       pickOverlay.lastGateReason = pickGateMode === "hud-only" ? "HUD-only待ち" : "HUD待ち";
@@ -5343,7 +5384,10 @@
       readyHudIndexes,
       pickGateMode,
     );
-    const acceptedAssignments = updatePickOverlayAssignments(tentativeMatches);
+    const acceptedAssignments = updatePickOverlayAssignments(tentativeMatches, {
+      now,
+      hudPresent: hudPresence.map((presence) => presence.visible),
+    });
     if (observation) {
       observation.reason = "compared";
       observation.best = bestByHudIndex;
@@ -5402,6 +5446,11 @@
             grayScore: scoreResult.grayScore,
             edgeScore: scoreResult.edgeScore,
             colorScore: scoreResult.colorScore,
+            matchSource: scoreResult.matchSource,
+            originalScore: scoreResult.originalScore,
+            foregroundScore: scoreResult.foregroundScore,
+            foregroundOverlap: scoreResult.foregroundOverlap,
+            foregroundDetailScore: scoreResult.foregroundDetailScore,
           };
         }).sort((left, right) => right.score - left.score);
         const bestScore = scores[0]?.score ?? 0;
@@ -5421,6 +5470,11 @@
           grayScore: scores[0]?.grayScore ?? 0,
           edgeScore: scores[0]?.edgeScore ?? 0,
           colorScore: scores[0]?.colorScore ?? 0,
+          matchSource: scores[0]?.matchSource ?? null,
+          originalScore: scores[0]?.originalScore ?? null,
+          foregroundScore: scores[0]?.foregroundScore ?? null,
+          foregroundOverlap: scores[0]?.foregroundOverlap ?? null,
+          foregroundDetailScore: scores[0]?.foregroundDetailScore ?? null,
         };
 
         return isBetterPickOverlayCandidate(nextCandidate, bestCandidate)
@@ -5486,6 +5540,82 @@
     };
   }
 
+  function evaluatePickOverlayHudPresence(data) {
+    const config = PICK_OVERLAY_CONFIG.hudPresence;
+    const width = config.sampleWidth;
+    const isBorder = (i) => {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const low = Math.min(r, g, b);
+      return low > 150 && (Math.max(r, g, b) - low < 90 || b > r * 0.84);
+    };
+    const rowMaximum = (x0, x1, y0, y1) => {
+      let best = 0;
+      for (let y = y0; y < y1; y += 1) {
+        let count = 0;
+        for (let x = x0; x < x1; x += 1) count += isBorder((y * width + x) * 4) ? 1 : 0;
+        best = Math.max(best, count / (x1 - x0));
+      }
+      return best;
+    };
+    const topBorder = rowMaximum(8, 92, 0, 4);
+    const bottomBorder = rowMaximum(6, 87, 28, 32);
+    let namePixels = 0;
+    for (let y = 4; y < 15; y += 1) for (let x = 31; x < 83; x += 1) {
+      const i = (y * width + x) * 4;
+      const low = Math.min(data[i], data[i + 1], data[i + 2]);
+      if (low > 180 && Math.max(data[i], data[i + 1], data[i + 2]) - low < 95) namePixels += 1;
+    }
+    const nameWhite = namePixels / (52 * 11);
+    const gray = (i) => data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    let hpLine = 0;
+    for (let y = 18; y < 26; y += 1) {
+      let difference = 0;
+      for (let x = 33; x < 85; x += 1) {
+        const i = (y * width + x) * 4;
+        difference += Math.abs(gray(i + width * 4) - gray(i)) / 255;
+      }
+      hpLine = Math.max(hpLine, difference / 52);
+    }
+    const score = Math.min(topBorder / config.topBorderMin, bottomBorder / config.bottomBorderMin,
+      hpLine / config.hpLineMin, nameWhite / config.nameWhiteMin);
+    return { visible: score >= 1, score, topBorder, bottomBorder, hpLine, nameWhite };
+  }
+
+  function samplePickOverlayHudPresence(source, hudIndex, dimensions) {
+    const config = PICK_OVERLAY_CONFIG.hudPresence;
+    const roi = config.rois[hudIndex];
+    // Preserve subpixel positions: integer rounding can erase the thin card
+    // border when 720p/540p input is reduced to the presence sample.
+    const crop = { x: roi.x * dimensions.width, y: roi.y * dimensions.height,
+      width: roi.width * dimensions.width, height: roi.height * dimensions.height };
+    if (!state.pickHudPresenceCanvas) {
+      state.pickHudPresenceCanvas = document.createElement("canvas");
+      state.pickHudPresenceCanvas.width = config.sampleWidth;
+      state.pickHudPresenceCanvas.height = config.sampleHeight;
+    }
+    const context = state.pickHudPresenceCanvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return { visible: false, readFailed: true, readCount: 0 };
+    let best = { visible: false, score: 0 };
+    let readCount = 0;
+    try {
+      for (const dy of config.offsets) for (const dx of config.offsets) {
+        const x = crop.x + dx * dimensions.width / 1920;
+        const y = crop.y + dy * dimensions.height / 1080;
+        if (x < 0 || y < 0 || x + crop.width > dimensions.width || y + crop.height > dimensions.height) continue;
+        context.clearRect(0, 0, config.sampleWidth, config.sampleHeight);
+        context.drawImage(source, x, y, crop.width, crop.height, 0, 0, config.sampleWidth, config.sampleHeight);
+        const data = context.getImageData(0, 0, config.sampleWidth, config.sampleHeight).data;
+        readCount += 1;
+        const result = { ...evaluatePickOverlayHudPresence(data), offsetX: dx, offsetY: dy };
+        if (result.visible) return { ...result, readCount };
+        if (result.score > best.score) best = result;
+      }
+      return { ...best, readCount };
+    } catch {
+      return { visible: false, readFailed: true, readCount };
+    }
+  }
+
   function samplePickOverlayHudCandidates(source, crop, dimensions) {
     const scaleX = dimensions.width / 1920;
     const scaleY = dimensions.height / 1080;
@@ -5547,9 +5677,18 @@
     ).data;
     const sampleWidth = PICK_OVERLAY_CONFIG.sampleWidth;
     const sampleHeight = PICK_OVERLAY_CONFIG.sampleHeight;
+    return buildPickOverlaySample(imageData, sampleWidth, sampleHeight);
+  }
+
+  function buildPickOverlaySample(imageData, sampleWidth, sampleHeight) {
+    const foregroundConfig = PICK_OVERLAY_CONFIG.foreground;
     const sampleSize = sampleWidth * sampleHeight;
     const values = new Float32Array(sampleSize);
     const colorValues = new Float32Array(sampleSize * 2);
+    const foregroundValues = new Float32Array(sampleSize);
+    const foregroundMask = new Uint8Array(sampleSize);
+    let foregroundCount = 0;
+    let foregroundSum = 0;
     let sum = 0;
     let colorRedGreenSum = 0;
     let colorBlueGreenSum = 0;
@@ -5559,6 +5698,19 @@
       const g = imageData[index + 1];
       const b = imageData[index + 2];
       const grayscale = (r * 0.299) + (g * 0.587) + (b * 0.114);
+      const x = sampleIndex % sampleWidth;
+      const y = Math.floor(sampleIndex / sampleWidth);
+      // The party list and battle card have different red/pink backgrounds.
+      // Keep the original features as well: red Pokemon may share these colours.
+      const isBackground = r > g + foregroundConfig.redGreenMin && r > b + foregroundConfig.redBlueMin;
+      const isInterior = x >= foregroundConfig.insetX && x < sampleWidth - foregroundConfig.insetX
+        && y >= foregroundConfig.insetTop && y < sampleHeight - foregroundConfig.insetBottom;
+      if (!isBackground && isInterior) {
+        foregroundMask[sampleIndex] = 1;
+        foregroundCount += 1;
+        foregroundValues[sampleIndex] = grayscale;
+        foregroundSum += grayscale;
+      }
       const colorIndex = sampleIndex * 2;
       const redGreen = r - g;
       const blueGreen = b - g;
@@ -5577,7 +5729,9 @@
     const colorRedGreenMean = colorRedGreenSum / values.length;
     const colorBlueGreenMean = colorBlueGreenSum / values.length;
     const edgeValues = new Float32Array(sampleSize);
+    const foregroundEdges = new Float32Array(sampleSize);
     let edgeSum = 0;
+    let foregroundEdgeSum = 0;
     for (let y = 1; y < sampleHeight - 1; y += 1) {
       for (let x = 1; x < sampleWidth - 1; x += 1) {
         const sampleIndex = (y * sampleWidth) + x;
@@ -5586,12 +5740,20 @@
         const edge = Math.sqrt((gx * gx) + (gy * gy));
         edgeValues[sampleIndex] = edge;
         edgeSum += edge;
+        const fx = foregroundValues[sampleIndex + 1] - foregroundValues[sampleIndex - 1];
+        const fy = foregroundValues[sampleIndex + sampleWidth] - foregroundValues[sampleIndex - sampleWidth];
+        foregroundEdges[sampleIndex] = Math.hypot(fx, fy);
+        foregroundEdgeSum += foregroundEdges[sampleIndex];
       }
     }
     const edgeMean = edgeSum / edgeValues.length;
     let normSquared = 0;
     let edgeNormSquared = 0;
     let colorNormSquared = 0;
+    const foregroundMean = foregroundSum / sampleSize;
+    const foregroundEdgeMean = foregroundEdgeSum / sampleSize;
+    let foregroundNormSquared = 0;
+    let foregroundEdgeNormSquared = 0;
     for (let index = 0; index < values.length; index += 1) {
       const colorIndex = index * 2;
       values[index] -= mean;
@@ -5602,6 +5764,10 @@
       edgeNormSquared += edgeValues[index] * edgeValues[index];
       colorNormSquared += (colorValues[colorIndex] * colorValues[colorIndex])
         + (colorValues[colorIndex + 1] * colorValues[colorIndex + 1]);
+      foregroundValues[index] -= foregroundMean;
+      foregroundEdges[index] -= foregroundEdgeMean;
+      foregroundNormSquared += foregroundValues[index] ** 2;
+      foregroundEdgeNormSquared += foregroundEdges[index] ** 2;
     }
 
     return {
@@ -5612,6 +5778,10 @@
       normSquared,
       edgeNormSquared,
       colorNormSquared,
+      foregroundValues, foregroundEdges, foregroundMask, foregroundCount,
+      foregroundArea: (sampleWidth - foregroundConfig.insetX * 2)
+        * (sampleHeight - foregroundConfig.insetTop - foregroundConfig.insetBottom),
+      foregroundNormSquared, foregroundEdgeNormSquared,
       contrast: Math.sqrt(normSquared / values.length),
       brightRatio: brightPixels / values.length,
     };
@@ -5774,11 +5944,55 @@
       rightSample.colorNormSquared,
     );
     const baseScore = (grayScore * 0.75) + (edgeScore * 0.25);
+    const originalScore = clamp(baseScore + ((colorScore - 0.5) * 0.12), 0, 1);
+    let foregroundScore = 0;
+    let foregroundOverlap = 0;
+    let foregroundDetailScore = 0;
+    if (leftSample.foregroundNormSquared && rightSample.foregroundNormSquared
+      && leftSample.foregroundEdgeNormSquared && rightSample.foregroundEdgeNormSquared) {
+      const size = leftSample.foregroundMask.length;
+      const leftRatio = leftSample.foregroundCount / leftSample.foregroundArea;
+      const rightRatio = rightSample.foregroundCount / rightSample.foregroundArea;
+      const config = PICK_OVERLAY_CONFIG.foreground;
+      if (leftRatio >= config.minFraction && rightRatio >= config.minFraction
+        && leftRatio <= config.maxFraction && rightRatio <= config.maxFraction) {
+        let overlap = 0;
+        let leftSum = 0, rightSum = 0, leftSquares = 0, rightSquares = 0, products = 0;
+        for (let i = 0; i < size; i += 1) {
+          if (leftSample.foregroundMask[i] && rightSample.foregroundMask[i]) {
+            overlap += 1;
+            const left = leftSample.values[i], right = rightSample.values[i];
+            leftSum += left; rightSum += right;
+            leftSquares += left * left; rightSquares += right * right; products += left * right;
+          }
+        }
+        foregroundOverlap = 2 * overlap / (leftSample.foregroundCount + rightSample.foregroundCount);
+        // A shared silhouette alone is not identity evidence. Confirm detail
+        // using only the common foreground, with its own means and variances.
+        const leftVariance = overlap ? Math.max(0, leftSquares - leftSum * leftSum / overlap) : 0;
+        const rightVariance = overlap ? Math.max(0, rightSquares - rightSum * rightSum / overlap) : 0;
+        if (overlap && Math.sqrt(leftVariance / overlap) >= config.detailContrastMin
+          && Math.sqrt(rightVariance / overlap) >= config.detailContrastMin) {
+          const correlation = (products - leftSum * rightSum / overlap) / Math.sqrt(leftVariance * rightVariance);
+          foregroundDetailScore = (clamp(correlation, -1, 1) + 1) / 2;
+        }
+        if (foregroundOverlap >= config.minOverlap && foregroundDetailScore >= config.detailScoreMin) {
+          const foregroundGray = comparePickOverlayVectors(leftSample.foregroundValues,
+            leftSample.foregroundNormSquared, rightSample.foregroundValues, rightSample.foregroundNormSquared);
+          const foregroundEdge = comparePickOverlayVectors(leftSample.foregroundEdges,
+            leftSample.foregroundEdgeNormSquared, rightSample.foregroundEdges, rightSample.foregroundEdgeNormSquared);
+          foregroundScore = clamp(foregroundGray * 0.75 + foregroundEdge * 0.25
+            + (colorScore - 0.5) * 0.12, 0, 1);
+        }
+      }
+    }
     return {
-      score: clamp(baseScore + ((colorScore - 0.5) * 0.12), 0, 1),
+      score: Math.max(originalScore, foregroundScore),
       grayScore,
       edgeScore,
       colorScore,
+      originalScore, foregroundScore, foregroundOverlap, foregroundDetailScore,
+      matchSource: foregroundScore > originalScore ? "foreground" : "original",
     };
   }
 
@@ -6689,7 +6903,7 @@
     state.statistics?.prefetch(recognition.resultsByRefIndex.filter((result) => result?.matched && result.showdownId).map((result) => result.showdownId));
   }
 
-  function updatePickOverlayAssignments(tentativeMatches) {
+  function updatePickOverlayAssignments(tentativeMatches, { now = Date.now(), hudPresent = [] } = {}) {
     const pickOverlay = state.autoSnap.pickOverlay;
     const tentativeByHudIndex = new Map(tentativeMatches.map((match) => [match.hudIndex, match]));
     let didAssignOrder = false;
@@ -6727,7 +6941,7 @@
           refIndex: tentative.refIndex,
           tier: tentative.tier,
           streak: 1,
-          firstSeenAt: Date.now(),
+          firstSeenAt: now,
           firstSeenSequence: pickOverlay.pendingSequence,
           bestScore: tentative.bestScore,
           margin: tentative.margin,
@@ -6738,18 +6952,38 @@
       }
 
       const nextPending = pickOverlay.pendingMatchesByHudIndex[hudIndex];
+      nextPending.holdingForOrder = false;
       if (nextPending.streak >= getPickOverlayRequiredStreak(nextPending.tier)) {
+        nextPending.confirmedAt ??= now;
         readyAssignments.push({
           hudIndex,
           refIndex: nextPending.refIndex,
           tier: nextPending.tier,
           firstSeenSequence: nextPending.firstSeenSequence,
+          firstSeenAt: nextPending.firstSeenAt,
         });
       }
     });
 
     readyAssignments
+      .filter((assignment) => {
+        const otherHudIndex = 1 - assignment.hudIndex;
+        const otherTentative = tentativeByHudIndex.get(otherHudIndex);
+        const otherAlreadyAssigned = otherTentative
+          && pickOverlay.ordersByRefIndex[otherTentative.refIndex];
+        const otherReady = readyAssignments.some((other) => other.hudIndex === otherHudIndex);
+        const pending = pickOverlay.pendingMatchesByHudIndex[assignment.hudIndex];
+        // Give a visible partner a bounded chance to confirm, without reserving a
+        // number for an unrecognised Pokemon or changing already assigned orders.
+        const waiting = hudPresent[otherHudIndex] && !otherAlreadyAssigned && !otherReady
+          && now - pending.confirmedAt < PICK_OVERLAY_CONFIG.simultaneousWindowMs;
+        pending.holdingForOrder = Boolean(waiting);
+        return !waiting;
+      })
       .sort((left, right) => {
+        if (Math.abs(left.firstSeenAt - right.firstSeenAt) <= PICK_OVERLAY_CONFIG.simultaneousWindowMs) {
+          return left.hudIndex - right.hudIndex;
+        }
         if (left.firstSeenSequence !== right.firstSeenSequence) {
           return left.firstSeenSequence - right.firstSeenSequence;
         }
@@ -8524,6 +8758,7 @@
       pendingSequence: 0,
       referenceUpdatedAt: 0,
       lastCompareAt: 0,
+      lastHudCheckAt: 0,
       lastFaintCompareAt: 0,
       lastGateActive: false,
       lastGateReason: reason || "待機中",
@@ -8737,7 +8972,7 @@
 
   function createPickDiagnosticState() {
     return {
-      version: 1,
+      version: 2,
       config: JSON.parse(JSON.stringify({
         ...PICK_DIAGNOSTIC_CONFIG, compareIntervalMs: PICK_OVERLAY_CONFIG.compareIntervalMs,
         thresholds: PICK_OVERLAY_CONFIG.thresholds, hudRois: PICK_OVERLAY_CONFIG.hudRois,
@@ -8747,6 +8982,9 @@
         requiredWeakStreak: PICK_OVERLAY_CONFIG.requiredWeakStreak,
         requiredHudOnlyStreak: PICK_OVERLAY_CONFIG.requiredHudOnlyStreak,
         gateGraceMs: PICK_OVERLAY_CONFIG.gateGraceMs, maxOrders: PICK_OVERLAY_CONFIG.maxOrders,
+        foreground: PICK_OVERLAY_CONFIG.foreground,
+        hudPresence: PICK_OVERLAY_CONFIG.hudPresence,
+        simultaneousWindowMs: PICK_OVERLAY_CONFIG.simultaneousWindowMs,
         screen: { ...AUTO_SNAP_CONFIG.thresholds.battleHud, selectionRedMin: 0.16, selectionChromaMin: 0.28,
           selectionTimer: AUTO_SNAP_CONFIG.thresholds.selectionTimerIcon, waitingTimer: AUTO_SNAP_CONFIG.thresholds.waitingTimerIcon },
       })),
@@ -8775,7 +9013,8 @@
   function copyPickDiagnosticPending(pending) {
     return pending ? { refIndex: pending.refIndex, tier: pending.tier, streak: pending.streak,
       required: getPickOverlayRequiredStreak(pending.tier), firstSeenAt: pending.firstSeenAt,
-      firstSeenSequence: pending.firstSeenSequence } : null;
+      firstSeenSequence: pending.firstSeenSequence, confirmedAt: pending.confirmedAt ?? null,
+      holdingForOrder: Boolean(pending.holdingForOrder) } : null;
   }
 
   function beginPickDiagnosticObservation(now) {
@@ -8859,6 +9098,7 @@
       offsetX: gate.offsetX ?? null, offsetY: gate.offsetY ?? null }));
     const pendingAfter = pick.pendingMatchesByHudIndex.map(copyPickDiagnosticPending);
     const sample = { ...context, reason, mode: observation.mode, phase: observation.phase, screen: observation.screen,
+      hudPresence: observation.hudPresence || null,
       readCounts: observation.readCounts || null, gates };
     countPickDiagnosticReason(diagnostic, reason, sample);
     if (reason !== "compared") {
@@ -8880,10 +9120,12 @@
       const hud = observation.best.map((best, hudIndex) => {
         const accepted = observation.accepted.get(hudIndex);
         const measured = best.refIndex >= 0;
-        const outcome = !gates[hudIndex]?.ready ? "hud_quality_rejected" : !measured ? "no_candidate"
+        const outcome = observation.hudPresence?.[hudIndex]?.visible === false ? "hud_not_visible"
+          : !gates[hudIndex]?.ready ? "hud_quality_rejected" : !measured ? "no_candidate"
           : !best.tier ? "threshold_rejected" : !tentative.has(hudIndex) ? "contested"
             : observation.ordersBefore[best.refIndex] ? "already_assigned" : accepted ? "accepted"
-              : pendingAfter[hudIndex] ? "pending" : "order_limit";
+              : pendingAfter[hudIndex]?.holdingForOrder ? "order_wait"
+                : pendingAfter[hudIndex] ? "pending" : "order_limit";
         const decisionTier = accepted?.tier || pendingAfter[hudIndex]?.tier || (best.tier
           ? observation.pendingBefore[hudIndex]?.refIndex === best.refIndex
             ? getStrongerPickOverlayTier(observation.pendingBefore[hudIndex].tier, best.tier) : best.tier
@@ -8898,6 +9140,11 @@
           thresholdChecks: measured ? getPickDiagnosticThresholdChecks(best, observation.mode) : null,
           grayScore: measured ? best.grayScore : null, edgeScore: measured ? best.edgeScore : null,
           colorScore: measured ? best.colorScore : null, offsetX: measured ? best.offsetX : null, offsetY: measured ? best.offsetY : null,
+          matchSource: measured ? best.matchSource : null,
+          originalScore: measured ? best.originalScore : null,
+          foregroundScore: measured ? best.foregroundScore : null,
+          foregroundOverlap: measured ? best.foregroundOverlap : null,
+          foregroundDetailScore: measured ? best.foregroundDetailScore : null,
           pendingBefore: observation.pendingBefore[hudIndex], pendingAfter: pendingAfter[hudIndex],
           decisionStreak: accepted || outcome === "order_limit" ? (observation.pendingBefore[hudIndex]?.refIndex === best.refIndex
             ? observation.pendingBefore[hudIndex].streak + 1 : 1) : pendingAfter[hudIndex]?.streak ?? null,

@@ -5,6 +5,7 @@ import test from "node:test";
 import { MessageChannel } from "node:worker_threads";
 
 const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const appVersion = source.match(/const APP_VERSION = "([^"]+)"/u)[1];
 function harness(controller) {
   const listeners = new Map();
   const serviceWorker = {
@@ -31,7 +32,7 @@ test("remote fetching is held until an old controller is replaced by the no-exte
   assert.equal(finished, false);
   h.serviceWorker.controller = { postMessage(message, ports) {
     assert.equal(message.type, "remote-cache-policy");
-    ports[0].postMessage({ cacheName: "pokemon-snapcrop-v1.7.11", externalCaching: false });
+    ports[0].postMessage({ cacheName: appVersion, externalCaching: false });
     ports[0].close();
   } };
   h.listeners.get("controllerchange")();
