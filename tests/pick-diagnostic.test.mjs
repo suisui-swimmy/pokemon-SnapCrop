@@ -82,6 +82,9 @@ test("real comparisons record all six scores, streaks and acceptance with debug 
   assert.equal(h.state.debugMode, false);
   assert.equal(h.diagnostic.comparisons.length, 2);
   const [pending, accepted] = h.diagnostic.comparisons;
+  assert.equal(h.diagnostic.version, 3);
+  assert.equal(h.diagnostic.config.pixelSampling, "native-rgba-bilinear");
+  assert.deepEqual(Array.from(pending.pixelReadCounts), [1, 1]);
   assert.equal(pending.hud[0].scores.length, 6);
   assert.equal(pending.hud[0].bestRefIndex, 0);
   assert.equal(pending.hud[0].bestScore, 1);
@@ -123,7 +126,7 @@ test("HUD quality rejection preserves raw measurements and no fabricated scores"
   const row = h.diagnostic.comparisons[0].hud[1];
   assert.equal(row.outcome, "hud_quality_rejected");
   assert.equal(row.gate.mean, 1);
-  assert.equal(row.gate.reason, "dark+flat+dim");
+  assert.equal(row.gate.reason, "dark+flat");
   assert.equal(row.scores, null);
   assert.equal(row.bestScore, null);
 });
@@ -149,6 +152,16 @@ test("one visible opponent HUD can be assigned independently", () => {
   h.step(); h.step();
   assert.deepEqual(Array.from(h.pick.ordersByRefIndex), [0, 1, 0, 0, 0, 0]);
   assert.equal(h.diagnostic.comparisons.at(-1).hud[0].outcome, "hud_not_visible");
+});
+
+test("a verified HUD with few bright pixels can use a well-defined icon", () => {
+  const h = harness();
+  h.context.hudInputs[0] = { ...basis(0), mean: 71.17, contrast: 27.89, brightRatio: 0.041 };
+  h.step(); h.step();
+  assert.deepEqual(Array.from(h.pick.ordersByRefIndex), [1, 2, 0, 0, 0, 0]);
+  const row = h.diagnostic.comparisons.at(-1).hud[0];
+  assert.equal(row.outcome, "accepted");
+  assert.equal(row.candidateGate.brightRatio, 0.041);
 });
 
 test("HUD absence checks respect the comparison interval", () => {

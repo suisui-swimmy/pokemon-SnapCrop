@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.12";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.13";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -242,7 +242,7 @@
     hudPresence: {
       sampleWidth: 96,
       sampleHeight: 32,
-      offsets: [0, -12, 12],
+      offsets: [0, -2, 2, -12, 12],
       topBorderMin: 0.40,
       bottomBorderMin: 0.18,
       hpLineMin: 0.12,
@@ -275,7 +275,6 @@
       hudOnlyMarginMin: 0.16,
       hudGateMeanMin: 58,
       hudGateContrastMin: 26,
-      hudGateBrightRatioMin: 0.08,
     },
     hudSearchOffsets: [
       { x: 0, y: 0 },
@@ -525,7 +524,7 @@
     pokemonIconRequestSequence: 0,
     pokemonIconSampleCanvas: null,
     pokemonIconSampleContext: null,
-    pickHudPresenceCanvas: null,
+    pickPixelCanvas: null,
     autoSnap: createAutoSnapState(),
     faintIconTemplates: FAINT_DETECTION_CONFIG.iconTemplatePaths.map(() => null),
     battleResultTemplate: createPendingAutoTemplate(),
@@ -5032,25 +5031,6 @@
     return state.battleResultDetectorContext;
   }
 
-  function getPickOverlaySampleContext(width, height) {
-    if (!state.autoSnap.pickSampleCanvas) {
-      state.autoSnap.pickSampleCanvas = document.createElement("canvas");
-    }
-
-    if (
-      state.autoSnap.pickSampleCanvas.width !== width
-      || state.autoSnap.pickSampleCanvas.height !== height
-    ) {
-      state.autoSnap.pickSampleCanvas.width = width;
-      state.autoSnap.pickSampleCanvas.height = height;
-      state.autoSnap.pickSampleContext = state.autoSnap.pickSampleCanvas.getContext("2d", {
-        willReadFrequently: true,
-      });
-    }
-
-    return state.autoSnap.pickSampleContext;
-  }
-
   function updateBattleResultDetection(metrics, now = Date.now()) {
     const detection = state.battleResultDetection;
     if (detection.result) {
@@ -5308,6 +5288,7 @@
         dimensions,
       ) : []);
     if (observation) observation.readCounts = hudSampleSets.map((candidates) => candidates.length);
+    if (observation) observation.pixelReadCounts = hudSampleSets.map((candidates) => candidates.pixelReadCount ?? candidates.length);
     if (hudPresence.some((presence) => presence.readFailed)
       || hudSampleSets.some((candidates, index) => hudPresence[index].visible && !candidates.length)) {
       if (observation) observation.reason = "hud_read_failed";
@@ -5581,6 +5562,70 @@
     return { visible: score >= 1, score, topBorder, bottomBorder, hpLine, nameWhite };
   }
 
+  function readPickOverlayPixels(source, crops) {
+    const sourceWidth = source?.videoWidth ?? source?.naturalWidth ?? source?.width ?? 0;
+    const sourceHeight = source?.videoHeight ?? source?.naturalHeight ?? source?.height ?? 0;
+    if (!(sourceWidth > 0 && sourceHeight > 0) || !crops.length
+      || crops.some((crop) => ![crop.x, crop.y, crop.width, crop.height].every(Number.isFinite)
+        || crop.width <= 0 || crop.height <= 0)) return null;
+    // Read native pixels once. No browser-dependent video/image downscaling.
+    // The one-pixel halo supplies neighbours for subpixel/upsampled crops.
+    const x = clamp(Math.floor(Math.min(...crops.map((crop) => crop.x))) - 1, 0, sourceWidth);
+    const y = clamp(Math.floor(Math.min(...crops.map((crop) => crop.y))) - 1, 0, sourceHeight);
+    const right = clamp(Math.ceil(Math.max(...crops.map((crop) => crop.x + crop.width))) + 1, 0, sourceWidth);
+    const bottom = clamp(Math.ceil(Math.max(...crops.map((crop) => crop.y + crop.height))) + 1, 0, sourceHeight);
+    const width = right - x, height = bottom - y;
+    if (width <= 0 || height <= 0) return null;
+    if (!state.pickPixelCanvas) state.pickPixelCanvas = document.createElement("canvas");
+    const canvas = state.pickPixelCanvas;
+    // Retain the largest small ROI buffer rather than resizing it per candidate.
+    if (canvas.width < width) canvas.width = width;
+    if (canvas.height < height) canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    try {
+      context.clearRect(0, 0, width, height);
+      context.drawImage(source, x, y, width, height, 0, 0, width, height);
+      return { data: context.getImageData(0, 0, width, height).data, x, y, width, height };
+    } catch {
+      return null;
+    }
+  }
+
+  function resamplePickOverlayPixels(pixels, crop, width, height) {
+    if (!pixels || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0
+      || ![crop.x, crop.y, crop.width, crop.height].every(Number.isFinite) || crop.width <= 0 || crop.height <= 0) return null;
+    const data = new Uint8ClampedArray(width * height * 4);
+    const source = pixels.data, sourceWidth = pixels.width;
+    const xs = new Int32Array(width), nextXs = new Int32Array(width), weights = new Float64Array(width);
+    for (let x = 0; x < width; x += 1) {
+      const sx = clamp(crop.x - pixels.x + (x + 0.5) * crop.width / width - 0.5, 0, pixels.width - 1);
+      xs[x] = Math.floor(sx);
+      nextXs[x] = Math.min(xs[x] + 1, pixels.width - 1);
+      weights[x] = sx - xs[x];
+    }
+    for (let y = 0; y < height; y += 1) {
+      const sy = clamp(crop.y - pixels.y + (y + 0.5) * crop.height / height - 0.5, 0, pixels.height - 1);
+      const y0 = Math.floor(sy), y1 = Math.min(y0 + 1, pixels.height - 1), fy = sy - y0;
+      for (let x = 0; x < width; x += 1) {
+        const fx = weights[x], a = (y0 * sourceWidth + xs[x]) * 4, b = (y0 * sourceWidth + nextXs[x]) * 4;
+        const c = (y1 * sourceWidth + xs[x]) * 4, d = (y1 * sourceWidth + nextXs[x]) * 4;
+        const wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy;
+        const target = (y * width + x) * 4;
+        const alpha = source[a + 3] * wa + source[b + 3] * wb + source[c + 3] * wc + source[d + 3] * wd;
+        data[target + 3] = alpha;
+        const opaque = source[a + 3] === 255 && source[b + 3] === 255 && source[c + 3] === 255 && source[d + 3] === 255;
+        for (let channel = 0; channel < 3; channel += 1) {
+          data[target + channel] = opaque
+            ? source[a + channel] * wa + source[b + channel] * wb + source[c + channel] * wc + source[d + channel] * wd
+            : alpha ? (source[a + channel] * source[a + 3] * wa + source[b + channel] * source[b + 3] * wb
+              + source[c + channel] * source[c + 3] * wc + source[d + channel] * source[d + 3] * wd) / alpha : 0;
+        }
+      }
+    }
+    return data;
+  }
+
   function samplePickOverlayHudPresence(source, hudIndex, dimensions) {
     const config = PICK_OVERLAY_CONFIG.hudPresence;
     const roi = config.rois[hudIndex];
@@ -5588,95 +5633,65 @@
     // border when 720p/540p input is reduced to the presence sample.
     const crop = { x: roi.x * dimensions.width, y: roi.y * dimensions.height,
       width: roi.width * dimensions.width, height: roi.height * dimensions.height };
-    if (!state.pickHudPresenceCanvas) {
-      state.pickHudPresenceCanvas = document.createElement("canvas");
-      state.pickHudPresenceCanvas.width = config.sampleWidth;
-      state.pickHudPresenceCanvas.height = config.sampleHeight;
+    const candidates = [];
+    for (const dy of config.offsets) for (const dx of config.offsets) {
+      const x = crop.x + dx * dimensions.width / 1920;
+      const y = crop.y + dy * dimensions.height / 1080;
+      if (x < 0 || y < 0 || x + crop.width > dimensions.width || y + crop.height > dimensions.height) continue;
+      candidates.push({ x, y, width: crop.width, height: crop.height, offsetX: dx, offsetY: dy });
     }
-    const context = state.pickHudPresenceCanvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return { visible: false, readFailed: true, readCount: 0 };
+    const pixels = readPickOverlayPixels(source, candidates);
+    if (!pixels) return { visible: false, readFailed: true, readCount: 0, candidateCount: 0 };
     let best = { visible: false, score: 0 };
-    let readCount = 0;
-    try {
-      for (const dy of config.offsets) for (const dx of config.offsets) {
-        const x = crop.x + dx * dimensions.width / 1920;
-        const y = crop.y + dy * dimensions.height / 1080;
-        if (x < 0 || y < 0 || x + crop.width > dimensions.width || y + crop.height > dimensions.height) continue;
-        context.clearRect(0, 0, config.sampleWidth, config.sampleHeight);
-        context.drawImage(source, x, y, crop.width, crop.height, 0, 0, config.sampleWidth, config.sampleHeight);
-        const data = context.getImageData(0, 0, config.sampleWidth, config.sampleHeight).data;
-        readCount += 1;
-        const result = { ...evaluatePickOverlayHudPresence(data), offsetX: dx, offsetY: dy };
-        if (result.visible) return { ...result, readCount };
-        if (result.score > best.score) best = result;
-      }
-      return { ...best, readCount };
-    } catch {
-      return { visible: false, readFailed: true, readCount };
+    let candidateCount = 0;
+    for (const candidate of candidates) {
+      const data = resamplePickOverlayPixels(pixels, candidate, config.sampleWidth, config.sampleHeight);
+      candidateCount += 1;
+      const result = { ...evaluatePickOverlayHudPresence(data), offsetX: candidate.offsetX, offsetY: candidate.offsetY };
+      if (result.visible) return { ...result, readCount: 1, candidateCount };
+      if (result.score > best.score) best = result;
     }
+    return { ...best, readCount: 1, candidateCount };
   }
 
   function samplePickOverlayHudCandidates(source, crop, dimensions) {
     const scaleX = dimensions.width / 1920;
     const scaleY = dimensions.height / 1080;
-    return PICK_OVERLAY_CONFIG.hudSearchOffsets
-      .map((offset) => {
-        const offsetCrop = clampAutoRoiCrop(
-          {
-            x: crop.x + (offset.x * scaleX),
-            y: crop.y + (offset.y * scaleY),
-            width: crop.width,
-            height: crop.height,
-          },
-          dimensions.width,
-          dimensions.height,
-        );
-        const sample = samplePickOverlaySource(source, offsetCrop);
-        if (!sample) {
-          return null;
-        }
-
-        const gateState = evaluatePickOverlayHudGate(sample);
-        return {
-          sample,
-          gateState,
-          offsetX: offset.x,
-          offsetY: offset.y,
-        };
-      })
-      .filter(Boolean);
+    const crops = PICK_OVERLAY_CONFIG.hudSearchOffsets.map((offset) => ({
+      offset,
+      crop: clampAutoRoiCrop(
+        {
+          x: crop.x + (offset.x * scaleX),
+          y: crop.y + (offset.y * scaleY),
+          width: crop.width,
+          height: crop.height,
+        },
+        dimensions.width,
+        dimensions.height,
+      ),
+    }));
+    const pixels = readPickOverlayPixels(source, crops.map((item) => item.crop));
+    const candidates = pixels ? crops.map(({ offset, crop: offsetCrop }) => {
+      const sample = samplePickOverlaySource(source, offsetCrop, pixels);
+      if (!sample) return null;
+      return {
+        sample,
+        gateState: evaluatePickOverlayHudGate(sample),
+        offsetX: offset.x,
+        offsetY: offset.y,
+      };
+    }).filter(Boolean) : [];
+    candidates.pixelReadCount = pixels ? 1 : 0;
+    return candidates;
   }
 
-  function samplePickOverlaySource(source, crop) {
-    const context = getPickOverlaySampleContext(
-      PICK_OVERLAY_CONFIG.sampleWidth,
-      PICK_OVERLAY_CONFIG.sampleHeight,
-    );
-    if (!context) {
-      return null;
-    }
-
-    context.clearRect(0, 0, PICK_OVERLAY_CONFIG.sampleWidth, PICK_OVERLAY_CONFIG.sampleHeight);
-    context.drawImage(
-      source,
-      Math.round(crop.x),
-      Math.round(crop.y),
-      Math.max(1, Math.round(crop.width)),
-      Math.max(1, Math.round(crop.height)),
-      0,
-      0,
-      PICK_OVERLAY_CONFIG.sampleWidth,
-      PICK_OVERLAY_CONFIG.sampleHeight,
-    );
-
-    const imageData = context.getImageData(
-      0,
-      0,
-      PICK_OVERLAY_CONFIG.sampleWidth,
-      PICK_OVERLAY_CONFIG.sampleHeight,
-    ).data;
+  function samplePickOverlaySource(source, crop, pixels = null) {
+    const rounded = { x: Math.round(crop.x), y: Math.round(crop.y),
+      width: Math.max(1, Math.round(crop.width)), height: Math.max(1, Math.round(crop.height)) };
     const sampleWidth = PICK_OVERLAY_CONFIG.sampleWidth;
     const sampleHeight = PICK_OVERLAY_CONFIG.sampleHeight;
+    const imageData = resamplePickOverlayPixels(pixels || readPickOverlayPixels(source, [rounded]), rounded, sampleWidth, sampleHeight);
+    if (!imageData) return null;
     return buildPickOverlaySample(imageData, sampleWidth, sampleHeight);
   }
 
@@ -5805,9 +5820,9 @@
     if (sample.contrast < thresholds.hudGateContrastMin) {
       reasons.push("flat");
     }
-    if (sample.brightRatio < thresholds.hudGateBrightRatioMin) {
-      reasons.push("dim");
-    }
+    // Once the card itself is verified, the icon need not contain pixels above
+    // a fixed brightness. Dark icons can be identifiable without those pixels.
+    // Keep brightRatio as a diagnostic; mean/contrast and matching still gate.
 
     const detail = `mean=${formatAutoMetric(sample.mean)} contrast=${formatAutoMetric(sample.contrast)} bright=${formatAutoMetric(sample.brightRatio)}`;
     return {
@@ -8972,7 +8987,7 @@
 
   function createPickDiagnosticState() {
     return {
-      version: 2,
+      version: 3,
       config: JSON.parse(JSON.stringify({
         ...PICK_DIAGNOSTIC_CONFIG, compareIntervalMs: PICK_OVERLAY_CONFIG.compareIntervalMs,
         thresholds: PICK_OVERLAY_CONFIG.thresholds, hudRois: PICK_OVERLAY_CONFIG.hudRois,
@@ -8984,6 +8999,7 @@
         gateGraceMs: PICK_OVERLAY_CONFIG.gateGraceMs, maxOrders: PICK_OVERLAY_CONFIG.maxOrders,
         foreground: PICK_OVERLAY_CONFIG.foreground,
         hudPresence: PICK_OVERLAY_CONFIG.hudPresence,
+        pixelSampling: "native-rgba-bilinear",
         simultaneousWindowMs: PICK_OVERLAY_CONFIG.simultaneousWindowMs,
         screen: { ...AUTO_SNAP_CONFIG.thresholds.battleHud, selectionRedMin: 0.16, selectionChromaMin: 0.28,
           selectionTimer: AUTO_SNAP_CONFIG.thresholds.selectionTimerIcon, waitingTimer: AUTO_SNAP_CONFIG.thresholds.waitingTimerIcon },
@@ -9099,7 +9115,7 @@
     const pendingAfter = pick.pendingMatchesByHudIndex.map(copyPickDiagnosticPending);
     const sample = { ...context, reason, mode: observation.mode, phase: observation.phase, screen: observation.screen,
       hudPresence: observation.hudPresence || null,
-      readCounts: observation.readCounts || null, gates };
+      readCounts: observation.readCounts || null, pixelReadCounts: observation.pixelReadCounts || null, gates };
     countPickDiagnosticReason(diagnostic, reason, sample);
     if (reason !== "compared") {
       if (match.window) {
@@ -9506,8 +9522,6 @@
       detectorContext: null,
       iconDetectorCanvas: null,
       iconDetectorContext: null,
-      pickSampleCanvas: null,
-      pickSampleContext: null,
       pickOverlay: createPickOverlayState(),
       templates: {
         loading: createPendingAutoTemplate(),
