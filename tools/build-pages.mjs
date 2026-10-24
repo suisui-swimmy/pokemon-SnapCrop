@@ -13,6 +13,7 @@ export const PUBLIC_FILES = Object.freeze([
   "icons/icon-192.png", "icons/icon-512.png",
   "assets/auto/loading-indicator.png", "assets/auto/selection-timer-icon.png",
   "assets/auto/waiting-timer-icon.png", "assets/auto/win-icon.png",
+  "assets/auto/draw.png",
   "assets/auto/faint-roi-samples/enemy-hud-left-faint-icon-fainted.png",
   "assets/auto/faint-roi-samples/enemy-hud-right-faint-icon-fainted.png",
   "assets/ui/info.svg", "assets/ui/reload.svg", "assets/ui/play.svg",

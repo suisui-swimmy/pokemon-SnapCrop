@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.14";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.15";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -11,6 +11,7 @@
     "restricted",
   ]);
   const BATTLE_RESULT_TEMPLATE_PATH = "./assets/auto/win-icon.png";
+  const DRAW_RESULT_TEMPLATE_PATH = "./assets/auto/draw.png";
   const AUTO_TEMPLATE_PATHS = {
     loading: "./assets/auto/loading-indicator.png",
     selectionTimer: "./assets/auto/selection-timer-icon.png",
@@ -226,7 +227,19 @@
         width: 100 / 1920,
         height: 100 / 1080,
       },
+      draw: { x: 709 / 1920, y: 663 / 1080, width: 509 / 1920, height: 126 / 1080 },
     },
+  };
+  const DRAW_RESULT_CONFIG = {
+    sampleWidth: 255,
+    sampleHeight: 63,
+    // One sample pixel is approximately two pixels in a 1080p frame.
+    offsets: [0, -1, 1, -2, 2],
+    searchPadding: 2,
+    borderMin: 0.72,
+    purpleMin: 0.72,
+    spillMax: 0.20,
+    maxObservationGapMs: 1000,
   };
   const PICK_OVERLAY_ORDER_LABELS = ["", "１", "２", "３", "４"];
   const PICK_OVERLAY_CONFIG = {
@@ -528,6 +541,7 @@
     autoSnap: createAutoSnapState(),
     faintIconTemplates: FAINT_DETECTION_CONFIG.iconTemplatePaths.map(() => null),
     battleResultTemplate: createPendingAutoTemplate(),
+    drawResultTemplate: createPendingAutoTemplate(),
     battleResultDetection: createBattleResultDetectionState(),
     battleResultDetectorCanvas: null,
     battleResultDetectorContext: null,
@@ -552,6 +566,7 @@
     loadAutoTemplates();
     loadFaintIconTemplates();
     loadBattleResultTemplate();
+    loadDrawResultTemplate();
     loadPickOverlayBadgeImages();
     state.serviceWorkerReady = registerServiceWorker();
     void loadDisplayCatalog();
@@ -614,6 +629,7 @@
       battleHud: document.getElementById("debug-overlay-battle-hud"),
       battleResultLeft: document.getElementById("debug-overlay-result-left"),
       battleResultRight: document.getElementById("debug-overlay-result-right"),
+      battleResultDraw: document.getElementById("debug-overlay-result-draw"),
       pickHudLeft: document.getElementById("debug-overlay-pick-hud-left"),
       pickHudRight: document.getElementById("debug-overlay-pick-hud-right"),
       faintIconLeft: document.getElementById("debug-overlay-faint-icon-left"),
@@ -3247,6 +3263,7 @@
     renderDebugOverlayBox(elements.autoDebugOverlays.battleHud, roiCrops.battleHud, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.battleResultLeft, roiCrops.battleResultLeft, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.battleResultRight, roiCrops.battleResultRight, displayedRect, scaleX, scaleY);
+    renderDebugOverlayBox(elements.autoDebugOverlays.battleResultDraw, roiCrops.battleResultDraw, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudLeft, roiCrops.pickHudLeft, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.pickHudRight, roiCrops.pickHudRight, displayedRect, scaleX, scaleY);
     renderDebugOverlayBox(elements.autoDebugOverlays.faintIconLeft, roiCrops.faintIconLeft, displayedRect, scaleX, scaleY);
@@ -3296,6 +3313,7 @@
       battleHud: getAutoRoiCrop("battleHud"),
       battleResultLeft: getBattleResultRoiCrop("left"),
       battleResultRight: getBattleResultRoiCrop("right"),
+      battleResultDraw: getBattleResultRoiCrop("draw"),
       pickHudLeft: getPickOverlayHudCrop(0),
       pickHudRight: getPickOverlayHudCrop(1),
       faintIconLeft: getFaintHudRoiCrop(0, "faintIcon"),
@@ -5039,6 +5057,7 @@
 
     if (!state.references.enemy) {
       detection.battleHudFrames = 0;
+      detection.drawStreak = 0;
       detection.lastSummary = "相手参照画像待ち";
       return;
     }
@@ -5069,17 +5088,21 @@
       return;
     }
 
+    if (now - detection.lastCheckAt > DRAW_RESULT_CONFIG.maxObservationGapMs) detection.drawStreak = 0;
     detection.lastCheckAt = now;
     const leftSignal = matchBattleResultTemplate(getBattleResultRoiCrop("left"));
     const rightSignal = matchBattleResultTemplate(getBattleResultRoiCrop("right"));
+    const drawSignal = matchDrawResultTemplate();
     detection.lastSignals = {
       left: leftSignal,
       right: rightSignal,
+      draw: drawSignal,
     };
 
     if (!leftSignal.templateReady || !rightSignal.templateReady) {
       detection.leftStreak = 0;
       detection.rightStreak = 0;
+      detection.drawStreak = 0;
       detection.lastSummary = "勝敗テンプレート待ち";
       appendBattleResultDebugLogIfChanged(
         "template-wait",
@@ -5088,17 +5111,26 @@
       return;
     }
 
-    if (leftSignal.matched === rightSignal.matched) {
+    const conflict = drawSignal.matched && (leftSignal.matched || rightSignal.matched);
+    if (drawSignal.matched && !conflict) {
       detection.leftStreak = 0;
       detection.rightStreak = 0;
-      detection.lastSummary = leftSignal.matched
+      detection.drawStreak += 1;
+      detection.lastSummary = `DRAW候補 ${detection.drawStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`;
+    } else if (conflict || leftSignal.matched === rightSignal.matched) {
+      detection.leftStreak = 0;
+      detection.rightStreak = 0;
+      detection.drawStreak = 0;
+      detection.lastSummary = conflict ? "勝敗とDRAWの同時一致のため保留" : leftSignal.matched
         ? "左右同時一致のため保留"
         : "勝敗画面待ち";
     } else if (leftSignal.matched) {
+      detection.drawStreak = 0;
       detection.leftStreak += 1;
       detection.rightStreak = 0;
       detection.lastSummary = `WIN候補 ${detection.leftStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`;
     } else {
+      detection.drawStreak = 0;
       detection.leftStreak = 0;
       detection.rightStreak += 1;
       detection.lastSummary = `LOSE候補 ${detection.rightStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`;
@@ -5110,6 +5142,10 @@
         rightSignal.matched ? 1 : 0,
         detection.leftStreak,
         detection.rightStreak,
+        drawSignal.matched ? 1 : 0,
+        detection.drawStreak,
+        Math.round(drawSignal.coverageScore * 100),
+        Math.round(drawSignal.spillScore * 100),
         Math.round(leftSignal.coverageScore * 100),
         Math.round(leftSignal.spillScore * 100),
         Math.round(rightSignal.coverageScore * 100),
@@ -5118,6 +5154,7 @@
       [
         `[debug] result compare: left coverage=${formatAutoMetric(leftSignal.coverageScore)} spill=${formatAutoMetric(leftSignal.spillScore)} offset=${leftSignal.offsetX},${leftSignal.offsetY} matched=${leftSignal.matched ? "yes" : "no"}`,
         `[debug] result compare: right coverage=${formatAutoMetric(rightSignal.coverageScore)} spill=${formatAutoMetric(rightSignal.spillScore)} offset=${rightSignal.offsetX},${rightSignal.offsetY} matched=${rightSignal.matched ? "yes" : "no"}`,
+        `[debug] result compare: draw border=${formatAutoMetric(drawSignal.borderScore)} purple=${formatAutoMetric(drawSignal.purpleScore)} spill=${formatAutoMetric(drawSignal.spillScore)} offset=${drawSignal.offsetX},${drawSignal.offsetY} matched=${drawSignal.matched ? "yes" : "no"}`,
         `[debug] result state: ${detection.lastSummary}`,
       ],
     );
@@ -5126,10 +5163,12 @@
       publishBattleResult("WIN", leftSignal, rightSignal);
     } else if (detection.rightStreak >= BATTLE_RESULT_CONFIG.requiredMatchStreak) {
       publishBattleResult("LOSE", leftSignal, rightSignal);
+    } else if (detection.drawStreak >= BATTLE_RESULT_CONFIG.requiredMatchStreak) {
+      publishBattleResult("DRAW", leftSignal, rightSignal, drawSignal);
     }
   }
 
-  function publishBattleResult(result, leftSignal, rightSignal) {
+  function publishBattleResult(result, leftSignal, rightSignal, drawSignal = null) {
     const detection = state.battleResultDetection;
     if (detection.result) {
       return;
@@ -5138,9 +5177,10 @@
     const event = {
       result,
       detectedAt: Date.now(),
-      source: "win-icon-template",
+      source: result === "DRAW" ? "draw-template" : "win-icon-template",
       left: { ...leftSignal },
       right: { ...rightSignal },
+      ...(drawSignal ? { draw: { ...drawSignal } } : {}),
     };
     detection.result = result;
     detection.event = event;
@@ -5156,7 +5196,7 @@
         `[debug] result accepted: ${result} left=${formatAutoMetric(leftSignal.coverageScore)}/${formatAutoMetric(leftSignal.spillScore)} right=${formatAutoMetric(rightSignal.coverageScore)}/${formatAutoMetric(rightSignal.spillScore)}`,
       ],
     );
-    recordMatchLogEvent("result", `[debug] result accepted: ${result}`, { left: leftSignal, right: rightSignal }, event.detectedAt);
+    recordMatchLogEvent("result", `[debug] result accepted: ${result}`, { source: event.source, left: leftSignal, right: rightSignal, ...(drawSignal ? { draw: drawSignal } : {}) }, event.detectedAt);
     finishMatchLog("completed", result, event.detectedAt);
   }
 
@@ -7214,6 +7254,7 @@
       `[debug] result: template=${template.status} active=${template.activeCount || 0}/${Math.max((template.width || 0) * (template.height || 0), 0)} armed=${detection.armed ? "yes" : "no"} battleHud=${detection.battleHudFrames}/${BATTLE_RESULT_CONFIG.requiredBattleHudFrames} result=${detection.result || "none"}`,
       `[debug] result left: coverage=${formatAutoMetric(leftSignal.coverageScore)} spill=${formatAutoMetric(leftSignal.spillScore)} offset=${leftSignal.offsetX},${leftSignal.offsetY} streak=${detection.leftStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`,
       `[debug] result right: coverage=${formatAutoMetric(rightSignal.coverageScore)} spill=${formatAutoMetric(rightSignal.spillScore)} offset=${rightSignal.offsetX},${rightSignal.offsetY} streak=${detection.rightStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`,
+      `[debug] result draw: template=${state.drawResultTemplate.status} border=${formatAutoMetric(detection.lastSignals.draw.borderScore)} purple=${formatAutoMetric(detection.lastSignals.draw.purpleScore)} spill=${formatAutoMetric(detection.lastSignals.draw.spillScore)} streak=${detection.drawStreak}/${BATTLE_RESULT_CONFIG.requiredMatchStreak}`,
       `[debug] result summary: ${detection.lastSummary}`,
     ];
   }
@@ -8017,6 +8058,102 @@
     image.src = BATTLE_RESULT_TEMPLATE_PATH;
   }
 
+  function loadDrawResultTemplate() {
+    const image = new Image();
+    image.decoding = "async";
+    const fail = () => {
+      state.drawResultTemplate = createPendingAutoTemplate("error");
+      appendTerminalNotice("draw-result-template-failed",
+        ["[error] DRAW判定用の画像を読み込めませんでした。引き分け判定は利用できません。"], "error");
+    };
+    image.onload = () => {
+      const crop = { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight };
+      const pixels = readPickOverlayPixels(image, [crop]);
+      const data = resamplePickOverlayPixels(pixels, crop, DRAW_RESULT_CONFIG.sampleWidth, DRAW_RESULT_CONFIG.sampleHeight);
+      state.drawResultTemplate = buildDrawResultTemplate(data);
+      if (state.drawResultTemplate.status !== "ready") fail();
+    };
+    image.onerror = fail;
+    image.src = DRAW_RESULT_TEMPLATE_PATH;
+  }
+
+  // Separate the pale outline from the purple letter fill; the photographed
+  // background is not a required match. This is shape matching, not OCR.
+  function classifyDrawResultPixel(r, g, b) {
+    if (r >= 135 && g >= 135 && b >= 155 && Math.max(r, g, b) - Math.min(r, g, b) < 90) return 1;
+    if (r >= 65 && g >= 35 && b >= 95 && b > r * 1.1 && r > g * 1.05 && b > g * 1.25) return 2;
+    return 0;
+  }
+
+  function buildDrawResultTemplate(data) {
+    const { sampleWidth: width, sampleHeight: height } = DRAW_RESULT_CONFIG;
+    if (!data || data.length !== width * height * 4) return createPendingAutoTemplate("error");
+    const mask = createDrawResultMask(data);
+    let borderCount = 0, purpleCount = 0;
+    for (let i = 0; i < mask.length; i += 1) {
+      if (mask[i] === 1) borderCount += 1;
+      if (mask[i] === 2) purpleCount += 1;
+    }
+    if (borderCount < mask.length * 0.05 || purpleCount < mask.length * 0.10) return createPendingAutoTemplate("error");
+    return { status: "ready", width, height, mask, borderCount, purpleCount };
+  }
+
+  function createDrawResultMask(data) {
+    const mask = new Uint8Array(data.length / 4);
+    for (let i = 0; i < mask.length; i += 1) {
+      mask[i] = classifyDrawResultPixel(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    }
+    return mask;
+  }
+
+  function compareDrawResultMask(mask, template, sampleWidth = template.width, offsetX = 0, offsetY = 0) {
+    let border = 0, purple = 0, spill = 0;
+    for (let y = 0; y < template.height; y += 1) for (let x = 0; x < template.width; x += 1) {
+      const i = y * template.width + x;
+      const color = mask[(y + offsetY) * sampleWidth + x + offsetX];
+      if (template.mask[i] === 1 && color === 1) border += 1;
+      if (template.mask[i] === 2 && color === 2) purple += 1;
+      if (template.mask[i] !== 1 && color === 1) spill += 1;
+    }
+    const borderScore = border / template.borderCount;
+    const purpleScore = purple / template.purpleCount;
+    const spillScore = spill / (template.mask.length - template.borderCount);
+    return { templateReady: true, borderScore, purpleScore, spillScore,
+      coverageScore: Math.min(borderScore, purpleScore),
+      matched: borderScore >= DRAW_RESULT_CONFIG.borderMin && purpleScore >= DRAW_RESULT_CONFIG.purpleMin
+        && spillScore <= DRAW_RESULT_CONFIG.spillMax };
+  }
+
+  function matchDrawResultTemplate() {
+    const template = state.drawResultTemplate;
+    if (template.status !== "ready") return createEmptyBattleResultSignal(false);
+    const dimensions = getStreamDimensions(), roi = BATTLE_RESULT_CONFIG.rois.draw;
+    if (!dimensions.width || !dimensions.height) return createEmptyBattleResultSignal(true);
+    const padding = DRAW_RESULT_CONFIG.searchPadding;
+    const sampleWidth = template.width + padding * 2, sampleHeight = template.height + padding * 2;
+    const stepX = roi.width * dimensions.width / template.width;
+    const stepY = roi.height * dimensions.height / template.height;
+    const crop = { x: roi.x * dimensions.width - padding * stepX,
+      y: roi.y * dimensions.height - padding * stepY, width: sampleWidth * stepX, height: sampleHeight * stepY };
+    const pixels = readPickOverlayPixels(elements.video, [crop]);
+    if (!pixels) return { ...createEmptyBattleResultSignal(true), readFailed: true };
+    // Normalize the small search area once, then reuse it for all 25 positions.
+    const data = resamplePickOverlayPixels(pixels, crop, sampleWidth, sampleHeight);
+    const mask = createDrawResultMask(data);
+    let best = null, bestScore = -Infinity;
+    for (const dy of DRAW_RESULT_CONFIG.offsets) for (const dx of DRAW_RESULT_CONFIG.offsets) {
+      const signal = { ...compareDrawResultMask(mask, template, sampleWidth, padding + dx, padding + dy),
+        offsetX: dx * 509 / template.width, offsetY: dy * 126 / template.height };
+      const score = signal.coverageScore - signal.spillScore;
+      // A failing high aggregate score must not hide a qualifying candidate.
+      if (!best || (signal.matched && !best.matched) || (signal.matched === best.matched && score > bestScore)) {
+        best = signal;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   function loadPickOverlayBadgeImages() {
     Object.entries(PICK_OVERLAY_CONFIG.badgeImagePaths).forEach(([orderKey, path]) => {
       const order = Number(orderKey);
@@ -8757,12 +8894,14 @@
       lastCheckAt: 0,
       leftStreak: 0,
       rightStreak: 0,
+      drawStreak: 0,
       result: "",
       event: null,
       detectedAt: 0,
       lastSignals: {
         left: createEmptyBattleResultSignal(),
         right: createEmptyBattleResultSignal(),
+        draw: createEmptyBattleResultSignal(),
       },
       lastSummary: reason || "battle HUD待ち",
       lastLogKey: "",
