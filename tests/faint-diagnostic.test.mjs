@@ -171,7 +171,8 @@ test("bounded rings export new evidence without images or history mutation", () 
   assert.equal(h.match.events.length, 1); assert.equal(h.match.pickDiagnostic.comparisonCount, 0);
   assert.equal(h.diagnostic.reasons.mark_consumed.count, 7200); assert.equal(h.diagnostic.reasons.accepted.first.at, 1750);
   const before = JSON.stringify(h.diagnostic), text = h.formatMatchLog(h.match);
-  assert.equal(JSON.stringify(h.diagnostic), before); assert.match(text, /"version":3/u);
+  assert.equal(JSON.stringify(h.diagnostic), before); assert.match(text, /"version":4/u);
+  assert.match(text, /icon\.shape\.spillは照合位置に合わせた円内/u);
   assert.doesNotMatch(text, /data:image|"dataUrl"|"imageData"|"mask"/u);
   const rows = text.split("--- 瀕死の詳細判定 ---")[1].split(/\r?\n--- /u)[0].trim().split("\r\n");
   assert.equal(JSON.parse(rows[0].slice(25)).comparison, 4); assert.equal(JSON.parse(rows.at(-1).slice(25)).comparison, 7203);
@@ -263,10 +264,10 @@ test("the recorded 1546-comparison match confirms exactly 3 -> 1 -> 5 -> 6", () 
   assert.deepEqual(Array.from(h.pick.faintedByRefIndex), [true, false, true, false, true, true]);
 });
 
-function markImage(shift = 0, shuffled = false) {
+function markImage(shift = 0, shuffled = false, shiftY = 0) {
   const data = new Uint8ClampedArray(50 * 50 * 4);
   for (let y = 0; y < 50; y++) for (let x = 0; x < 50; x++) {
-    const distance = Math.hypot(x - 25 - shift, y - 25);
+    const distance = Math.hypot(x - 25 - shift, y - 25 - shiftY);
     const rgb = distance > 19 && distance < 23 ? [235, 235, 235] : distance < 10 ? [230, 25, 80] : [15, 20, 45];
     const targetX = shuffled ? (x + (y % 2 ? 13 : 27)) % 50 : x;
     data.set([...rgb, 255], (y * 50 + targetX) * 4);
@@ -281,4 +282,37 @@ test("shape matching checks arrangement instead of totals and tolerates a small 
   assert.deepEqual(Array.from(h.createFaintIconMask(shuffled, 50, 50).counts), Array.from(template.counts));
   assert.equal(h.matchFaintIconShape(shuffled, 50, 50, template).matched, false);
   assert.equal(h.matchFaintIconShape(original, 50, 50, null).matched, false);
+});
+
+test("white and red scenery outside the shifted faint circle does not hide the mark", () => {
+  const h = harness(), template = h.createFaintIconMask(markImage(), 50, 50);
+  for (const dx of [-2, 0, 2]) for (const dy of [-2, 0, 2]) {
+    const image = markImage(dx, false, dy);
+    for (let y = 0; y < 50; y++) for (let x = 0; x < 50; x++) {
+      if (Math.hypot(x - 24.5 - dx, y - 24.5 - dy) > 25) {
+        image.set(x < 25 ? [245, 245, 245, 255] : [240, 25, 80, 255], (y * 50 + x) * 4);
+      }
+    }
+    const shape = h.matchFaintIconShape(image, 50, 50, template);
+    assert.equal(shape.matched, true, `offset ${dx},${dy}`);
+    assert.equal(shape.offsetX, dx);
+    assert.equal(shape.offsetY, dy);
+    assert.ok(shape.spill >= 0 && shape.spill <= 0.18);
+  }
+});
+
+test("extra colour inside the faint circle and missing red shapes still reject", () => {
+  const h = harness(), original = markImage(), template = h.createFaintIconMask(original, 50, 50);
+  const filled = new Uint8ClampedArray(original);
+  const ringOnly = new Uint8ClampedArray(original);
+  for (let y = 0; y < 50; y++) for (let x = 0; x < 50; x++) {
+    const i = (y * 50 + x) * 4;
+    if (original[i] === 15 && Math.hypot(x - 25, y - 25) < 19) filled.set([240, 25, 80, 255], i);
+    if (original[i] === 230) ringOnly.set([15, 20, 45, 255], i);
+  }
+  const shape = h.matchFaintIconShape(filled, 50, 50, template);
+  assert.ok(shape.whiteCoverage >= 0.75 && shape.redCoverage >= 0.70);
+  assert.ok(shape.spill > 0.18);
+  assert.equal(shape.matched, false);
+  assert.equal(h.matchFaintIconShape(ringOnly, 50, 50, template).matched, false);
 });

@@ -2,7 +2,7 @@
   const DISPLAY_CATALOG_PATH = "./data/pokemon-display-catalog.json";
   const POKEMON_ICON_WORKER_PATH = "./pokemon-icon-worker.js";
   const POKEMON_ICON_MATCHER_PATH = "./pokemon-icon-matcher.js";
-  const APP_VERSION = "pokemon-snapcrop-v1.7.13";
+  const APP_VERSION = "pokemon-snapcrop-v1.7.14";
   const diagnosticExportCounts = new WeakMap();
   const AUDIO_PERMISSION_DEVICE_ID = "__request_audio_permission__";
   const POKEMON_ICON_RECOGNITION_LEGEND_CLASSES = new Set([
@@ -419,7 +419,7 @@
       "./assets/auto/faint-roi-samples/enemy-hud-left-faint-icon-fainted.png",
       "./assets/auto/faint-roi-samples/enemy-hud-right-faint-icon-fainted.png",
     ],
-    shape: { size: 50, searchPadding: 2, whiteCoverageMin: 0.75, redCoverageMin: 0.70, spillMax: 0.18 },
+    shape: { size: 50, searchPadding: 2, whiteCoverageMin: 0.75, redCoverageMin: 0.70, spillMax: 0.18, spillRadius: 25 },
     thresholds: {
       iconPinkMax: 0.18,
       iconRedMin: 0.06,
@@ -7754,21 +7754,32 @@
     const empty = { templateReady: false, matched: false, whiteCoverage: 0, redCoverage: 0, spill: 1, offsetX: 0, offsetY: 0 };
     if (!template?.mask || !template.counts[1] || !template.counts[2]) return empty;
     const sample = createFaintIconMask(data, width, height);
+    const center = (config.size - 1) / 2;
+    const radiusSquared = config.spillRadius * config.spillRadius;
     let best = { ...empty, templateReady: true };
     let bestScore = -Infinity;
     for (let dy = -config.searchPadding; dy <= config.searchPadding; dy += 1) {
       for (let dx = -config.searchPadding; dx <= config.searchPadding; dx += 1) {
         const hits = [0, 0, 0];
+        let circleColors = 0;
+        let circleHits = 0;
         for (let y = 0; y < config.size; y += 1) {
           for (let x = 0; x < config.size; x += 1) {
+            if (x + dx < 0 || x + dx >= config.size || y + dy < 0 || y + dy >= config.size) continue;
             const kind = template.mask[y * config.size + x];
-            if (kind && x + dx >= 0 && x + dx < config.size && y + dy >= 0 && y + dy < config.size
-              && sample.mask[(y + dy) * config.size + x + dx] === kind) hits[kind] += 1;
+            const sampleKind = sample.mask[(y + dy) * config.size + x + dx];
+            if (kind && sampleKind === kind) hits[kind] += 1;
+            // Move the circle with each candidate offset. The square's corners
+            // contain arena scenery; only extra colour inside the mark is spill.
+            if (sampleKind && (x - center) ** 2 + (y - center) ** 2 <= radiusSquared) {
+              circleColors += 1;
+              if (sampleKind === kind) circleHits += 1;
+            }
           }
         }
         const whiteCoverage = hits[1] / template.counts[1];
         const redCoverage = hits[2] / template.counts[2];
-        const spill = 1 - (hits[1] + hits[2]) / Math.max(1, sample.counts[1] + sample.counts[2]);
+        const spill = 1 - circleHits / Math.max(1, circleColors);
         const matched = whiteCoverage >= config.whiteCoverageMin && redCoverage >= config.redCoverageMin && spill <= config.spillMax;
         const score = Math.min(whiteCoverage, redCoverage) - spill;
         if ((matched && !best.matched) || (matched === best.matched && score > bestScore)) {
@@ -8829,7 +8840,7 @@
 
   function createFaintDiagnosticState() {
     return {
-      version: 3, config: JSON.parse(JSON.stringify({ ...FAINT_DETECTION_CONFIG, ...FAINT_DIAGNOSTIC_CONFIG })),
+      version: 4, config: JSON.parse(JSON.stringify({ ...FAINT_DETECTION_CONFIG, ...FAINT_DIAGNOSTIC_CONFIG })),
       comparisons: [], comparisonCount: 0, comparisonCursor: 0, comparisonDropped: 0,
       events: [], eventCount: 0, eventCursor: 0, eventDropped: 0,
       reasons: Object.fromEntries(Object.keys(FAINT_DIAGNOSTIC_REASONS).map((reason) => [reason, {
@@ -8971,6 +8982,7 @@
       "refIndexは相手画像の上から0〜5、hudIndexは対戦HUDの左0/右1。nullは未取得・未確定。",
       "色の割合・percentVisibleは診断用で、確定条件には使いません。percentVisibleは0%の数字認識ではありません。",
       "icon.shapeは瀕死マークの形の一致度。画像条件は3回連続かつ500ms以上の成立が必要。",
+      "icon.shape.spillは照合位置に合わせた円内の余分な有色画素の割合。円の外側の背景は含みません。",
       "resolved.source: live=安定した今回の照合、cache=場にいる相手の保持、mapping-pending=対応の連続確認待ち、mapping-conflict=強い別候補との矛盾、unselected=選出未確定、missing=不明。",
       "markBefore/Afterは同じマークの処理済み状態と消失確認回数。2回連続・250ms以上の消失で次のマークを受け付けます。",
       "at/lastSeenAtはUTCのミリ秒、matchElapsedMsは記録開始からの経過、ageMsは対応・一致待ちの経過。current以外の画像は集計を分離。",
